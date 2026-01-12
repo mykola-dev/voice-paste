@@ -4,19 +4,25 @@ A Windows resident tray application for voice dictation with no silence auto-sto
 
 ## Current Status
 
-**Phase 1 (MVP Core) - ✅ COMPLETED**
+**Development Progress:**
 
-All core components have been implemented:
-- ✅ Audio recording (WASAPI, 16kHz mono)
-- ✅ Global hotkey (ScrollLock)
-- ✅ Transcription service (faster-whisper)
-- ✅ Clipboard paste mechanism (Ctrl+Shift+V)
-- ✅ State machine (idle → recording → transcribing → idle)
+- ✅ **Phase 1: MVP** - Core recording + transcription + paste
+- ✅ **Phase 2: UI Polish** - Tray icon, overlay, visual feedback
+- ✅ **Phase 3: Settings** - Configuration UI with hotkey/model/device selection
+- ✅ **Phase 4: Robustness** - Error handling, clipboard retry logic, edge cases
+- ✅ **Phase 5: Portable Build** - Self-contained build with embedded Python
+- ⚠️ **Phase 5: Distribution** - Packaging/installer (in progress)
 
-**Next Steps:**
-- Test on Windows with .NET 8 and Python 3.10+
-- Add tray icon UI (Phase 2)
-- Add recording overlay (Phase 2)
+**Ready for Production Use!**
+
+The application is fully functional with:
+- Continuous voice recording (no auto-stop on silence)
+- GPU-accelerated transcription (CUDA) with CPU fallback
+- Bilingual support (English + Ukrainian, auto-detect)
+- System tray with recording overlay
+- Settings UI for customization
+- Clipboard retry logic for reliability
+- Portable build with no dependencies
 
 ## Project Structure
 
@@ -103,12 +109,23 @@ Default settings in `config/config.json`:
 {
   "hotkey": "ScrollLock",
   "pasteShortcut": "Ctrl+Shift+V",
-  "model": "medium",
+  "model": "large-v3",
   "device": "cuda",
   "restoreClipboard": true,
   "clipboardRestoreDelayMs": 400
 }
 ```
+
+**Available Models:**
+- `large-v3` (default) - Best accuracy, slower, recommended for GPU
+- `medium` - Balanced accuracy/speed
+- `small` - Fastest, lower accuracy
+
+**Device Options:**
+- `cuda` (default) - GPU acceleration (requires NVIDIA GPU)
+- `cpu` - CPU-only (automatic fallback if CUDA unavailable)
+
+Settings can be changed through the UI (right-click tray icon → Settings).
 
 ## Documentation
 
@@ -125,10 +142,11 @@ See `docs/` for detailed specifications:
 ## Development Phases
 
 - [x] **Phase 1: MVP** - Core recording + transcription + paste
-- [ ] **Phase 2: UI Polish** - Tray icon, overlay, visual feedback
-- [ ] **Phase 3: Settings** - Configuration UI
-- [ ] **Phase 4: Robustness** - Error handling, edge cases
-- [ ] **Phase 5: Distribution** - Installer, packaging
+- [x] **Phase 2: UI Polish** - Tray icon, overlay, visual feedback
+- [x] **Phase 3: Settings** - Configuration UI
+- [x] **Phase 4: Robustness** - Error handling, edge cases
+- [x] **Phase 5: Portable Build** - Self-contained deployment
+- [ ] **Phase 5: Distribution** - Installer, packaging (in progress)
 
 ## License
 
