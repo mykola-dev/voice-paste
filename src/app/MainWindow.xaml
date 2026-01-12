@@ -1,0 +1,11 @@
+<Window x:Class="VoicePaste.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="VoicePaste" 
+        Height="1" 
+        Width="1"
+        ShowInTaskbar="False"
+        WindowStyle="None"
+        Visibility="Hidden">
+    <!-- Hidden main window - app runs in tray -->
+</Window>

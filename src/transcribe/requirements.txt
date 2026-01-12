@@ -1,0 +1,8 @@
+# VoicePaste - Python Dependencies
+
+# STT Engine
+faster-whisper>=1.0.0
+
+# CUDA support (optional, for GPU acceleration)
+# Install CUDA Toolkit 11.x or 12.x separately
+# faster-whisper will use GPU if available

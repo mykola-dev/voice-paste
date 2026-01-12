@@ -1,0 +1,119 @@
+<Window x:Class="VoicePaste.Settings.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="VoicePaste Settings"
+        Height="520"
+        Width="560"
+        MinHeight="420"
+        MinWidth="480"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold" Text="VoicePaste Settings" />
+
+        <GroupBox Grid.Row="1" Header="Hotkey" Margin="0,12,0,0">
+            <Grid Margin="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="140"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock VerticalAlignment="Center" Text="Toggle recording:" />
+                <ComboBox Grid.Column="1" x:Name="HotkeyCombo" MinWidth="240" />
+            </Grid>
+        </GroupBox>
+
+        <GroupBox Grid.Row="2" Header="Paste" Margin="0,12,0,0">
+            <Grid Margin="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="140"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock VerticalAlignment="Center" Text="Paste shortcut:" />
+                <ComboBox Grid.Column="1" x:Name="PasteShortcutCombo" MinWidth="240" />
+
+                <CheckBox Grid.Row="1" Grid.ColumnSpan="2" x:Name="RestoreClipboardCheck" Margin="0,10,0,0"
+                          Content="Restore clipboard after paste" />
+
+                <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,10,0,0">
+                    <TextBlock VerticalAlignment="Center" Text="Restore delay (ms):" />
+                    <TextBox x:Name="RestoreDelayText" Width="80" Margin="10,0,0,0" />
+                    <TextBlock VerticalAlignment="Center" Margin="10,0,0,0" Foreground="#666"
+                               Text="(100–2000)" />
+                </StackPanel>
+            </Grid>
+        </GroupBox>
+
+        <GroupBox Grid.Row="3" Header="Transcription" Margin="0,12,0,0">
+            <Grid Margin="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="140"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock VerticalAlignment="Center" Text="Model:" />
+                <ComboBox Grid.Column="1" x:Name="ModelCombo" MinWidth="240" />
+
+                <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="Device:" Margin="0,10,0,0" />
+                <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,10,0,0">
+                    <ComboBox x:Name="DeviceCombo" MinWidth="240" />
+                    <TextBlock x:Name="DeviceHintText" Margin="0,6,0,0" Foreground="#666" TextWrapping="Wrap" />
+                </StackPanel>
+
+                <TextBlock Grid.Row="2" VerticalAlignment="Center" Text="Language mode:" Margin="0,10,0,0" />
+                <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,10,0,0">
+                    <ComboBox x:Name="LanguageCombo" MinWidth="240" />
+                    <TextBlock x:Name="LanguageHintText" Margin="0,6,0,0" Foreground="#666" TextWrapping="Wrap" />
+                </StackPanel>
+            </Grid>
+        </GroupBox>
+
+        <GroupBox Grid.Row="4" Header="Logging" Margin="0,12,0,0">
+            <Grid Margin="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <CheckBox x:Name="DebugLoggingCheck" Content="Enable debug logging" />
+                <TextBlock Grid.Row="1" x:Name="LogPathText" Margin="0,8,0,0" Foreground="#666" TextWrapping="Wrap" />
+            </Grid>
+        </GroupBox>
+
+        <TextBlock Grid.Row="5" x:Name="ErrorText" Foreground="#B00020" Margin="0,12,0,0" TextWrapping="Wrap" />
+            </Grid>
+        </ScrollViewer>
+
+        <DockPanel Grid.Row="1" Margin="0,12,0,0">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Width="90" Margin="0,0,10,0" Content="Cancel" Click="Cancel_Click" />
+                <Button Width="90" Content="Save" Click="Save_Click" />
+            </StackPanel>
+        </DockPanel>
+    </Grid>
+</Window>
