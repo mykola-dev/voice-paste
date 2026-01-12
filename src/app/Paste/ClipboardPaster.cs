@@ -44,19 +44,12 @@ public class ClipboardPaster
         {
             await Application.Current.Dispatcher.InvokeAsync(() =>
             {
-                try
+                previousClipboardData = TryGetClipboardWithRetry();
+                
+                if (previousClipboardData != null)
                 {
-                    previousClipboardData = Clipboard.GetDataObject();
-                    
-                    if (previousClipboardData != null)
-                    {
-                        var formats = previousClipboardData.GetFormats();
-                        Console.WriteLine($"[Paste] Saved previous clipboard content ({formats.Length} format(s): {string.Join(", ", formats)})");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[Paste] WARNING: Could not save clipboard: {ex.Message}");
+                    var formats = previousClipboardData.GetFormats();
+                    Console.WriteLine($"[Paste] Saved previous clipboard content ({formats.Length} format(s): {string.Join(", ", formats)})");
                 }
             });
         }
@@ -64,16 +57,8 @@ public class ClipboardPaster
         // Set new clipboard content
         await Application.Current.Dispatcher.InvokeAsync(() =>
         {
-            try
-            {
-                Clipboard.SetText(text);
-                Console.WriteLine("[Paste] Text copied to clipboard");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[Paste] ERROR: Could not set clipboard: {ex.Message}");
-                throw;
-            }
+            TrySetClipboardTextWithRetry(text);
+            Console.WriteLine("[Paste] Text copied to clipboard");
         });
         
         // Small delay to ensure clipboard is set
@@ -90,16 +75,108 @@ public class ClipboardPaster
             
             await Application.Current.Dispatcher.InvokeAsync(() =>
             {
-                try
-                {
-                    Clipboard.SetDataObject(previousClipboardData, false);
-                    Console.WriteLine("[Paste] Clipboard restored");
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[Paste] WARNING: Could not restore clipboard: {ex.Message}");
-                }
+                TryRestoreClipboardWithRetry(previousClipboardData);
             });
+        }
+    }
+    
+    /// <summary>
+    /// Try to get clipboard data with retry logic (max 5 attempts).
+    /// </summary>
+    private static IDataObject? TryGetClipboardWithRetry()
+    {
+        const int maxAttempts = 5;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                return Clipboard.GetDataObject();
+            }
+            catch (COMException ex) when (ex.ErrorCode == unchecked((int)0x800401D0)) // CLIPBRD_E_CANT_OPEN
+            {
+                if (attempt < maxAttempts)
+                {
+                    int delayMs = attempt * 50; // 50ms, 100ms, 150ms, 200ms
+                    Console.WriteLine($"[Paste] Clipboard busy, retry {attempt}/{maxAttempts} in {delayMs}ms...");
+                    System.Threading.Thread.Sleep(delayMs);
+                }
+                else
+                {
+                    Console.WriteLine($"[Paste] WARNING: Could not get clipboard after {maxAttempts} attempts: {ex.Message}");
+                    return null;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Paste] WARNING: Could not get clipboard: {ex.Message}");
+                return null;
+            }
+        }
+        return null;
+    }
+    
+    /// <summary>
+    /// Try to set clipboard text with retry logic (max 5 attempts).
+    /// </summary>
+    private static void TrySetClipboardTextWithRetry(string text)
+    {
+        const int maxAttempts = 5;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                Clipboard.SetText(text);
+                return; // Success
+            }
+            catch (COMException ex) when (ex.ErrorCode == unchecked((int)0x800401D0)) // CLIPBRD_E_CANT_OPEN
+            {
+                if (attempt < maxAttempts)
+                {
+                    int delayMs = attempt * 50; // 50ms, 100ms, 150ms, 200ms
+                    Console.WriteLine($"[Paste] Clipboard busy, retry {attempt}/{maxAttempts} in {delayMs}ms...");
+                    System.Threading.Thread.Sleep(delayMs);
+                }
+                else
+                {
+                    Console.WriteLine($"[Paste] ERROR: Could not set clipboard after {maxAttempts} attempts: {ex.Message}");
+                    throw new InvalidOperationException($"Failed to set clipboard after {maxAttempts} attempts", ex);
+                }
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Try to restore clipboard data with retry logic (max 5 attempts).
+    /// </summary>
+    private static void TryRestoreClipboardWithRetry(IDataObject data)
+    {
+        const int maxAttempts = 5;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                Clipboard.SetDataObject(data, false);
+                Console.WriteLine("[Paste] Clipboard restored");
+                return; // Success
+            }
+            catch (COMException ex) when (ex.ErrorCode == unchecked((int)0x800401D0)) // CLIPBRD_E_CANT_OPEN
+            {
+                if (attempt < maxAttempts)
+                {
+                    int delayMs = attempt * 50; // 50ms, 100ms, 150ms, 200ms
+                    Console.WriteLine($"[Paste] Clipboard busy, retry {attempt}/{maxAttempts} in {delayMs}ms...");
+                    System.Threading.Thread.Sleep(delayMs);
+                }
+                else
+                {
+                    Console.WriteLine($"[Paste] WARNING: Could not restore clipboard after {maxAttempts} attempts: {ex.Message}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Paste] WARNING: Could not restore clipboard: {ex.Message}");
+                return;
+            }
         }
     }
     
