@@ -311,15 +311,15 @@ public class ClipboardPaster
         INPUT[] inputs =
         {
             KeyDown(VK_SHIFT, extraInfo),
-            KeyDown(VK_INSERT, extraInfo),
-            KeyUp(VK_INSERT, extraInfo),
+            KeyDown(VK_INSERT, extraInfo, extended: true),
+            KeyUp(VK_INSERT, extraInfo, extended: true),
             KeyUp(VK_SHIFT, extraInfo)
         };
 
         SendKeyboardInputs(inputs, expectedCount: 4);
     }
 
-    private static INPUT KeyDown(ushort vk, IntPtr extraInfo)
+    private static INPUT KeyDown(ushort vk, IntPtr extraInfo, bool extended = false)
     {
         return new INPUT
         {
@@ -328,14 +328,14 @@ public class ClipboardPaster
             {
                 wVk = vk,
                 wScan = 0,
-                dwFlags = 0,
+                dwFlags = extended ? KEYEVENTF_EXTENDEDKEY : 0,
                 time = 0,
                 dwExtraInfo = extraInfo
             }
         };
     }
 
-    private static INPUT KeyUp(ushort vk, IntPtr extraInfo)
+    private static INPUT KeyUp(ushort vk, IntPtr extraInfo, bool extended = false)
     {
         return new INPUT
         {
@@ -344,7 +344,7 @@ public class ClipboardPaster
             {
                 wVk = vk,
                 wScan = 0,
-                dwFlags = KEYEVENTF_KEYUP,
+                dwFlags = (extended ? KEYEVENTF_EXTENDEDKEY : 0) | KEYEVENTF_KEYUP,
                 time = 0,
                 dwExtraInfo = extraInfo
             }
@@ -376,6 +376,7 @@ public class ClipboardPaster
 
     private const int INPUT_KEYBOARD = 1;
     private const uint KEYEVENTF_KEYUP = 0x0002;
+    private const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
     private const ushort VK_CONTROL = 0x11;
     private const ushort VK_SHIFT = 0x10;
     private const ushort VK_V = 0x56;
