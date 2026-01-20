@@ -43,6 +43,7 @@ project.fragment.lock.json
 artifacts/
 
 # Python
+python/
 __pycache__/
 *.py[cod]
 *$py.class
@@ -62,6 +63,7 @@ htmlcov/
 *.log
 
 # Whisper models cache
+models/
 .cache/
 *.pt
 

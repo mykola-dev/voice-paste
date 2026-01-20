@@ -16,4 +16,17 @@
     <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="1.1.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Copy Python worker script -->
+    <None Update="..\transcribe\transcribe.py">
+      <Link>transcribe\transcribe.py</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- Copy Embedded Python (if exists) -->
+    <None Update="..\..\python\**\*">
+      <Link>python\%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

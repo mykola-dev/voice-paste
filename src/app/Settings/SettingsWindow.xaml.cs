@@ -7,6 +7,8 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 
+using VoicePaste.Transcription;
+
 namespace VoicePaste.Settings;
 
 public partial class SettingsWindow : Window
@@ -75,7 +77,7 @@ public partial class SettingsWindow : Window
             new(LanguageMode.Auto, "Automatic (detect per recording)", "Detect language automatically shows best single language result."),
             new(LanguageMode.En, "English (force)", "Always transcribe as English."),
             new(LanguageMode.Ua, "Ukrainian (force)", "Always transcribe as Ukrainian (uk)."),
-            new(LanguageMode.Bilingual, "Bilingual (English + Ukrainian)", "Try to handle mixed-language speech. Implemented as auto-detect; best results when sentences are mostly one language at a time.")
+            new(LanguageMode.Bilingual, "Bilingual (English + Ukrainian)", "Auto-detect with context for English and Ukrainian. Prevents misidentification as Russian. Best for mixed-language speech.")
         };
 
         LanguageCombo.DisplayMemberPath = nameof(LanguageModeItem.Display);
@@ -104,13 +106,40 @@ public partial class SettingsWindow : Window
         try
         {
             var exeDir = AppDomain.CurrentDomain.BaseDirectory;
-            var modelsDir = Path.GetFullPath(Path.Combine(exeDir, "models"));
-            if (!Directory.Exists(modelsDir))
-                return false;
+            var localModelsDir = Path.GetFullPath(Path.Combine(exeDir, "models"));
+            
+            // 1. Check local models folder (portable)
+            if (Directory.Exists(localModelsDir))
+            {
+                if (CheckDirForModel(localModelsDir, model))
+                    return true;
+            }
 
-            // Heuristic: any HF snapshot folder containing the model name.
+            // 2. Check global Hugging Face cache
+            var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var globalModelsDir = Path.Combine(userProfile, ".cache", "huggingface", "hub");
+            
+            if (Directory.Exists(globalModelsDir))
+            {
+                if (CheckDirForModel(globalModelsDir, model))
+                    return true;
+            }
+
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool CheckDirForModel(string rootDir, string model)
+    {
+        try
+        {
+            // Heuristic: any folder containing the model name and "snapshots".
             // Works for typical hub layouts like: models\hub\models--*--faster-whisper-<model>\snapshots\...
-            return Directory.EnumerateDirectories(modelsDir, "*", SearchOption.AllDirectories)
+            return Directory.EnumerateDirectories(rootDir, "*", SearchOption.AllDirectories)
                 .Any(d => d.Contains(model, StringComparison.OrdinalIgnoreCase) && d.Contains("snapshots", StringComparison.OrdinalIgnoreCase));
         }
         catch
@@ -122,11 +151,8 @@ public partial class SettingsWindow : Window
     private async Task CacheModelAsync(string model)
     {
         var exeDir = AppDomain.CurrentDomain.BaseDirectory;
-        var pythonExe = Path.GetFullPath(Path.Combine(exeDir, "python", "python.exe"));
+        var pythonExe = PythonFinder.Find();
         var modelsDir = Path.GetFullPath(Path.Combine(exeDir, "models"));
-
-        if (!File.Exists(pythonExe))
-            throw new InvalidOperationException($"Embedded Python not found: {pythonExe}");
 
         Directory.CreateDirectory(modelsDir);
 

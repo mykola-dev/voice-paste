@@ -43,7 +43,7 @@ public class TranscriptionService
         _cudaAutoFallback = cudaAutoFallback;
 
         // Find Python executable
-        _pythonPath = FindPython();
+        _pythonPath = PythonFinder.Find();
 
         // Find transcribe.py script
         _transcribeScriptPath = FindTranscribeScript();
@@ -225,61 +225,6 @@ public class TranscriptionService
         };
     }
 
-    private static string FindPython()
-    {
-        // Try common Python locations (prefer 3.12 for faster-whisper compatibility)
-        // Portable build: expect python/python.exe next to VoicePaste.exe
-        var exeDir = AppDomain.CurrentDomain.BaseDirectory;
-
-        var portablePython = Path.GetFullPath(Path.Combine(exeDir, "python", "python.exe"));
-        if (File.Exists(portablePython))
-            return portablePython;
-
-        var candidates = new[]
-        {
-            // Installed Python
-            "py",               // Python Launcher (any version)
-            "python",           // PATH
-            "python3",          // PATH (Linux/Mac style)
-            Environment.ExpandEnvironmentVariables(@"%LOCALAPPDATA%\Programs\Python\Python312\python.exe"),
-            Environment.ExpandEnvironmentVariables(@"%LOCALAPPDATA%\Programs\Python\Python311\python.exe"),
-            Environment.ExpandEnvironmentVariables(@"%LOCALAPPDATA%\Programs\Python\Python310\python.exe"),
-            @"C:\Python312\python.exe",
-            @"C:\Python311\python.exe",
-            @"C:\Python310\python.exe"
-        };
-        
-        foreach (var candidate in candidates)
-        {
-            try
-            {
-                var process = Process.Start(new ProcessStartInfo
-                {
-                    FileName = candidate,
-                    Arguments = "--version",
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    CreateNoWindow = true
-                });
-
-                if (process != null)
-                {
-                    process.WaitForExit(1000);
-                    if (process.ExitCode == 0)
-                        return candidate;
-                }
-            }
-            catch
-            {
-                // Try next candidate
-            }
-        }
-        
-        throw new TranscriptionException(
-            "Python not found. Please install Python 3.10 or later."
-        );
-    }
-    
     private static string FindTranscribeScript()
     {
         // Look for transcribe.py relative to executable

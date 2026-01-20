@@ -5,6 +5,25 @@ setlocal
 cd /d "%~dp0"
 
 echo ========================================
+echo VoicePaste - Dev Environment Setup
+echo ========================================
+echo.
+
+if not exist "python\python.exe" (
+    echo Embedded Python not found in root. Setting it up...
+    powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\setup-python.ps1"
+    if errorlevel 1 (
+        echo.
+        echo Python setup failed.
+        pause
+        exit /b 1
+    )
+) else (
+    echo Embedded Python found in root.
+)
+echo.
+
+echo ========================================
 echo VoicePaste - Debug Build
 echo ========================================
 echo.
