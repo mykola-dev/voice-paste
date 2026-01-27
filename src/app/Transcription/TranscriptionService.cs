@@ -20,6 +20,7 @@ public class TranscriptionService : IDisposable
     private readonly Settings.LanguageMode _languageMode;
     private readonly int _beamSize;
     private readonly bool _cudaAutoFallback;
+    private readonly string _initialPrompt;
 
     private Process? _activeProcess;
     private TaskCompletionSource<bool>? _readyTcs;
@@ -36,13 +37,15 @@ public class TranscriptionService : IDisposable
         string device = "cuda",
         Settings.LanguageMode languageMode = Settings.LanguageMode.Auto,
         int beamSize = 5,
-        bool cudaAutoFallback = true)
+        bool cudaAutoFallback = true,
+        string initialPrompt = "")
     {
         _modelSize = modelSize;
         _device = device;
         _languageMode = languageMode;
         _beamSize = beamSize;
         _cudaAutoFallback = cudaAutoFallback;
+        _initialPrompt = initialPrompt;
 
         _pythonPath = PythonFinder.Find();
         _transcribeScriptPath = FindTranscribeScript();
@@ -224,6 +227,11 @@ public class TranscriptionService : IDisposable
         args.Append($"--device {device} ");
         args.Append($"--language-mode {ToLanguageModeArg(_languageMode)} ");
         args.Append($"--beam-size {_beamSize} ");
+
+        if (!string.IsNullOrWhiteSpace(_initialPrompt))
+        {
+            args.Append($"--initial-prompt \"{_initialPrompt.Replace("\"", "\\\"")}\" ");
+        }
 
         if (waitMode)
         {

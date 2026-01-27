@@ -111,6 +111,7 @@ public sealed class SettingsManager
             Model = model,
             Hotkey = hotkey,
             ClipboardRestoreDelayMs = delay,
+            CustomInitialPrompt = current.CustomInitialPrompt?.Trim() ?? string.Empty,
             SettingsWindowWidth = width,
             SettingsWindowHeight = height
         };

@@ -320,7 +320,8 @@ public class VoicePasteController : IDisposable
             device: device,
             languageMode: settings.LanguageMode,
             beamSize: settings.BeamSize,
-            cudaAutoFallback: settings.Device == TranscriptionDevice.CudaAuto);
+            cudaAutoFallback: settings.Device == TranscriptionDevice.CudaAuto,
+            initialPrompt: settings.CustomInitialPrompt);
     }
 
     private static ClipboardPaster CreateClipboardPaster(AppSettings settings)

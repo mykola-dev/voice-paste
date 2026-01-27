@@ -99,6 +99,7 @@ public partial class SettingsWindow : Window
 
         RestoreClipboardCheck.IsChecked = settings.RestoreClipboard;
         RestoreDelayText.Text = settings.ClipboardRestoreDelayMs.ToString();
+        CustomPromptText.Text = settings.CustomInitialPrompt;
         DebugLoggingCheck.IsChecked = settings.DebugLogging;
     }
 
@@ -283,6 +284,7 @@ public partial class SettingsWindow : Window
             BeamSize = (int)BeamSizeSlider.Value,
             RestoreClipboard = RestoreClipboardCheck.IsChecked == true,
             ClipboardRestoreDelayMs = delay,
+            CustomInitialPrompt = CustomPromptText.Text,
             DebugLogging = DebugLoggingCheck.IsChecked == true,
             SettingsWindowWidth = Width,
             SettingsWindowHeight = Height
@@ -322,5 +324,17 @@ public partial class SettingsWindow : Window
     {
         DialogResult = false;
         Close();
+    }
+    
+    private void ResizeHandle_DragDelta(object sender, System.Windows.Controls.Primitives.DragDeltaEventArgs e)
+    {
+        if (double.IsNaN(CustomPromptText.Height))
+            CustomPromptText.Height = CustomPromptText.ActualHeight;
+
+        var newHeight = CustomPromptText.Height + e.VerticalChange;
+        if (newHeight >= CustomPromptText.MinHeight && newHeight <= CustomPromptText.MaxHeight)
+        {
+            CustomPromptText.Height = newHeight;
+        }
     }
 }

@@ -23,97 +23,124 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-
-        <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold" Text="VoicePaste Settings" />
-
-        <GroupBox Grid.Row="1" Header="Hotkey" Margin="0,12,0,0">
-            <Grid Margin="10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="140"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock VerticalAlignment="Center" Text="Toggle recording:" />
-                <ComboBox Grid.Column="1" x:Name="HotkeyCombo" MinWidth="240" />
-            </Grid>
-        </GroupBox>
-
-        <GroupBox Grid.Row="2" Header="Paste" Margin="0,12,0,0">
-            <Grid Margin="10">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="140"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
 
-                <TextBlock VerticalAlignment="Center" Text="Paste shortcut:" />
-                <ComboBox Grid.Column="1" x:Name="PasteShortcutCombo" MinWidth="240" />
+                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold" Text="VoicePaste Settings" />
 
-                <CheckBox Grid.Row="1" Grid.ColumnSpan="2" x:Name="RestoreClipboardCheck" Margin="0,10,0,0"
-                          Content="Restore clipboard after paste" />
+                <GroupBox Grid.Row="1" Header="Hotkey" Margin="0,12,0,0">
+                    <Grid Margin="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center" Text="Toggle recording:" />
+                        <ComboBox Grid.Column="1" x:Name="HotkeyCombo" MinWidth="240" />
+                    </Grid>
+                </GroupBox>
 
-                <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,10,0,0">
-                    <TextBlock VerticalAlignment="Center" Text="Restore delay (ms):" />
-                    <TextBox x:Name="RestoreDelayText" Width="80" Margin="10,0,0,0" />
-                    <TextBlock VerticalAlignment="Center" Margin="10,0,0,0" Foreground="#666"
-                               Text="(100–2000)" />
-                </StackPanel>
-            </Grid>
-        </GroupBox>
+                <GroupBox Grid.Row="2" Header="Paste" Margin="0,12,0,0">
+                    <Grid Margin="10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
 
-        <GroupBox Grid.Row="3" Header="Transcription" Margin="0,12,0,0">
-            <Grid Margin="10">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="140"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center" Text="Paste shortcut:" />
+                        <ComboBox Grid.Column="1" x:Name="PasteShortcutCombo" MinWidth="240" />
 
-                <TextBlock VerticalAlignment="Center" Text="Model:" />
-                <ComboBox Grid.Column="1" x:Name="ModelCombo" MinWidth="240" />
+                        <CheckBox Grid.Row="1" Grid.ColumnSpan="2" x:Name="RestoreClipboardCheck" Margin="0,10,0,0"
+                                  Content="Restore clipboard after paste" />
 
-                <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="Device:" Margin="0,10,0,0" />
-                <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,10,0,0">
-                    <ComboBox x:Name="DeviceCombo" MinWidth="240" />
-                    <TextBlock x:Name="DeviceHintText" Margin="0,6,0,0" Foreground="#666" TextWrapping="Wrap" />
-                </StackPanel>
+                        <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,10,0,0">
+                            <TextBlock VerticalAlignment="Center" Text="Restore delay (ms):" />
+                            <TextBox x:Name="RestoreDelayText" Width="80" Margin="10,0,0,0" />
+                            <TextBlock VerticalAlignment="Center" Margin="10,0,0,0" Foreground="#666"
+                                       Text="(100–2000)" />
+                        </StackPanel>
+                    </Grid>
+                </GroupBox>
 
-                <TextBlock Grid.Row="2" VerticalAlignment="Center" Text="Language mode:" Margin="0,10,0,0" />
-                <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,10,0,0">
-                    <ComboBox x:Name="LanguageCombo" MinWidth="240" />
-                    <TextBlock x:Name="LanguageHintText" Margin="0,6,0,0" Foreground="#666" TextWrapping="Wrap" />
-                </StackPanel>
+                <GroupBox Grid.Row="3" Header="Transcription" Margin="0,12,0,0">
+                    <Grid Margin="10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Row="3" VerticalAlignment="Center" Text="Beam size:" Margin="0,10,0,0" />
-                <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,10,0,0">
-                    <Slider x:Name="BeamSizeSlider" Width="180" Minimum="1" Maximum="10" SmallChange="1" LargeChange="1" IsSnapToTickEnabled="True" VerticalAlignment="Center" />
-                    <TextBlock Text="{Binding ElementName=BeamSizeSlider, Path=Value, StringFormat=N0}" Width="20" Margin="10,0,0,0" VerticalAlignment="Center" />
-                    <TextBlock VerticalAlignment="Center" Margin="10,0,0,0" Foreground="#666" Text="(1: fastest, 5: default)" />
-                </StackPanel>
-            </Grid>
-        </GroupBox>
+                        <TextBlock VerticalAlignment="Center" Text="Model:" />
+                        <ComboBox Grid.Column="1" x:Name="ModelCombo" MinWidth="240" />
 
-        <GroupBox Grid.Row="4" Header="Logging" Margin="0,12,0,0">
-            <Grid Margin="10">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-                <CheckBox x:Name="DebugLoggingCheck" Content="Enable debug logging" />
-                <TextBlock Grid.Row="1" x:Name="LogPathText" Margin="0,8,0,0" Foreground="#666" TextWrapping="Wrap" />
-            </Grid>
-        </GroupBox>
+                        <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="Device:" Margin="0,10,0,0" />
+                        <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,10,0,0">
+                            <ComboBox x:Name="DeviceCombo" MinWidth="240" />
+                            <TextBlock x:Name="DeviceHintText" Margin="0,6,0,0" Foreground="#666" TextWrapping="Wrap" />
+                        </StackPanel>
 
-        <TextBlock Grid.Row="5" x:Name="ErrorText" Foreground="#B00020" Margin="0,12,0,0" TextWrapping="Wrap" />
+                        <TextBlock Grid.Row="2" VerticalAlignment="Center" Text="Language mode:" Margin="0,10,0,0" />
+                        <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,10,0,0">
+                            <ComboBox x:Name="LanguageCombo" MinWidth="240" />
+                            <TextBlock x:Name="LanguageHintText" Margin="0,6,0,0" Foreground="#666" TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="3" VerticalAlignment="Center" Text="Beam size:" Margin="0,10,0,0" />
+                        <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,10,0,0">
+                            <Slider x:Name="BeamSizeSlider" Width="180" Minimum="1" Maximum="10" SmallChange="1" LargeChange="1" IsSnapToTickEnabled="True" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding ElementName=BeamSizeSlider, Path=Value, StringFormat=N0}" Width="20" Margin="10,0,0,0" VerticalAlignment="Center" />
+                            <TextBlock VerticalAlignment="Center" Margin="10,0,0,0" Foreground="#666" Text="(1: fastest, 5: default)" />
+                        </StackPanel>
+                    </Grid>
+                </GroupBox>
+
+                <GroupBox Grid.Row="4" Header="Custom Initial Prompt" Margin="0,12,0,0">
+                    <Grid Margin="10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock TextWrapping="Wrap" Foreground="#666" Margin="0,0,0,8"
+                                   Text="This text will be appended to the default initial prompt. Use it to guide the model's vocabulary or formatting." />
+                        <TextBox Grid.Row="1" x:Name="CustomPromptText" 
+                                 MinHeight="60" MaxHeight="400"
+                                 AcceptsReturn="True" TextWrapping="Wrap" 
+                                 VerticalScrollBarVisibility="Auto" />
+                        <Thumb Grid.Row="2" Height="10" Cursor="SizeNS" Margin="0,2,0,0"
+                               HorizontalAlignment="Stretch" DragDelta="ResizeHandle_DragDelta">
+                            <Thumb.Template>
+                                <ControlTemplate>
+                                    <Grid Background="Transparent">
+                                        <Border Height="1" Background="#DDD" VerticalAlignment="Center" Width="40" CornerRadius="0.5"/>
+                                    </Grid>
+                                </ControlTemplate>
+                            </Thumb.Template>
+                        </Thumb>
+                    </Grid>
+                </GroupBox>
+
+                <GroupBox Grid.Row="5" Header="Logging" Margin="0,12,0,0">
+                    <Grid Margin="10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <CheckBox x:Name="DebugLoggingCheck" Content="Enable debug logging" />
+                        <TextBlock Grid.Row="1" x:Name="LogPathText" Margin="0,8,0,0" Foreground="#666" TextWrapping="Wrap" />
+                    </Grid>
+                </GroupBox>
+
+                <TextBlock Grid.Row="6" x:Name="ErrorText" Foreground="#B00020" Margin="0,12,0,0" TextWrapping="Wrap" />
             </Grid>
         </ScrollViewer>
 

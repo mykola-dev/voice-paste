@@ -45,6 +45,8 @@ public sealed record AppSettings
 
     public bool DebugLogging { get; init; } = false;
     
+    public string CustomInitialPrompt { get; init; } = string.Empty;
+
     public int BeamSize { get; init; } = 5;
 
     public double SettingsWindowWidth { get; init; } = 560;

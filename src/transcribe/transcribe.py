@@ -38,6 +38,7 @@ def transcribe_audio(
     model: WhisperModel,
     language_mode: str = "auto",
     beam_size: int = 5,
+    custom_initial_prompt: str = "",
 ) -> dict:
     """
     Transcribe audio file using faster-whisper.
@@ -83,12 +84,18 @@ def transcribe_audio(
         # Suppress Russian tokens in Bilingual mode as requested by user
         suppress_tokens = get_russian_suppress_tokens(model.hf_tokenizer)
         
+    # Append custom prompt if provided
+    if custom_initial_prompt:
+        if initial_prompt:
+            initial_prompt = initial_prompt.strip() + " " + custom_initial_prompt.strip()
+        else:
+            initial_prompt = custom_initial_prompt.strip()
 
     segments, info = model.transcribe(
         str(audio_path),
         language=language,
         beam_size=beam_size,
-        vad_filter=False,  # Don't filter silence - user controls recording
+        vad_filter=True,
         initial_prompt=initial_prompt,
         suppress_tokens=suppress_tokens,
     )
@@ -107,7 +114,7 @@ def transcribe_audio(
             str(audio_path),
             language="uk",
             beam_size=beam_size,
-            vad_filter=False,
+            vad_filter=True,
             initial_prompt=initial_prompt,
             suppress_tokens=suppress_tokens,
         )
@@ -166,6 +173,11 @@ def main():
         help="Language mode (default: auto)"
     )
     parser.add_argument(
+        "--initial-prompt",
+        default="",
+        help="Custom initial prompt to append to the default one"
+    )
+    parser.add_argument(
         "--beam-size",
         type=int,
         default=5,
@@ -210,7 +222,8 @@ def main():
                     input_path,
                     model,
                     language_mode=args.language_mode,
-                    beam_size=args.beam_size
+                    beam_size=args.beam_size,
+                    custom_initial_prompt=args.initial_prompt
                 )
                 print(f"[Timer] Transcription took {result['duration_ms']}ms", file=sys.stderr)
                 print(result["text"], flush=True)
@@ -231,6 +244,7 @@ def main():
                 model,
                 language_mode=args.language_mode,
                 beam_size=args.beam_size,
+                custom_initial_prompt=args.initial_prompt,
             )
             print(f"[Timer] Transcription took {result['duration_ms']}ms", file=sys.stderr)
             print(result["text"])
