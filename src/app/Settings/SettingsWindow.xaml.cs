@@ -95,6 +95,7 @@ public partial class SettingsWindow : Window
         ModelCombo.SelectedItem = settings.Model;
         DeviceCombo.SelectedValue = settings.Device;
         LanguageCombo.SelectedValue = settings.LanguageMode;
+        BeamSizeSlider.Value = settings.BeamSize;
 
         RestoreClipboardCheck.IsChecked = settings.RestoreClipboard;
         RestoreDelayText.Text = settings.ClipboardRestoreDelayMs.ToString();
@@ -279,6 +280,7 @@ public partial class SettingsWindow : Window
             Model = selectedModel,
             Device = (TranscriptionDevice)(DeviceCombo.SelectedValue ?? TranscriptionDevice.CudaAuto),
             LanguageMode = (LanguageMode)(LanguageCombo.SelectedValue ?? LanguageMode.Auto),
+            BeamSize = (int)BeamSizeSlider.Value,
             RestoreClipboard = RestoreClipboardCheck.IsChecked == true,
             ClipboardRestoreDelayMs = delay,
             DebugLogging = DebugLoggingCheck.IsChecked == true,

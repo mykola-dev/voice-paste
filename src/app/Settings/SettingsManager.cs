@@ -96,6 +96,8 @@ public sealed class SettingsManager
         }
 
         var delay = Math.Clamp(current.ClipboardRestoreDelayMs, 100, 2000);
+        
+        var beamSize = Math.Clamp(current.BeamSize, 1, 10);
 
         var width = double.IsFinite(current.SettingsWindowWidth) ? current.SettingsWindowWidth : AppSettings.Default.SettingsWindowWidth;
         var height = double.IsFinite(current.SettingsWindowHeight) ? current.SettingsWindowHeight : AppSettings.Default.SettingsWindowHeight;

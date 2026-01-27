@@ -71,6 +71,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="140"/>
@@ -90,6 +91,13 @@
                 <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,10,0,0">
                     <ComboBox x:Name="LanguageCombo" MinWidth="240" />
                     <TextBlock x:Name="LanguageHintText" Margin="0,6,0,0" Foreground="#666" TextWrapping="Wrap" />
+                </StackPanel>
+
+                <TextBlock Grid.Row="3" VerticalAlignment="Center" Text="Beam size:" Margin="0,10,0,0" />
+                <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,10,0,0">
+                    <Slider x:Name="BeamSizeSlider" Width="180" Minimum="1" Maximum="10" SmallChange="1" LargeChange="1" IsSnapToTickEnabled="True" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding ElementName=BeamSizeSlider, Path=Value, StringFormat=N0}" Width="20" Margin="10,0,0,0" VerticalAlignment="Center" />
+                    <TextBlock VerticalAlignment="Center" Margin="10,0,0,0" Foreground="#666" Text="(1: fastest, 5: default)" />
                 </StackPanel>
             </Grid>
         </GroupBox>

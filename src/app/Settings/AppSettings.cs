@@ -44,6 +44,8 @@ public sealed record AppSettings
     public int ClipboardRestoreDelayMs { get; init; } = 400;
 
     public bool DebugLogging { get; init; } = false;
+    
+    public int BeamSize { get; init; } = 5;
 
     public double SettingsWindowWidth { get; init; } = 560;
 

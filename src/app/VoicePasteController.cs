@@ -161,6 +161,9 @@ public class VoicePasteController : IDisposable
         
         try
         {
+            // Start preloading the transcription model while we record
+            _transcriptionService.StartPreloading();
+            
             _audioRecorder.StartRecording();
             Console.WriteLine("[Controller] Recording started");
         }
@@ -316,6 +319,7 @@ public class VoicePasteController : IDisposable
             modelSize: settings.Model,
             device: device,
             languageMode: settings.LanguageMode,
+            beamSize: settings.BeamSize,
             cudaAutoFallback: settings.Device == TranscriptionDevice.CudaAuto);
     }
 
