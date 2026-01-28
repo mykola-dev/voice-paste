@@ -2,6 +2,7 @@
 
 A Windows resident tray application for voice dictation with no silence auto-stop.
 
+![VoicePaste Screenshot](pic.png)
 
 ## Building
 
@@ -58,18 +59,6 @@ Default settings in `config/config.json`:
 - `cpu` - CPU-only (automatic fallback if CUDA unavailable)
 
 Settings can be changed through the UI (right-click tray icon → Settings).
-
-## Documentation
-
-See `docs/` for detailed specifications:
-- `docs/01-overview.md` - Project goals
-- `docs/02-architecture.md` - System design
-- `docs/03-ux-spec.md` - User experience
-- `docs/04-audio-capture.md` - Audio implementation
-- `docs/05-transcription.md` - Whisper integration
-- `docs/06-paste-mechanism.md` - Paste behavior
-- `docs/07-configuration.md` - Settings
-- `docs/08-milestones.md` - Development progress
 
 ## License
 
