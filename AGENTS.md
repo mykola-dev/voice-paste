@@ -2,8 +2,6 @@
 
 ## Documentation
 
-**See `docs/index.md` for detailed specifications.**
-
 | Doc | Topic |
 |-----|-------|
 | `docs/01-overview.md` | Project goals, requirements |

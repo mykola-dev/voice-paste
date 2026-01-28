@@ -2,56 +2,6 @@
 
 A Windows resident tray application for voice dictation with no silence auto-stop.
 
-## Current Status
-
-**Development Progress:**
-
-- ✅ **Phase 1: MVP** - Core recording + transcription + paste
-- ✅ **Phase 2: UI Polish** - Tray icon, overlay, visual feedback
-- ✅ **Phase 3: Settings** - Configuration UI with hotkey/model/device selection
-- ✅ **Phase 4: Robustness** - Error handling, clipboard retry logic, edge cases
-- ✅ **Phase 5: Portable Build** - Self-contained build with embedded Python
-- ⚠️ **Phase 5: Distribution** - Packaging/installer (in progress)
-
-**Ready for Production Use!**
-
-The application is fully functional with:
-- Continuous voice recording (no auto-stop on silence)
-- GPU-accelerated transcription (CUDA) with CPU fallback
-- Bilingual support (English + Ukrainian, auto-detect)
-- System tray with recording overlay
-- Settings UI for customization
-- Clipboard retry logic for reliability
-- Portable build with no dependencies
-
-## Project Structure
-
-```
-voicepaste/
-├── src/
-│   ├── app/                          # C# WPF Application
-│   │   ├── VoicePaste.csproj
-│   │   ├── App.xaml(.cs)
-│   │   ├── MainWindow.xaml(.cs)
-│   │   ├── VoicePasteController.cs   # Main state machine
-│   │   ├── Audio/
-│   │   │   └── AudioRecorder.cs      # WASAPI capture
-│   │   ├── Hotkey/
-│   │   │   └── GlobalHotkeyManager.cs
-│   │   ├── Paste/
-│   │   │   └── ClipboardPaster.cs
-│   │   └── Transcription/
-│   │       └── TranscriptionService.cs
-│   │
-│   └── transcribe/                   # Python STT Worker
-│       ├── transcribe.py
-│       └── requirements.txt
-│
-├── config/
-│   └── config.json                   # Default settings
-├── docs/                             # Full specifications
-└── tests/                            # Tests (TBD)
-```
 
 ## Building
 
@@ -61,7 +11,7 @@ voicepaste/
 ./dev-debug.bat
 ```
 
-### Portable release (smart)
+### Portable release
 
 ```bat
 ./release-portable.bat
@@ -75,24 +25,6 @@ Output runs directly (no launcher script): `build/VoicePaste-Release/VoicePaste.
 - Python 3.10+
 - NVIDIA GPU with CUDA (optional, for GPU acceleration)
 
-### Setup
-
-1. **Install Python dependencies:**
-   ```bash
-   cd src/transcribe
-   pip install -r requirements.txt
-   ```
-
-2. **Build C# application:**
-   ```bash
-   cd src/app
-   dotnet build
-   ```
-
-3. **Run (Debug):**
-   ```bash
-   dotnet run --project src/app/VoicePaste.csproj
-   ```
 
 ## Usage
 
@@ -139,15 +71,6 @@ See `docs/` for detailed specifications:
 - `docs/07-configuration.md` - Settings
 - `docs/08-milestones.md` - Development progress
 
-## Development Phases
-
-- [x] **Phase 1: MVP** - Core recording + transcription + paste
-- [x] **Phase 2: UI Polish** - Tray icon, overlay, visual feedback
-- [x] **Phase 3: Settings** - Configuration UI
-- [x] **Phase 4: Robustness** - Error handling, edge cases
-- [x] **Phase 5: Portable Build** - Self-contained deployment
-- [ ] **Phase 5: Distribution** - Installer, packaging (in progress)
-
 ## License
 
-TBD
+MIT
