@@ -97,8 +97,6 @@ public partial class SettingsWindow : Window
         LanguageCombo.SelectedValue = settings.LanguageMode;
         BeamSizeSlider.Value = settings.BeamSize;
 
-        RestoreClipboardCheck.IsChecked = settings.RestoreClipboard;
-        RestoreDelayText.Text = settings.ClipboardRestoreDelayMs.ToString();
         CustomPromptText.Text = settings.CustomInitialPrompt;
         DebugLoggingCheck.IsChecked = settings.DebugLogging;
     }
@@ -265,12 +263,6 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        if (!int.TryParse(RestoreDelayText.Text, out var delay))
-        {
-            ErrorText.Text = "Restore delay must be a number.";
-            return;
-        }
-
         var selectedModel = (ModelCombo.SelectedItem as string) ?? "medium";
 
         var settings = new AppSettings
@@ -282,8 +274,6 @@ public partial class SettingsWindow : Window
             Device = (TranscriptionDevice)(DeviceCombo.SelectedValue ?? TranscriptionDevice.CudaAuto),
             LanguageMode = (LanguageMode)(LanguageCombo.SelectedValue ?? LanguageMode.Auto),
             BeamSize = (int)BeamSizeSlider.Value,
-            RestoreClipboard = RestoreClipboardCheck.IsChecked == true,
-            ClipboardRestoreDelayMs = delay,
             CustomInitialPrompt = CustomPromptText.Text,
             DebugLogging = DebugLoggingCheck.IsChecked == true,
             SettingsWindowWidth = Width,

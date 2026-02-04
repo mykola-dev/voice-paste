@@ -138,9 +138,7 @@ except RuntimeError as e:
   "hotkey": "ScrollLock",
   "pasteShortcut": "Ctrl+Shift+V",
   "model": "medium",
-  "device": "cuda",
-  "restoreClipboard": true,
-  "clipboardRestoreDelayMs": 400
+  "device": "cuda"
 }
 ```
 
@@ -154,7 +152,7 @@ except RuntimeError as e:
 - **Audio**: 16kHz mono 16-bit PCM WAV via WASAPI
 - **STT**: faster-whisper (CTranslate2), model `medium`, auto-detect language
 - **GPU**: CUDA first, CPU fallback on failure
-- **Paste**: Clipboard + SendInput with configurable shortcut, restore after delay
+- **Paste**: Clipboard + SendInput with configurable shortcut
 
 ## Dependencies
 

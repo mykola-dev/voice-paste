@@ -10,18 +10,12 @@ namespace VoicePaste.Paste;
 /// </summary>
 public class ClipboardPaster
 {
-    private readonly int _restoreDelayMs;
-    private readonly bool _shouldRestoreClipboard;
     private readonly Settings.PasteShortcut _pasteShortcut;
 
     public ClipboardPaster(
-        Settings.PasteShortcut pasteShortcut = Settings.PasteShortcut.CtrlShiftV,
-        bool restoreClipboard = true,
-        int restoreDelayMs = 400)
+        Settings.PasteShortcut pasteShortcut = Settings.PasteShortcut.CtrlShiftV)
     {
         _pasteShortcut = pasteShortcut;
-        _shouldRestoreClipboard = restoreClipboard;
-        _restoreDelayMs = restoreDelayMs;
     }
     
     /// <summary>
@@ -38,22 +32,6 @@ public class ClipboardPaster
         Console.WriteLine($"[Paste] Starting paste operation. Text length: {text.Length}");
         Console.WriteLine($"[Paste] Text to paste: '{text}'");
         
-        // Save current clipboard (must be on STA thread)
-        IDataObject? previousClipboardData = null;
-        if (_shouldRestoreClipboard)
-        {
-            await Application.Current.Dispatcher.InvokeAsync(() =>
-            {
-                previousClipboardData = TryGetClipboardWithRetry();
-                
-                if (previousClipboardData != null)
-                {
-                    var formats = previousClipboardData.GetFormats();
-                    Console.WriteLine($"[Paste] Saved previous clipboard content ({formats.Length} format(s): {string.Join(", ", formats)})");
-                }
-            });
-        }
-        
         // Set new clipboard content
         await Application.Current.Dispatcher.InvokeAsync(() =>
         {
@@ -67,52 +45,6 @@ public class ClipboardPaster
         // Send configured paste shortcut
         Console.WriteLine($"[Paste] Sending paste shortcut: {_pasteShortcut}");
         SendPasteShortcut(_pasteShortcut);
-        
-        // Restore previous clipboard after delay
-        if (_shouldRestoreClipboard && previousClipboardData != null)
-        {
-            await Task.Delay(_restoreDelayMs);
-            
-            await Application.Current.Dispatcher.InvokeAsync(() =>
-            {
-                TryRestoreClipboardWithRetry(previousClipboardData);
-            });
-        }
-    }
-    
-    /// <summary>
-    /// Try to get clipboard data with retry logic (max 5 attempts).
-    /// </summary>
-    private static IDataObject? TryGetClipboardWithRetry()
-    {
-        const int maxAttempts = 5;
-        for (int attempt = 1; attempt <= maxAttempts; attempt++)
-        {
-            try
-            {
-                return Clipboard.GetDataObject();
-            }
-            catch (COMException ex) when (ex.ErrorCode == unchecked((int)0x800401D0)) // CLIPBRD_E_CANT_OPEN
-            {
-                if (attempt < maxAttempts)
-                {
-                    int delayMs = attempt * 50; // 50ms, 100ms, 150ms, 200ms
-                    Console.WriteLine($"[Paste] Clipboard busy, retry {attempt}/{maxAttempts} in {delayMs}ms...");
-                    System.Threading.Thread.Sleep(delayMs);
-                }
-                else
-                {
-                    Console.WriteLine($"[Paste] WARNING: Could not get clipboard after {maxAttempts} attempts: {ex.Message}");
-                    return null;
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[Paste] WARNING: Could not get clipboard: {ex.Message}");
-                return null;
-            }
-        }
-        return null;
     }
     
     /// <summary>
@@ -141,41 +73,6 @@ public class ClipboardPaster
                     Console.WriteLine($"[Paste] ERROR: Could not set clipboard after {maxAttempts} attempts: {ex.Message}");
                     throw new InvalidOperationException($"Failed to set clipboard after {maxAttempts} attempts", ex);
                 }
-            }
-        }
-    }
-    
-    /// <summary>
-    /// Try to restore clipboard data with retry logic (max 5 attempts).
-    /// </summary>
-    private static void TryRestoreClipboardWithRetry(IDataObject data)
-    {
-        const int maxAttempts = 5;
-        for (int attempt = 1; attempt <= maxAttempts; attempt++)
-        {
-            try
-            {
-                Clipboard.SetDataObject(data, false);
-                Console.WriteLine("[Paste] Clipboard restored");
-                return; // Success
-            }
-            catch (COMException ex) when (ex.ErrorCode == unchecked((int)0x800401D0)) // CLIPBRD_E_CANT_OPEN
-            {
-                if (attempt < maxAttempts)
-                {
-                    int delayMs = attempt * 50; // 50ms, 100ms, 150ms, 200ms
-                    Console.WriteLine($"[Paste] Clipboard busy, retry {attempt}/{maxAttempts} in {delayMs}ms...");
-                    System.Threading.Thread.Sleep(delayMs);
-                }
-                else
-                {
-                    Console.WriteLine($"[Paste] WARNING: Could not restore clipboard after {maxAttempts} attempts: {ex.Message}");
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[Paste] WARNING: Could not restore clipboard: {ex.Message}");
-                return;
             }
         }
     }

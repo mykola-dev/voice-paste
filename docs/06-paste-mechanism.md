@@ -10,10 +10,6 @@ After transcription, paste text into the currently focused window using:
 
 ```
 ┌─────────────────┐
-│ Save clipboard  │
-└────────┬────────┘
-         │
-┌────────┴────────┐
 │ Set clipboard   │
 │ to transcript   │
 └────────┬────────┘
@@ -21,15 +17,6 @@ After transcription, paste text into the currently focused window using:
 ┌────────┴────────┐
 │ Send paste keys │
 │ (Ctrl+Shift+V)  │
-└────────┬────────┘
-         │
-┌────────┴────────┐
-│ Wait 400ms      │
-└────────┬────────┘
-         │
-┌────────┴────────┐
-│ Restore         │
-│ clipboard       │
 └─────────────────┘
 ```
 
@@ -40,33 +27,16 @@ After transcription, paste text into the currently focused window using:
 ```csharp
 public class ClipboardPaster
 {
-    private readonly int _restoreDelayMs;
-    private readonly bool _shouldRestore;
-    
-    public async Task PasteTextAsync(string text, string pasteShortcut)
+    public async Task PasteTextAsync(string text)
     {
-        // Save current clipboard
-        string? previousContent = null;
-        if (_shouldRestore)
-        {
-            previousContent = Clipboard.GetText();
-        }
-        
-        // Set new content
+        // Set clipboard content
         Clipboard.SetText(text);
         
         // Small delay to ensure clipboard is set
-        await Task.Delay(50);
+        await Task.Delay(100);
         
         // Send paste shortcut
-        SendPasteKeys(pasteShortcut);
-        
-        // Restore previous content
-        if (_shouldRestore && previousContent != null)
-        {
-            await Task.Delay(_restoreDelayMs);
-            Clipboard.SetText(previousContent);
-        }
+        SendPasteKeys();
     }
 }
 ```
@@ -119,28 +89,6 @@ private void SendPasteKeys(string shortcut)
 
 Windows Terminal uses Ctrl+Shift+V by default. Since VoicePaste is primarily for coding/terminal use, this is the best default.
 
-## Clipboard Restoration
-
-### Why Restore?
-
-User may have important data in clipboard. Pasting should be transparent.
-
-### Timing
-
-```
-Paste → Wait 400ms → Restore
-```
-
-400ms delay ensures:
-- Paste operation completes
-- Target app processes clipboard
-- Safe to overwrite
-
-### Configuration
-
-- `restoreClipboard`: true (default) / false
-- `clipboardRestoreDelayMs`: 400 (default)
-
 ## Focus Handling
 
 ### Target Window
@@ -166,14 +114,6 @@ if (string.IsNullOrWhiteSpace(text))
     // Don't touch clipboard
     return;
 }
-```
-
-### Clipboard Contains Non-Text
-
-```csharp
-// Only save/restore text content
-// Images, files, etc. are lost after paste
-// Document this limitation
 ```
 
 ### Paste Fails

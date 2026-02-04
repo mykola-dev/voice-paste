@@ -124,9 +124,7 @@ Current settings in `config/config.json`:
   "hotkey": "ScrollLock",
   "pasteShortcut": "Ctrl+Shift+V",
   "model": "large-v3",
-  "device": "cuda",
-  "restoreClipboard": true,
-  "clipboardRestoreDelayMs": 400
+  "device": "cuda"
 }
 ```
 

@@ -41,11 +41,6 @@
 
                 <GroupBox Grid.Row="2" Header="Paste" Margin="0,12,0,0">
                     <Grid Margin="10">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="140"/>
                             <ColumnDefinition Width="*"/>
@@ -53,16 +48,6 @@
 
                         <TextBlock VerticalAlignment="Center" Text="Paste shortcut:" />
                         <ComboBox Grid.Column="1" x:Name="PasteShortcutCombo" MinWidth="240" />
-
-                        <CheckBox Grid.Row="1" Grid.ColumnSpan="2" x:Name="RestoreClipboardCheck" Margin="0,10,0,0"
-                                  Content="Restore clipboard after paste" />
-
-                        <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,10,0,0">
-                            <TextBlock VerticalAlignment="Center" Text="Restore delay (ms):" />
-                            <TextBox x:Name="RestoreDelayText" Width="80" Margin="10,0,0,0" />
-                            <TextBlock VerticalAlignment="Center" Margin="10,0,0,0" Foreground="#666"
-                                       Text="(100–2000)" />
-                        </StackPanel>
                     </Grid>
                 </GroupBox>
 

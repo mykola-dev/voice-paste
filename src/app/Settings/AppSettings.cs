@@ -39,10 +39,6 @@ public sealed record AppSettings
 
     public LanguageMode LanguageMode { get; init; } = LanguageMode.Auto;
 
-    public bool RestoreClipboard { get; init; } = true;
-
-    public int ClipboardRestoreDelayMs { get; init; } = 400;
-
     public bool DebugLogging { get; init; } = false;
     
     public string CustomInitialPrompt { get; init; } = string.Empty;

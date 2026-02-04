@@ -95,8 +95,6 @@ public sealed class SettingsManager
             hotkey = "ScrollLock";
         }
 
-        var delay = Math.Clamp(current.ClipboardRestoreDelayMs, 100, 2000);
-        
         var beamSize = Math.Clamp(current.BeamSize, 1, 10);
 
         var width = double.IsFinite(current.SettingsWindowWidth) ? current.SettingsWindowWidth : AppSettings.Default.SettingsWindowWidth;
@@ -110,7 +108,6 @@ public sealed class SettingsManager
             Version = 1,
             Model = model,
             Hotkey = hotkey,
-            ClipboardRestoreDelayMs = delay,
             CustomInitialPrompt = current.CustomInitialPrompt?.Trim() ?? string.Empty,
             SettingsWindowWidth = width,
             SettingsWindowHeight = height

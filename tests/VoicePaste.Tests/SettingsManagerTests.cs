@@ -17,7 +17,6 @@ public class SettingsManagerTests
 
         Assert.Equal("ScrollLock", settings.Hotkey);
         Assert.Equal(PasteShortcut.CtrlShiftV, settings.PasteShortcut);
-        Assert.True(settings.RestoreClipboard);
     }
 
     [Fact]
@@ -34,8 +33,6 @@ public class SettingsManagerTests
             Model = "small",
             Device = TranscriptionDevice.Cpu,
             PasteShortcut = PasteShortcut.CtrlV,
-            RestoreClipboard = false,
-            ClipboardRestoreDelayMs = 123,
             LanguageMode = LanguageMode.Bilingual,
             DebugLogging = true
         };
@@ -47,27 +44,23 @@ public class SettingsManagerTests
         Assert.Equal("small", loaded.Model);
         Assert.Equal(TranscriptionDevice.Cpu, loaded.Device);
         Assert.Equal(PasteShortcut.CtrlV, loaded.PasteShortcut);
-        Assert.False(loaded.RestoreClipboard);
-        Assert.Equal(123, loaded.ClipboardRestoreDelayMs);
         Assert.Equal(LanguageMode.Bilingual, loaded.LanguageMode);
         Assert.True(loaded.DebugLogging);
     }
 
     [Fact]
-    public void ValidateAndMigrate_ClampsDelay_AndFixesInvalidSettings()
+    public void ValidateAndMigrate_FixesInvalidSettings()
     {
         var settings = new AppSettings
         {
             Hotkey = "NotAKey",
-            Model = "not-a-model",
-            ClipboardRestoreDelayMs = 999999
+            Model = "not-a-model"
         };
 
         var validated = SettingsManager.ValidateAndMigrate(settings);
 
         Assert.Equal("ScrollLock", validated.Hotkey);
         Assert.Equal("medium", validated.Model);
-        Assert.Equal(2000, validated.ClipboardRestoreDelayMs);
         Assert.Equal(1, validated.Version);
     }
 }

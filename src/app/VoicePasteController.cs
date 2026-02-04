@@ -327,9 +327,7 @@ public class VoicePasteController : IDisposable
     private static ClipboardPaster CreateClipboardPaster(AppSettings settings)
     {
         return new ClipboardPaster(
-            pasteShortcut: settings.PasteShortcut,
-            restoreClipboard: settings.RestoreClipboard,
-            restoreDelayMs: settings.ClipboardRestoreDelayMs);
+            pasteShortcut: settings.PasteShortcut);
     }
 
     public void Dispose()
