@@ -50,9 +50,12 @@ public partial class RecordingOverlay : Window
         _isRecording = true;
         _recordingStartTime = DateTime.Now;
         
-        // Show recording UI
+        // Hide transcribing UI and show recording UI
         TranscribingOverlay.Visibility = Visibility.Collapsed;
         RecordingIndicator.Visibility = Visibility.Visible;
+        StateText.Visibility = Visibility.Visible;
+        TimerText.Visibility = Visibility.Visible;
+        AudioLevelMeter.Visibility = Visibility.Visible;
         StateText.Text = "Recording";
 
         
@@ -67,6 +70,12 @@ public partial class RecordingOverlay : Window
     {
         _isRecording = false;
         _timer.Stop();
+        
+        // Hide recording UI
+        RecordingIndicator.Visibility = Visibility.Collapsed;
+        StateText.Visibility = Visibility.Collapsed;
+        TimerText.Visibility = Visibility.Collapsed;
+        AudioLevelMeter.Visibility = Visibility.Collapsed;
         
         // Show transcribing UI
         TranscribingText.Text = "Transcribing...";
@@ -85,6 +94,12 @@ public partial class RecordingOverlay : Window
     {
         _isRecording = false;
         _timer.Stop();
+        
+        // Hide recording UI
+        RecordingIndicator.Visibility = Visibility.Collapsed;
+        StateText.Visibility = Visibility.Collapsed;
+        TimerText.Visibility = Visibility.Collapsed;
+        AudioLevelMeter.Visibility = Visibility.Collapsed;
         
         // Show downloading UI (reuse transcribing overlay)
         TranscribingText.Text = message;
@@ -150,7 +165,9 @@ public partial class RecordingOverlay : Window
             // Update progress bar width
             if (AudioLevelBar.Parent is System.Windows.Controls.Border border)
             {
-                AudioLevelBar.Width = level * (border.ActualWidth - 2);
+                var maxWidth = Math.Max(0, border.ActualWidth - 2);
+                var newWidth = Math.Max(0, level * maxWidth);
+                AudioLevelBar.Width = newWidth;
             }
         });
     }
