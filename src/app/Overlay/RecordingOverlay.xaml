@@ -56,6 +56,8 @@
                           FontSize="16" 
                           FontWeight="SemiBold"
                           Margin="16,0,0,0"
+                          Width="48"
+                          TextAlignment="Left"
                           VerticalAlignment="Center"/>
             </StackPanel>
 
@@ -63,13 +65,13 @@
             <Border x:Name="AudioLevelMeter"
                     Grid.Row="1" 
                     Margin="0,10,0,0"
-                    Height="20" 
+                    Height="14" 
                     BorderBrush="#CCCCCC" 
                     BorderThickness="1"
                     Background="#F5F5F5"
                     CornerRadius="4">
                 <Rectangle x:Name="AudioLevelBar" 
-                          Fill="#4CAF50" 
+                          Fill="#FF8C00" 
                           HorizontalAlignment="Left"
                           RadiusX="4"
                           RadiusY="4"/>
@@ -83,36 +85,100 @@
                   Background="Transparent"
                   Visibility="Collapsed"
                   Width="320"
-                  Height="92">
+                  Height="92"
+                  Margin="-16,-8,-16,-16">
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <!-- Spinner -->
-                    <Grid Width="48" Height="48" Margin="0,0,0,12">
-                        <Ellipse Stroke="#2196F3" 
-                                StrokeThickness="4" 
-                                StrokeDashArray="12,4"
-                                Width="48" 
-                                Height="48">
-                            <Ellipse.RenderTransform>
-                                <RotateTransform CenterX="24" CenterY="24"/>
-                            </Ellipse.RenderTransform>
-                            <Ellipse.Triggers>
+                    <!-- Wave Spinner -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,12">
+                        <Rectangle x:Name="SpinnerBar1" Width="6" Height="40" Fill="#FF8C00" Margin="0,0,1,0">
+                            <Rectangle.RenderTransform>
+                                <ScaleTransform ScaleY="0.4" CenterY="20"/>
+                            </Rectangle.RenderTransform>
+                            <Rectangle.Triggers>
                                 <EventTrigger RoutedEvent="Loaded">
                                     <BeginStoryboard>
                                         <Storyboard RepeatBehavior="Forever">
-                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
-                                                           From="0" To="360" Duration="0:0:1"/>
+                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                           From="0.4" To="1.0" Duration="0:0:0.48"
+                                                           AutoReverse="True" RepeatBehavior="Forever"/>
                                         </Storyboard>
                                     </BeginStoryboard>
                                 </EventTrigger>
-                            </Ellipse.Triggers>
-                        </Ellipse>
-                    </Grid>
-                    
-                    <TextBlock x:Name="TranscribingText" 
-                              Text="Transcribing..." 
-                              FontSize="14" 
-                              FontWeight="SemiBold"
-                              HorizontalAlignment="Center"/>
+                            </Rectangle.Triggers>
+                        </Rectangle>
+                        
+                        <Rectangle x:Name="SpinnerBar2" Width="6" Height="40" Fill="#FF8C00" Margin="1,0,1,0">
+                            <Rectangle.RenderTransform>
+                                <ScaleTransform ScaleY="0.4" CenterY="20"/>
+                            </Rectangle.RenderTransform>
+                            <Rectangle.Triggers>
+                                <EventTrigger RoutedEvent="Loaded">
+                                    <BeginStoryboard>
+                                        <Storyboard RepeatBehavior="Forever">
+                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                           From="0.4" To="1.0" Duration="0:0:0.48"
+                                                           BeginTime="0:0:0.2"
+                                                           AutoReverse="True" RepeatBehavior="Forever"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </EventTrigger>
+                            </Rectangle.Triggers>
+                        </Rectangle>
+                        
+                        <Rectangle x:Name="SpinnerBar3" Width="6" Height="40" Fill="#FF8C00" Margin="1,0,1,0">
+                            <Rectangle.RenderTransform>
+                                <ScaleTransform ScaleY="0.4" CenterY="20"/>
+                            </Rectangle.RenderTransform>
+                            <Rectangle.Triggers>
+                                <EventTrigger RoutedEvent="Loaded">
+                                    <BeginStoryboard>
+                                        <Storyboard RepeatBehavior="Forever">
+                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                           From="0.4" To="1.0" Duration="0:0:0.48"
+                                                           BeginTime="0:0:0.4"
+                                                           AutoReverse="True" RepeatBehavior="Forever"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </EventTrigger>
+                            </Rectangle.Triggers>
+                        </Rectangle>
+                        
+                        <Rectangle x:Name="SpinnerBar4" Width="6" Height="40" Fill="#FF8C00" Margin="1,0,1,0">
+                            <Rectangle.RenderTransform>
+                                <ScaleTransform ScaleY="0.4" CenterY="20"/>
+                            </Rectangle.RenderTransform>
+                            <Rectangle.Triggers>
+                                <EventTrigger RoutedEvent="Loaded">
+                                    <BeginStoryboard>
+                                        <Storyboard RepeatBehavior="Forever">
+                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                           From="0.4" To="1.0" Duration="0:0:0.48"
+                                                           BeginTime="0:0:0.6"
+                                                           AutoReverse="True" RepeatBehavior="Forever"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </EventTrigger>
+                            </Rectangle.Triggers>
+                        </Rectangle>
+                        
+                        <Rectangle x:Name="SpinnerBar5" Width="6" Height="40" Fill="#FF8C00" Margin="1,0,0,0">
+                            <Rectangle.RenderTransform>
+                                <ScaleTransform ScaleY="0.4" CenterY="20"/>
+                            </Rectangle.RenderTransform>
+                            <Rectangle.Triggers>
+                                <EventTrigger RoutedEvent="Loaded">
+                                    <BeginStoryboard>
+                                        <Storyboard RepeatBehavior="Forever">
+                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                           From="0.4" To="1.0" Duration="0:0:0.48"
+                                                           BeginTime="0:0:0.8"
+                                                           AutoReverse="True" RepeatBehavior="Forever"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </EventTrigger>
+                            </Rectangle.Triggers>
+                        </Rectangle>
+                    </StackPanel>
                 </StackPanel>
             </Grid>
         </Grid>

@@ -78,7 +78,6 @@ public partial class RecordingOverlay : Window
         AudioLevelMeter.Visibility = Visibility.Collapsed;
         
         // Show transcribing UI
-        TranscribingText.Text = "Transcribing...";
         TranscribingOverlay.Visibility = Visibility.Visible;
         
         if (!IsVisible)
@@ -102,7 +101,6 @@ public partial class RecordingOverlay : Window
         AudioLevelMeter.Visibility = Visibility.Collapsed;
         
         // Show downloading UI (reuse transcribing overlay)
-        TranscribingText.Text = message;
         TranscribingOverlay.Visibility = Visibility.Visible;
         
         if (!IsVisible)
