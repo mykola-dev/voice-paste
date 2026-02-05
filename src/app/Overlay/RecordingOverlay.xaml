@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="VoicePaste Recording" 
         Width="320" 
-        Height="92"
+        Height="84"
         WindowStyle="None"
         ResizeMode="NoResize"
         Topmost="True"
@@ -85,7 +85,7 @@
                   Background="Transparent"
                   Visibility="Collapsed"
                   Width="320"
-                  Height="92"
+                  Height="84"
                   Margin="-16,-8,-16,-16">
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                     <!-- Wave Spinner -->
