@@ -4,14 +4,9 @@
 param(
     [string]$OutputDir = "build\VoicePaste-Release",
     [switch]$IncludePython = $true,
-    [switch]$IncludeModels = $false,
-    [switch]$DownloadDefaultModel = $false,
     [switch]$Incremental = $false,
     [string]$PythonVersion = "3.12.10",
-    [string]$Runtime = "win-x64",
-    [string]$DefaultModel = "large-v3-turbo",
-    [string[]]$AdditionalModels = @(),
-    [switch]$CacheLargeModels = $false
+    [string]$Runtime = "win-x64"
 )
 
 $ErrorActionPreference = "Stop"
@@ -24,7 +19,6 @@ Write-Step "=== VoicePaste Release Build ==="
 
 $publishDir = Join-Path $OutputDir "_publish"
 $pythonDir = Join-Path $OutputDir "python"
-$modelsDir = Join-Path $OutputDir "models"
 
 if (-not $Incremental -and (Test-Path $OutputDir)) {
     Write-Step "Cleaning output directory..."
@@ -49,7 +43,6 @@ dotnet publish "src/app/VoicePaste.csproj" `
 
 # Ensure staging doesn't ship extra folders
 Remove-Item -Recurse -Force (Join-Path $publishDir "python") -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force (Join-Path $publishDir "models") -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force (Join-Path $publishDir "transcribe") -ErrorAction SilentlyContinue
 
 Write-Step "Syncing published app into output folder..."
@@ -107,84 +100,7 @@ if ($IncludePython) {
     }
 }
 
-function Cache-Models([string[]]$modelsToCache) {
-    if ($modelsToCache.Count -eq 0) {
-        return
-    }
-
-    if (-not (Test-Path $modelsDir)) {
-        New-Item -ItemType Directory -Path $modelsDir -Force | Out-Null
-    }
-
-    $pythonExe = Join-Path $pythonDir "python.exe"
-    if (-not (Test-Path $pythonExe)) {
-        throw "Embedded Python not found at $pythonExe. Build with -IncludePython first."
-    }
-
-    $quotedModels = $modelsToCache | ForEach-Object { "'$($_)'" }
-    $modelListLiteral = "[" + ($quotedModels -join ", ") + "]"
-
-    $script = @"
-import os
-import sys
-
-models = ${modelListLiteral}
-
-# Force HF cache to the bundled folder
-os.environ['HF_HOME'] = os.path.abspath(r'$modelsDir')
-os.environ['HF_HUB_DISABLE_TELEMETRY'] = '1'
-
-try:
-    from faster_whisper import WhisperModel
-except Exception as e:
-    print(f\"[VoicePaste] ERROR importing faster_whisper: {e}\", file=sys.stderr)
-    raise
-
-for model in models:
-    print(f\"[VoicePaste] Caching model: {model}\")
-    try:
-        WhisperModel(model, device='cpu')
-    except Exception as e:
-        print(f\"[VoicePaste] WARNING: Failed to cache {model}: {e}\", file=sys.stderr)
-
-print(\"[VoicePaste] Model caching complete.\")
-"@
-
-    & $pythonExe -c $script
-}
-
-if ($DownloadDefaultModel) {
-    Write-Step "Caching default model ($DefaultModel) into bundled models/..."
-    Cache-Models @($DefaultModel)
-}
-
-if ($CacheLargeModels) {
-    $AdditionalModels = @($AdditionalModels + @("large-v3", "large-v2") | Select-Object -Unique)
-}
-
-if ($AdditionalModels.Count -gt 0) {
-    Write-Step "Caching additional models: $($AdditionalModels -join ', ')"
-    Cache-Models $AdditionalModels
-}
-
-if ($IncludeModels) {
-    if ($Incremental -and (Test-Path $modelsDir)) {
-        Write-Host "Reusing existing bundled models (incremental)." -ForegroundColor Yellow
-    } else {
-        Write-Step "Copying cached models from user HF cache (if present)..."
-        $modelCache = "$env:USERPROFILE\\.cache\\huggingface\\hub"
-        if (Test-Path $modelCache) {
-            if (-not (Test-Path $modelsDir)) {
-                New-Item -ItemType Directory -Path $modelsDir -Force | Out-Null
-            }
-            Copy-Item -Recurse "$modelCache\\*faster-whisper*" $modelsDir -Force
-            Write-Host "HF cache copied into bundled models/." -ForegroundColor Yellow
-        } else {
-            Write-Host "No HuggingFace cache found; skipping extra models." -ForegroundColor Yellow
-        }
-    }
-}
 
 Write-Step "=== Build Complete ==="
-Write-Host "Output: $OutputDir" -ForegroundColor Green
-Write-Host "Run: $OutputDir\VoicePaste.exe" -ForegroundColor Green
+Write-Host "Output: " -ForegroundColor Green
+Write-Host "Run: \VoicePaste.exe" -ForegroundColor Green

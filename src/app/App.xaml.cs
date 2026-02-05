@@ -1,8 +1,11 @@
 using System;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using VoicePaste.Overlay;
 using VoicePaste.Settings;
+using VoicePaste.Transcription;
 using VoicePaste.TrayIcon;
 
 namespace VoicePaste;
@@ -24,7 +27,7 @@ public partial class App : Application
         "voicepaste.log"
     );
 
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
         try
         {
@@ -56,6 +59,10 @@ public partial class App : Application
             mainWindow.Show();  // Must be shown for hotkey registration to work
             mainWindow.Visibility = Visibility.Hidden;
             Log("Main window created");
+            
+            // Check and download models before initializing
+            Log("Checking required models...");
+            await CheckAndDownloadModelsAsync();
             
             _settingsManager = new SettingsManager();
             _settings = _settingsManager.Load();
@@ -278,6 +285,75 @@ public partial class App : Application
         {
             Log($"WARNING: Could not add CUDA to PATH: {ex.Message}");
             Console.WriteLine($"[CUDA] WARNING: {ex.Message}");
+        }
+    }
+
+    private async Task CheckAndDownloadModelsAsync()
+    {
+        var downloadService = new ModelDownloadService();
+
+        if (downloadService.AllModelsPresent())
+        {
+            Log("All required models are already cached.");
+            Console.WriteLine("[Models] All models present in cache.");
+            return;
+        }
+
+        var missing = downloadService.GetMissingModels();
+        Log($"Missing models: {string.Join(", ", missing)}");
+        Console.WriteLine($"[Models] Missing: {string.Join(", ", missing)}");
+        Console.WriteLine("[Models] Downloading... This may take a few minutes on first launch.");
+
+        // Create overlay and show download UI
+        var overlay = new RecordingOverlay();
+        overlay.Show();
+        overlay.ShowDownloading("Downloading models...");
+
+        var cts = new CancellationTokenSource();
+
+        // Handle progress updates
+        downloadService.ProgressChanged += (sender, progress) =>
+        {
+            Dispatcher.Invoke(() =>
+            {
+                var message = $"{progress.Status} ({progress.Percentage}%)";
+                overlay.ShowDownloading(message);
+                Log($"[ModelDownload] {message}");
+            });
+        };
+
+        try
+        {
+            // Run download asynchronously to keep UI responsive
+            await downloadService.DownloadMissingModelsAsync(cts.Token);
+
+            Log("All models downloaded successfully.");
+            Console.WriteLine("[Models] Download complete.");
+        }
+        catch (Exception ex)
+        {
+            Log($"ERROR downloading models: {ex.Message}");
+            overlay.Hide();
+
+            var result = MessageBox.Show(
+                $"Failed to download required models:\n\n{ex.Message}\n\nVoicePaste requires internet connection on first launch.\n\nRetry download?",
+                "Model Download Failed",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Error
+            );
+
+            if (result == MessageBoxResult.Yes)
+            {
+                await CheckAndDownloadModelsAsync(); // Retry
+            }
+            else
+            {
+                throw new ApplicationException("Required models are not available.");
+            }
+        }
+        finally
+        {
+            overlay.Hide();
         }
     }
 }

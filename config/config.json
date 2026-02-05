@@ -1,6 +1,6 @@
 {
   "hotkey": "ScrollLock",
   "pasteShortcut": "Ctrl+Shift+V",
-  "model": "large-v3",
+  "model": "large-v3-turbo",
   "device": "cuda"
 }

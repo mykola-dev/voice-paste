@@ -3,8 +3,7 @@
 
 param(
     [string]$OutputDir = "build\VoicePaste-Release",
-    [switch]$IncludeModels = $false,
     [switch]$Incremental = $false
 )
 
-& "$PSScriptRoot\build-release.ps1" -OutputDir $OutputDir -IncludeModels:$IncludeModels -Incremental:$Incremental
+& "$PSScriptRoot\build-release.ps1" -OutputDir $OutputDir -Incremental:$Incremental

@@ -69,6 +69,25 @@ public partial class RecordingOverlay : Window
         _timer.Stop();
         
         // Show transcribing UI
+        TranscribingText.Text = "Transcribing...";
+        TranscribingOverlay.Visibility = Visibility.Visible;
+        
+        if (!IsVisible)
+        {
+            Show();
+        }
+    }
+
+    /// <summary>
+    /// Show overlay in downloading state.
+    /// </summary>
+    public void ShowDownloading(string message = "Downloading models...")
+    {
+        _isRecording = false;
+        _timer.Stop();
+        
+        // Show downloading UI (reuse transcribing overlay)
+        TranscribingText.Text = message;
         TranscribingOverlay.Visibility = Visibility.Visible;
         
         if (!IsVisible)

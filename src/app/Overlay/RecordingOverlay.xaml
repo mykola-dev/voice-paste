@@ -90,14 +90,13 @@
                                 Width="48" 
                                 Height="48">
                             <Ellipse.RenderTransform>
-                                <RotateTransform x:Name="SpinnerRotation" CenterX="24" CenterY="24"/>
+                                <RotateTransform CenterX="24" CenterY="24"/>
                             </Ellipse.RenderTransform>
                             <Ellipse.Triggers>
                                 <EventTrigger RoutedEvent="Loaded">
                                     <BeginStoryboard>
                                         <Storyboard RepeatBehavior="Forever">
-                                            <DoubleAnimation Storyboard.TargetName="SpinnerRotation"
-                                                           Storyboard.TargetProperty="Angle"
+                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
                                                            From="0" To="360" Duration="0:0:1"/>
                                         </Storyboard>
                                     </BeginStoryboard>
@@ -106,7 +105,8 @@
                         </Ellipse>
                     </Grid>
                     
-                    <TextBlock Text="Transcribing..." 
+                    <TextBlock x:Name="TranscribingText" 
+                              Text="Transcribing..." 
                               FontSize="14" 
                               FontWeight="SemiBold"
                               HorizontalAlignment="Center"/>

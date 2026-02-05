@@ -37,7 +37,7 @@ public static class PythonFinder
                 return candidate;
         }
 
-        throw new InvalidOperationException("Python not found. Please install Python 3.10 or later.");
+        throw new InvalidOperationException("Python 3.10-3.12 not found. Please install a supported Python version.");
     }
 
     private static bool CheckPython(string candidate)
@@ -50,14 +50,18 @@ public static class PythonFinder
                 Arguments = "--version",
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
+                RedirectStandardError = true,
                 CreateNoWindow = true
             };
 
             using var process = Process.Start(psi);
             if (process != null)
             {
+                var stdout = process.StandardOutput.ReadToEnd();
+                var stderr = process.StandardError.ReadToEnd();
                 process.WaitForExit(1000);
-                return process.ExitCode == 0;
+                var versionText = string.IsNullOrWhiteSpace(stdout) ? stderr : stdout;
+                return process.ExitCode == 0 && IsSupportedPython(versionText);
             }
         }
         catch
@@ -65,5 +69,25 @@ public static class PythonFinder
             // Ignore errors for this candidate
         }
         return false;
+    }
+
+    private static bool IsSupportedPython(string versionText)
+    {
+        // Expected: "Python 3.12.4"
+        var parts = versionText.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2)
+            return false;
+
+        var versionParts = parts[1].Split('.');
+        if (versionParts.Length < 2)
+            return false;
+
+        if (!int.TryParse(versionParts[0], out var major) ||
+            !int.TryParse(versionParts[1], out var minor))
+        {
+            return false;
+        }
+
+        return major == 3 && minor >= 10 && minor <= 12;
     }
 }

@@ -33,7 +33,7 @@ public sealed record AppSettings
 
     public PasteShortcut PasteShortcut { get; init; } = PasteShortcut.CtrlShiftV;
 
-    public string Model { get; init; } = "medium";
+    public string Model { get; init; } = "large-v3-turbo";
 
     public TranscriptionDevice Device { get; init; } = TranscriptionDevice.CudaAuto;
 
@@ -51,17 +51,8 @@ public sealed record AppSettings
 
     public static readonly IReadOnlyCollection<string> ValidModels = new[]
     {
-        "tiny",
-        "base",
-        "small",
-        "medium",
         "large-v2",
-        "large-v3",
-        "large-v3-turbo",
-        "turbo",
-        "distil-large-v2",
-        "distil-large-v3",
-        "distil-large-v3.5"
+        "large-v3-turbo"
     };
 
     public static AppSettings Default => new();

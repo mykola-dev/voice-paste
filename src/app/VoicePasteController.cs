@@ -161,7 +161,7 @@ public class VoicePasteController : IDisposable
         
         try
         {
-            // Start preloading the transcription model while we record
+            // Start preloading the transcription model while we record (once per session)
             _transcriptionService.StartPreloading();
             
             _audioRecorder.StartRecording();

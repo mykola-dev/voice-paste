@@ -50,6 +50,7 @@ public class TranscriptionService : IDisposable
         _pythonPath = PythonFinder.Find();
         _transcribeScriptPath = FindTranscribeScript();
 
+        Console.WriteLine($"[Transcribe] Python: {_pythonPath}");
         Console.WriteLine($"[Transcribe] Model: {_modelSize}, Device: {_device}, LangMode: {_languageMode}, BeamSize: {_beamSize}");
     }
 
@@ -260,10 +261,13 @@ public class TranscriptionService : IDisposable
 
         var exeDir = AppDomain.CurrentDomain.BaseDirectory;
         var pythonDir = Path.GetFullPath(Path.Combine(exeDir, "python"));
-        var modelsDir = Path.GetFullPath(Path.Combine(exeDir, "models"));
 
         process.StartInfo.Environment["PYTHONIOENCODING"] = "utf-8";
         process.StartInfo.Environment["PYTHONUTF8"] = "1";
+        if (Environment.GetEnvironmentVariable("VOICEPASTE_DEBUG") == "1")
+        {
+            process.StartInfo.Environment["VOICEPASTE_DEBUG"] = "1";
+        }
 
         if (Directory.Exists(pythonDir))
         {
@@ -272,10 +276,8 @@ public class TranscriptionService : IDisposable
             process.StartInfo.Environment["PYTHONHOME"] = pythonDir;
         }
 
-        if (Directory.Exists(modelsDir))
-        {
-            process.StartInfo.Environment["HF_HOME"] = modelsDir;
-        }
+        // Use standard HF user cache (~/.cache/huggingface), not bundled models
+        // HF_HOME is NOT set, allowing faster-whisper to use its default location
 
         return process;
     }
