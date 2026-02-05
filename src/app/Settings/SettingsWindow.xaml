@@ -58,6 +58,7 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="140"/>
@@ -84,6 +85,12 @@
                             <Slider x:Name="BeamSizeSlider" Width="180" Minimum="1" Maximum="10" SmallChange="1" LargeChange="1" IsSnapToTickEnabled="True" VerticalAlignment="Center" />
                             <TextBlock Text="{Binding ElementName=BeamSizeSlider, Path=Value, StringFormat=N0}" Width="20" Margin="10,0,0,0" VerticalAlignment="Center" />
                             <TextBlock VerticalAlignment="Center" Margin="10,0,0,0" Foreground="#666" Text="(1: fastest, 5: default)" />
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="4" VerticalAlignment="Center" Text="VAD (silence trim):" Margin="0,10,0,0" />
+                        <StackPanel Grid.Row="4" Grid.Column="1" Margin="0,10,0,0">
+                            <CheckBox x:Name="VadCheck" Content="Enable VAD (requires extra dependencies)" />
+                            <TextBlock Text="Improves results by trimming silence; may increase download size." Margin="0,6,0,0" Foreground="#666" TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
                 </GroupBox>

@@ -42,6 +42,7 @@ def transcribe_audio(
     language_mode: str = "auto",
     beam_size: int = 5,
     custom_initial_prompt: str = "",
+    enable_vad: bool = False,
 ) -> dict:
     """
     Transcribe audio file using faster-whisper.
@@ -78,20 +79,30 @@ def transcribe_audio(
             or "onnxruntime" in msg
         )
 
+    vad_enabled = enable_vad
+
     def run_transcribe(lang: str | None):
         try:
             if os.environ.get("VOICEPASTE_DEBUG", "0") in ("1", "true", "True"):
                 print(
-                    f"[Transcribe] model.transcribe(lang={lang}, vad_filter=True, beam_size={beam_size})",
+                    f"[Transcribe] model.transcribe(lang={lang}, vad_filter={vad_enabled}, beam_size={beam_size})",
                     file=sys.stderr,
                     flush=True,
                 )
             faulthandler.dump_traceback_later(30, repeat=True, file=sys.stderr)
+            if vad_enabled:
+                return model.transcribe(
+                    str(audio_path),
+                    language=lang,
+                    beam_size=beam_size,
+                    vad_filter=True,
+                    initial_prompt=initial_prompt,
+                    suppress_tokens=suppress_tokens,
+                )
             return model.transcribe(
                 str(audio_path),
                 language=lang,
                 beam_size=beam_size,
-                vad_filter=True,
                 initial_prompt=initial_prompt,
                 suppress_tokens=suppress_tokens,
             )
@@ -213,6 +224,11 @@ def main():
         help="Beam size for transcription (default: 5)"
     )
     parser.add_argument(
+        "--vad",
+        action="store_true",
+        help="Enable VAD (silence trimming). Requires onnxruntime."
+    )
+    parser.add_argument(
         "--wait",
         action="store_true",
         help="Start in server mode: load model, print READY, and wait for input path on stdin"
@@ -306,12 +322,14 @@ def main():
                 except Exception as e:
                     print(f"[Worker] Audio stat failed: {e}", file=sys.stderr, flush=True)
                 print("[Worker] Starting transcription...", file=sys.stderr, flush=True)
+                print(f"[Worker] VAD enabled: {args.vad}", file=sys.stderr, flush=True)
                 result = transcribe_audio(
                     input_path,
                     model,
                     language_mode=args.language_mode,
                     beam_size=args.beam_size,
-                    custom_initial_prompt=args.initial_prompt
+                    custom_initial_prompt=args.initial_prompt,
+                    enable_vad=args.vad
                 )
                 print(f"[Timer] Transcription took {result['duration_ms']}ms", file=sys.stderr)
                 print(f"[Worker] Done. Text length={len(result['text'])}", file=sys.stderr, flush=True)
@@ -328,12 +346,14 @@ def main():
             return 1
             
         try:
+            print(f"[Worker] One-off mode VAD enabled: {args.vad}", file=sys.stderr, flush=True)
             result = transcribe_audio(
                 args.input,
                 model,
                 language_mode=args.language_mode,
                 beam_size=args.beam_size,
                 custom_initial_prompt=args.initial_prompt,
+                enable_vad=args.vad,
             )
             print(f"[Timer] Transcription took {result['duration_ms']}ms", file=sys.stderr)
             print(result["text"])

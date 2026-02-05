@@ -86,6 +86,7 @@ public class VoicePasteController : IDisposable
             Console.WriteLine($"[Controller] CUDA Fallback: {message}");
             ErrorOccurred?.Invoke(this, message);
         };
+        _transcriptionService.RestartWorker();
         
         _clipboardPaster = CreateClipboardPaster(_settings);
 
@@ -321,7 +322,8 @@ public class VoicePasteController : IDisposable
             languageMode: settings.LanguageMode,
             beamSize: settings.BeamSize,
             cudaAutoFallback: settings.Device == TranscriptionDevice.CudaAuto,
-            initialPrompt: settings.CustomInitialPrompt);
+            initialPrompt: settings.CustomInitialPrompt,
+            enableVad: settings.EnableVad);
     }
 
     private static ClipboardPaster CreateClipboardPaster(AppSettings settings)

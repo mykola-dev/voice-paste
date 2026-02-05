@@ -39,6 +39,8 @@ public sealed record AppSettings
 
     public LanguageMode LanguageMode { get; init; } = LanguageMode.Auto;
 
+    public bool EnableVad { get; init; } = false;
+
     public bool DebugLogging { get; init; } = false;
     
     public string CustomInitialPrompt { get; init; } = string.Empty;

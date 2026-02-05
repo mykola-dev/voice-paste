@@ -3,11 +3,6 @@
 # STT Engine
 faster-whisper>=1.0.0
 
-# VAD dependencies (required for vad_filter=True in dev mode)
-torch
-torchaudio
-onnxruntime
-
 # CUDA support (optional, for GPU acceleration)
 # Install CUDA Toolkit 11.x or 12.x separately
 # faster-whisper will use GPU if available

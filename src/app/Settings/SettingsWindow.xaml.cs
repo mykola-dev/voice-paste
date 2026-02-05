@@ -1,9 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
 using System.Windows;
 
+using VoicePaste.Overlay;
 using VoicePaste.Transcription;
 
 namespace VoicePaste.Settings;
@@ -27,6 +31,7 @@ public partial class SettingsWindow : Window
     }
 
     private readonly SettingsManager _settingsManager;
+    private AppSettings? _loadedSettings;
 
     public SettingsWindow(SettingsManager settingsManager, AppSettings current)
     {
@@ -36,6 +41,7 @@ public partial class SettingsWindow : Window
 
         PopulateCombos();
         LoadSettings(current);
+        _loadedSettings = current;
 
         Width = current.SettingsWindowWidth;
         Height = current.SettingsWindowHeight;
@@ -93,12 +99,90 @@ public partial class SettingsWindow : Window
         DeviceCombo.SelectedValue = settings.Device;
         LanguageCombo.SelectedValue = settings.LanguageMode;
         BeamSizeSlider.Value = settings.BeamSize;
+        VadCheck.IsChecked = settings.EnableVad;
 
         CustomPromptText.Text = settings.CustomInitialPrompt;
         DebugLoggingCheck.IsChecked = settings.DebugLogging;
     }
 
     private sealed record UiState(bool Enabled, string Status);
+
+    private async Task InstallVadDependenciesAsync()
+    {
+        var exeDir = AppDomain.CurrentDomain.BaseDirectory;
+        var pythonExe = PythonFinder.Find();
+        var requirementsPath = FindVadRequirementsPath(exeDir);
+
+        var overlay = new RecordingOverlay();
+        overlay.Show();
+        overlay.ShowDownloading("Installing VAD dependencies...");
+
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = pythonExe,
+                ArgumentList = { "-m", "pip", "install", "-r", requirementsPath },
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8
+            };
+
+            psi.Environment["PYTHONUTF8"] = "1";
+            psi.Environment["PYTHONIOENCODING"] = "utf-8";
+
+            using var process = new Process { StartInfo = psi };
+            var error = new StringBuilder();
+
+            process.OutputDataReceived += (_, args) =>
+            {
+                if (args.Data == null) return;
+                Dispatcher.Invoke(() => ErrorText.Text = args.Data);
+            };
+            process.ErrorDataReceived += (_, args) =>
+            {
+                if (args.Data == null) return;
+                error.AppendLine(args.Data);
+                Dispatcher.Invoke(() => ErrorText.Text = args.Data);
+            };
+
+            process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+
+            await process.WaitForExitAsync();
+
+            if (process.ExitCode != 0)
+            {
+                throw new InvalidOperationException($"VAD dependency install failed: {error}".Trim());
+            }
+        }
+        finally
+        {
+            overlay.Hide();
+        }
+    }
+
+    private static string FindVadRequirementsPath(string exeDir)
+    {
+        var candidates = new[]
+        {
+            Path.Combine(exeDir, "transcribe", "requirements-vad.txt"),
+            Path.GetFullPath(Path.Combine(exeDir, "..", "..", "..", "..", "src", "transcribe", "requirements-vad.txt")),
+            Path.GetFullPath(Path.Combine(exeDir, "..", "..", "..", "..", "..", "src", "transcribe", "requirements-vad.txt"))
+        };
+
+        foreach (var candidate in candidates)
+        {
+            if (File.Exists(candidate))
+                return candidate;
+        }
+
+        throw new InvalidOperationException("VAD requirements file not found.");
+    }
 
     private UiState SetUiBusy(string status)
     {
@@ -115,7 +199,7 @@ public partial class SettingsWindow : Window
             ErrorText.Text = prior.Status;
     }
 
-    private void Save_Click(object sender, RoutedEventArgs e)
+    private async void Save_Click(object sender, RoutedEventArgs e)
     {
         ErrorText.Text = string.Empty;
 
@@ -137,6 +221,7 @@ public partial class SettingsWindow : Window
             Device = (TranscriptionDevice)(DeviceCombo.SelectedValue ?? TranscriptionDevice.CudaAuto),
             LanguageMode = (LanguageMode)(LanguageCombo.SelectedValue ?? LanguageMode.Auto),
             BeamSize = (int)BeamSizeSlider.Value,
+            EnableVad = VadCheck.IsChecked == true,
             CustomInitialPrompt = CustomPromptText.Text,
             DebugLogging = DebugLoggingCheck.IsChecked == true,
             SettingsWindowWidth = Width,
@@ -149,7 +234,12 @@ public partial class SettingsWindow : Window
 
         try
         {
-            // Model downloads are now handled on app startup, not in settings
+            if (settings.EnableVad && !(_loadedSettings?.EnableVad ?? false))
+            {
+                ErrorText.Text = "Installing VAD dependencies...";
+                await InstallVadDependenciesAsync();
+            }
+
             ErrorText.Text = "Saving settings...";
             _settingsManager.Save(settings);
         }

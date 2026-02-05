@@ -21,6 +21,7 @@ public class TranscriptionService : IDisposable
     private readonly int _beamSize;
     private readonly bool _cudaAutoFallback;
     private readonly string _initialPrompt;
+    private readonly bool _enableVad;
 
     private Process? _activeProcess;
     private TaskCompletionSource<bool>? _readyTcs;
@@ -38,7 +39,8 @@ public class TranscriptionService : IDisposable
         Settings.LanguageMode languageMode = Settings.LanguageMode.Auto,
         int beamSize = 5,
         bool cudaAutoFallback = true,
-        string initialPrompt = "")
+        string initialPrompt = "",
+        bool enableVad = false)
     {
         _modelSize = modelSize;
         _device = device;
@@ -46,12 +48,13 @@ public class TranscriptionService : IDisposable
         _beamSize = beamSize;
         _cudaAutoFallback = cudaAutoFallback;
         _initialPrompt = initialPrompt;
+        _enableVad = enableVad;
 
         _pythonPath = PythonFinder.Find();
         _transcribeScriptPath = FindTranscribeScript();
 
         Console.WriteLine($"[Transcribe] Python: {_pythonPath}");
-        Console.WriteLine($"[Transcribe] Model: {_modelSize}, Device: {_device}, LangMode: {_languageMode}, BeamSize: {_beamSize}");
+        Console.WriteLine($"[Transcribe] Model: {_modelSize}, Device: {_device}, LangMode: {_languageMode}, BeamSize: {_beamSize}, VAD: {_enableVad}");
     }
 
     /// <summary>
@@ -108,6 +111,11 @@ public class TranscriptionService : IDisposable
             _readyTcs.TrySetException(ex);
             _resultTcs.TrySetException(ex);
         }
+    }
+
+    public void RestartWorker()
+    {
+        CleanupProcess();
     }
 
     /// <summary>
@@ -228,6 +236,10 @@ public class TranscriptionService : IDisposable
         args.Append($"--device {device} ");
         args.Append($"--language-mode {ToLanguageModeArg(_languageMode)} ");
         args.Append($"--beam-size {_beamSize} ");
+        if (_enableVad)
+        {
+            args.Append("--vad ");
+        }
 
         if (!string.IsNullOrWhiteSpace(_initialPrompt))
         {

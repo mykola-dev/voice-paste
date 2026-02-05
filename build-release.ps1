@@ -54,6 +54,7 @@ Copy-Item -Path (Join-Path $publishDir "*") -Destination $OutputDir -Recurse -Fo
 Write-Step "Copying transcription worker + config..."
 New-Item -ItemType Directory -Path (Join-Path $OutputDir "transcribe") -Force | Out-Null
 Copy-Item "src/transcribe/transcribe.py" (Join-Path $OutputDir "transcribe") -Force
+Copy-Item "src/transcribe/requirements-vad.txt" (Join-Path $OutputDir "transcribe") -Force
 Copy-Item "config/config.json" $OutputDir -Force
 
 if ($IncludePython) {

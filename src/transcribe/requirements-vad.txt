@@ -1,0 +1,2 @@
+# VAD (silence trimming) dependencies
+onnxruntime

@@ -108,6 +108,7 @@ public sealed class SettingsManager
             Version = 1,
             Model = model,
             Hotkey = hotkey,
+            EnableVad = current.EnableVad,
             CustomInitialPrompt = current.CustomInitialPrompt?.Trim() ?? string.Empty,
             SettingsWindowWidth = width,
             SettingsWindowHeight = height
