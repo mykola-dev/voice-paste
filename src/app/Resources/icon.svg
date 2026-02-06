@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Symmetric audio equalizer bars - centered -->
+  <!-- Bar 1 (leftmost, shortest) -->
+  <rect x="19" y="108" width="28" height="40" rx="6" fill="#FF8C00"/>
+  
+  <!-- Bar 2 -->
+  <rect x="57" y="88" width="28" height="80" rx="6" fill="#FF8C00"/>
+  
+  <!-- Bar 3 (left center, tallest) -->
+  <rect x="95" y="58" width="28" height="140" rx="6" fill="#FF8C00"/>
+  
+  <!-- Bar 4 (right center, tallest) -->
+  <rect x="133" y="58" width="28" height="140" rx="6" fill="#FF8C00"/>
+  
+  <!-- Bar 5 -->
+  <rect x="171" y="88" width="28" height="80" rx="6" fill="#FF8C00"/>
+  
+  <!-- Bar 6 (rightmost, shortest) -->
+  <rect x="209" y="108" width="28" height="40" rx="6" fill="#FF8C00"/>
+</svg>
