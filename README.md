@@ -10,7 +10,7 @@
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://python.org)
 [![CUDA](https://img.shields.io/badge/NVIDIA-CUDA-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/cuda)
 
-<img src="pic.png" alt="VoicePaste in action" width="400"/>
+<video src="video.mp4" alt="VoicePaste in action" width="400" autoplay loop muted playsinline controls/>
 
 **Windows voice dictation that doesn't stop on silence** 🚀
 
