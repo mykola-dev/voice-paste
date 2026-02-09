@@ -46,7 +46,26 @@ public partial class SettingsWindow : Window
         Width = current.SettingsWindowWidth;
         Height = current.SettingsWindowHeight;
 
+        // Apply saved position or center on screen
+        if (double.IsNaN(current.SettingsWindowLeft) || double.IsNaN(current.SettingsWindowTop))
+        {
+            CenterWindowOnScreen();
+        }
+        else
+        {
+            Left = current.SettingsWindowLeft;
+            Top = current.SettingsWindowTop;
+        }
+
         LogPathText.Text = $"Log: {Path.Combine(Path.GetTempPath(), "VoicePaste", "voicepaste.log")}";
+    }
+
+    private void CenterWindowOnScreen()
+    {
+        // Center on the primary screen work area (accounting for taskbar)
+        var workArea = SystemParameters.WorkArea;
+        Left = workArea.Left + (workArea.Width - Width) / 2;
+        Top = workArea.Top + (workArea.Height - Height) / 2;
     }
 
     public AppSettings? SavedSettings { get; private set; }
@@ -225,7 +244,9 @@ public partial class SettingsWindow : Window
             CustomInitialPrompt = CustomPromptText.Text,
             DebugLogging = DebugLoggingCheck.IsChecked == true,
             SettingsWindowWidth = Width,
-            SettingsWindowHeight = Height
+            SettingsWindowHeight = Height,
+            SettingsWindowLeft = Left,
+            SettingsWindowTop = Top
         };
 
         settings = SettingsManager.ValidateAndMigrate(settings);

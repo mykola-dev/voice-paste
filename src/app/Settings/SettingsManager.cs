@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Windows;
 
 namespace VoicePaste.Settings;
 
@@ -63,6 +64,7 @@ public sealed class SettingsManager
         {
             WriteIndented = true,
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals,
             Converters =
             {
                 new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)
@@ -103,6 +105,15 @@ public sealed class SettingsManager
         width = Math.Clamp(width, 480, 1400);
         height = Math.Clamp(height, 420, 1200);
 
+        // Validate window position is on a visible screen
+        var left = current.SettingsWindowLeft;
+        var top = current.SettingsWindowTop;
+        if (!IsPositionOnScreen(left, top, width, height))
+        {
+            left = double.NaN;
+            top = double.NaN;
+        }
+
         return current with
         {
             Version = 1,
@@ -111,7 +122,37 @@ public sealed class SettingsManager
             EnableVad = current.EnableVad,
             CustomInitialPrompt = current.CustomInitialPrompt?.Trim() ?? string.Empty,
             SettingsWindowWidth = width,
-            SettingsWindowHeight = height
+            SettingsWindowHeight = height,
+            SettingsWindowLeft = left,
+            SettingsWindowTop = top
         };
+    }
+
+    private static bool IsPositionOnScreen(double left, double top, double width, double height)
+    {
+        if (!double.IsFinite(left) || !double.IsFinite(top))
+        {
+            return false;
+        }
+
+        // Check if at least a 100x100 corner of the window is within the virtual screen bounds
+        const double minVisibleSize = 100.0;
+        var virtualScreenLeft = SystemParameters.VirtualScreenLeft;
+        var virtualScreenTop = SystemParameters.VirtualScreenTop;
+        var virtualScreenWidth = SystemParameters.VirtualScreenWidth;
+        var virtualScreenHeight = SystemParameters.VirtualScreenHeight;
+        var virtualScreenRight = virtualScreenLeft + virtualScreenWidth;
+        var virtualScreenBottom = virtualScreenTop + virtualScreenHeight;
+
+        // Check bottom-right corner (most likely to be visible after resize)
+        var visibleLeft = left + width - minVisibleSize;
+        var visibleTop = top + height - minVisibleSize;
+        var visibleRight = left + width;
+        var visibleBottom = top + height;
+
+        return visibleLeft < virtualScreenRight &&
+               visibleRight > virtualScreenLeft &&
+               visibleTop < virtualScreenBottom &&
+               visibleBottom > virtualScreenTop;
     }
 }

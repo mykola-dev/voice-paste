@@ -30,7 +30,7 @@ public class SettingsManagerTests
         var input = new AppSettings
         {
             Hotkey = "Ctrl+Alt+Space",
-            Model = "small",
+            Model = "large-v3-turbo",
             Device = TranscriptionDevice.Cpu,
             PasteShortcut = PasteShortcut.CtrlV,
             LanguageMode = LanguageMode.Bilingual,
@@ -41,7 +41,7 @@ public class SettingsManagerTests
         var loaded = manager.Load();
 
         Assert.Equal("Ctrl+Alt+Space", loaded.Hotkey);
-        Assert.Equal("small", loaded.Model);
+        Assert.Equal("large-v3-turbo", loaded.Model);
         Assert.Equal(TranscriptionDevice.Cpu, loaded.Device);
         Assert.Equal(PasteShortcut.CtrlV, loaded.PasteShortcut);
         Assert.Equal(LanguageMode.Bilingual, loaded.LanguageMode);

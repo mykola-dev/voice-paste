@@ -51,6 +51,10 @@ public sealed record AppSettings
 
     public double SettingsWindowHeight { get; init; } = 520;
 
+    public double SettingsWindowLeft { get; init; } = double.NaN;
+
+    public double SettingsWindowTop { get; init; } = double.NaN;
+
     public static readonly IReadOnlyCollection<string> ValidModels = new[]
     {
         "large-v2",
