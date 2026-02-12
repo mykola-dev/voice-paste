@@ -207,6 +207,11 @@ def main():
         help="Device to use (default: cuda)"
     )
     parser.add_argument(
+        "--no-fallback",
+        action="store_true",
+        help="Fail instead of falling back to CPU if CUDA fails"
+    )
+    parser.add_argument(
         "--language-mode",
         default="auto",
         choices=["auto", "en", "ua", "bilingual"],
@@ -281,10 +286,13 @@ def main():
             compute_type=compute_type
         )
     except Exception as e:
-        # Fallback to CPU if CUDA fails
         if args.device == "cuda":
-            print(f"CUDA failed, falling back to CPU: {e}", file=sys.stderr)
-            model = WhisperModel(args.model, device="cpu", compute_type="int8")
+            if args.no_fallback:
+                print(f"CUDA_ERROR: {e}", file=sys.stderr)
+                return 1
+            else:
+                print(f"CUDA failed, falling back to CPU: {e}", file=sys.stderr)
+                model = WhisperModel(args.model, device="cpu", compute_type="int8")
         else:
             print(f"Error: {e}", file=sys.stderr)
             return 1

@@ -234,6 +234,10 @@ public class TranscriptionService : IDisposable
         args.Append($"\"{_transcribeScriptPath}\" ");
         args.Append($"--model {_modelSize} ");
         args.Append($"--device {device} ");
+        if (!_cudaAutoFallback && device == "cuda")
+        {
+            args.Append("--no-fallback ");
+        }
         args.Append($"--language-mode {ToLanguageModeArg(_languageMode)} ");
         args.Append($"--beam-size {_beamSize} ");
         if (_enableVad)
