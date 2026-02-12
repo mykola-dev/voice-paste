@@ -6,13 +6,61 @@ param(
     [switch]$IncludePython = $true,
     [switch]$Incremental = $false,
     [string]$PythonVersion = "3.12.10",
-    [string]$Runtime = "win-x64"
+    [string]$Runtime = "win-x64",
+    [string]$DotNetVersion = "8.0.404"
 )
 
 $ErrorActionPreference = "Stop"
 
 function Write-Step([string]$message) {
     Write-Host $message -ForegroundColor Cyan
+}
+
+function Ensure-DotNetSdk {
+    $dotnetExe = $null
+    
+    $systemDotnet = Get-Command dotnet -ErrorAction SilentlyContinue
+    if ($systemDotnet) {
+        $sdkCheck = & dotnet --list-sdks 2>$null
+        if ($sdkCheck) {
+            Write-Host "Using system .NET SDK" -ForegroundColor Green
+            return "dotnet"
+        }
+    }
+    
+    $localDotnetDir = Join-Path $PSScriptRoot "build\dotnet"
+    $localDotnetExe = Join-Path $localDotnetDir "dotnet.exe"
+    
+    if (Test-Path $localDotnetExe) {
+        Write-Host "Using local .NET SDK: $localDotnetDir" -ForegroundColor Green
+        return $localDotnetExe
+    }
+    
+    Write-Step "Downloading .NET SDK $DotNetVersion (no SDK found on system)..."
+    
+    $installScriptUrl = "https://dot.net/v1/dotnet-install.ps1"
+    $installScriptPath = Join-Path $env:TEMP "dotnet-install.ps1"
+    
+    Invoke-WebRequest -Uri $installScriptUrl -OutFile $installScriptPath -UseBasicParsing
+    
+    if (-not (Test-Path $localDotnetDir)) {
+        New-Item -ItemType Directory -Path $localDotnetDir -Force | Out-Null
+    }
+    
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $installScriptPath `
+        -Channel 8.0 `
+        -Version $DotNetVersion `
+        -InstallDir $localDotnetDir `
+        -NoPath
+    
+    Remove-Item $installScriptPath -ErrorAction SilentlyContinue
+    
+    if (Test-Path $localDotnetExe) {
+        Write-Host ".NET SDK installed to: $localDotnetDir" -ForegroundColor Green
+        return $localDotnetExe
+    }
+    
+    throw "Failed to install .NET SDK"
 }
 
 Write-Step "=== VoicePaste Release Build ==="
@@ -32,8 +80,10 @@ if (Test-Path $publishDir) {
 }
 New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
 
+$dotnetCmd = Ensure-DotNetSdk
+
 Write-Step "Publishing .NET app to staging..."
-dotnet publish "src/app/VoicePaste.csproj" `
+& $dotnetCmd publish "src/app/VoicePaste.csproj" `
     -c Release `
     -r $Runtime `
     --self-contained true `
