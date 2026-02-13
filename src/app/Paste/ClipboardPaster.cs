@@ -260,7 +260,9 @@ public class ClipboardPaster
 
         if (sent != expectedCount)
         {
-            Console.WriteLine($"[Paste] ERROR: SendInput failed! Only {sent}/{expectedCount} inputs sent. Error code: {error}");
+            var errorMessage = $"SendInput failed! Only {sent}/{expectedCount} inputs sent. Error code: {error}";
+            Console.WriteLine($"[Paste] ERROR: {errorMessage}");
+            throw new InvalidOperationException(errorMessage);
         }
     }
 

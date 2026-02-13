@@ -207,13 +207,22 @@ public class VoicePasteController : IDisposable
                     Console.WriteLine($"[Controller] Restoring focus to window: {_focusedWindowBeforeRecording}");
                     SetForegroundWindow(_focusedWindowBeforeRecording);
                     
-                    // Wait a bit for focus to actually switch
-                    await Task.Delay(100);
+                    // Wait for focus to actually switch
+                    await Task.Delay(300);
                 }
                 
                 Console.WriteLine("[Controller] Pasting text...");
-                await _clipboardPaster.PasteTextAsync(transcript);
-                Console.WriteLine("[Controller] Paste complete");
+                try
+                {
+                    await _clipboardPaster.PasteTextAsync(transcript);
+                    Console.WriteLine("[Controller] Paste complete");
+                }
+                catch (Exception ex)
+                {
+                    var errorMsg = $"Failed to paste text: {ex.Message}";
+                    Console.WriteLine($"[Controller] ERROR: {errorMsg}");
+                    ErrorOccurred?.Invoke(this, errorMsg);
+                }
             }
             else
             {
