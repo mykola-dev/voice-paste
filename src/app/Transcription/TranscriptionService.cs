@@ -131,39 +131,39 @@ public class TranscriptionService : IDisposable
         if (_activeProcess == null || _activeProcess.HasExited)
         {
             Console.WriteLine("[Transcribe] No preloaded process found. Starting one-off transcription.");
-            return await TranscribeOneOffAsync(audioFilePath, _device);
+            return await TranscribeOneOffAsync(audioFilePath, _device).ConfigureAwait(false);
         }
 
         try
         {
             // Wait for model to be READY (up to 30s)
             var readyTask = _readyTcs?.Task ?? Task.FromResult(false);
-            var completedTask = await Task.WhenAny(readyTask, Task.Delay(30000));
+            var completedTask = await Task.WhenAny(readyTask, Task.Delay(30000)).ConfigureAwait(false);
 
-            if (completedTask != readyTask || !await readyTask)
+            if (completedTask != readyTask || !await readyTask.ConfigureAwait(false))
             {
                 Console.WriteLine("[Transcribe] Preloading timed out or failed. Falling back to one-off.");
                 CleanupProcess();
-                return await TranscribeOneOffAsync(audioFilePath, _device);
+                return await TranscribeOneOffAsync(audioFilePath, _device).ConfigureAwait(false);
             }
 
             // Send filename to stdin
             Console.WriteLine($"[Transcribe] Model ready. Sending file for transcription: {audioFilePath}");
             var startTime = DateTime.Now;
-            await _activeProcess.StandardInput.WriteLineAsync(audioFilePath);
-            await _activeProcess.StandardInput.FlushAsync();
+            await _activeProcess.StandardInput.WriteLineAsync(audioFilePath).ConfigureAwait(false);
+            await _activeProcess.StandardInput.FlushAsync().ConfigureAwait(false);
 
             // Wait for result
             var resultTask = _resultTcs!.Task;
             var timeoutTask = Task.Delay(60000);
-            var finishedTask = await Task.WhenAny(resultTask, timeoutTask);
+            var finishedTask = await Task.WhenAny(resultTask, timeoutTask).ConfigureAwait(false);
 
             if (finishedTask == timeoutTask)
             {
                 throw new TranscriptionException("Transcription timed out after 60 seconds.");
             }
 
-            var transcript = await resultTask;
+            var transcript = await resultTask.ConfigureAwait(false);
             var duration = DateTime.Now - startTime;
             Console.WriteLine($"[Transcribe] Transcription total time (including IPC): {duration.TotalMilliseconds:F0}ms");
             
@@ -175,7 +175,7 @@ public class TranscriptionService : IDisposable
                     var fallbackMessage = "GPU acceleration failed, falling back to CPU.";
                     CudaFallbackOccurred?.Invoke(this, fallbackMessage);
                     CleanupProcess();
-                    return await TranscribeOneOffAsync(audioFilePath, "cpu");
+                    return await TranscribeOneOffAsync(audioFilePath, "cpu").ConfigureAwait(false);
                 }
                 throw new TranscriptionException($"Transcription failed: {error}");
             }
@@ -184,7 +184,7 @@ public class TranscriptionService : IDisposable
         }
         finally
         {
-            CleanupProcess();
+            await CleanupProcessAsync().ConfigureAwait(false);
         }
     }
 
@@ -202,14 +202,14 @@ public class TranscriptionService : IDisposable
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
-        bool completed = await Task.Run(() => process.WaitForExit(60000));
+        bool completed = await Task.Run(() => process.WaitForExit(60000)).ConfigureAwait(false);
         if (!completed)
         {
             try { process.Kill(); } catch { }
             throw new TranscriptionException("Transcription timed out.");
         }
 
-        await Task.Run(() => process.WaitForExit());
+        await Task.Run(() => process.WaitForExit()).ConfigureAwait(false);
 
         if (process.ExitCode != 0)
         {
@@ -217,7 +217,7 @@ public class TranscriptionService : IDisposable
             if (IsCudaError(errMsg) && device == "cuda" && _cudaAutoFallback)
             {
                 CudaFallbackOccurred?.Invoke(this, "GPU acceleration failed, falling back to CPU.");
-                return await TranscribeOneOffAsync(audioFilePath, "cpu");
+                return await TranscribeOneOffAsync(audioFilePath, "cpu").ConfigureAwait(false);
             }
             throw new TranscriptionException($"Transcription failed (exit code {process.ExitCode}): {errMsg}");
         }
@@ -318,6 +318,11 @@ public class TranscriptionService : IDisposable
                 _activeProcess = null;
             }
         }
+    }
+
+    private Task CleanupProcessAsync()
+    {
+        return Task.Run(CleanupProcess);
     }
 
     private static bool IsCudaError(string msg)

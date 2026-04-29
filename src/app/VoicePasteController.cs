@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using VoicePaste.Audio;
 using VoicePaste.Hotkey;
+using VoicePaste.Logging;
 using VoicePaste.Paste;
 using VoicePaste.Settings;
 using VoicePaste.Transcription;
@@ -196,7 +197,7 @@ public class VoicePasteController : IDisposable
             // Transcribe audio
             Console.WriteLine("[Controller] Starting transcription...");
             string transcript = await _transcriptionService.TranscribeAsync(_currentRecordingPath);
-            Console.WriteLine($"[Controller] Transcription complete. Text: '{transcript}'");
+            Console.WriteLine($"[Controller] Transcription complete. Text length: {transcript.Length}");
             
             // Paste result
             if (!string.IsNullOrWhiteSpace(transcript))
@@ -205,23 +206,34 @@ public class VoicePasteController : IDisposable
                 if (_focusedWindowBeforeRecording != IntPtr.Zero)
                 {
                     Console.WriteLine($"[Controller] Restoring focus to window: {_focusedWindowBeforeRecording}");
-                    SetForegroundWindow(_focusedWindowBeforeRecording);
+                    bool focusRestored = SetForegroundWindow(_focusedWindowBeforeRecording);
+                    if (!focusRestored)
+                    {
+                        Logger.Warning("Controller", $"SetForegroundWindow({_focusedWindowBeforeRecording}) returned false");
+                    }
                     
-                    // Wait for focus to actually switch
-                    await Task.Delay(300);
+                    // Give Windows a short message-pump turn without adding a visible pre-paste stall.
+                    await Task.Delay(50);
                 }
                 
                 Console.WriteLine("[Controller] Pasting text...");
                 try
                 {
-                    await _clipboardPaster.PasteTextAsync(transcript);
-                    Console.WriteLine("[Controller] Paste complete");
+                    bool pasted = await _clipboardPaster.PasteTextAsync(transcript);
+                    if (pasted)
+                    {
+                        Console.WriteLine("[Controller] Paste complete");
+                    }
+                    else
+                    {
+                        Console.WriteLine("[Controller] WARNING: Paste did not complete. Transcript may still be available in clipboard.");
+                        Logger.Warning("Controller", "Paste did not complete. Suppressing user-facing error dialog.");
+                    }
                 }
                 catch (Exception ex)
                 {
-                    var errorMsg = $"Failed to paste text: {ex.Message}";
-                    Console.WriteLine($"[Controller] ERROR: {errorMsg}");
-                    ErrorOccurred?.Invoke(this, errorMsg);
+                    Console.WriteLine($"[Controller] WARNING: Unexpected paste error suppressed: {ex.Message}");
+                    Logger.Warning("Controller", $"Unexpected paste error suppressed: {ex}");
                 }
             }
             else
@@ -232,20 +244,32 @@ public class VoicePasteController : IDisposable
         }
         finally
         {
-            // Clean up temp file
-            if (_currentRecordingPath != null && System.IO.File.Exists(_currentRecordingPath))
-            {
-                try
-                {
-                    System.IO.File.Delete(_currentRecordingPath);
-                }
-                catch
-                {
-                    // Ignore cleanup errors
-                }
-            }
+            await DeleteRecordingFileAsync(_currentRecordingPath);
             
             State = AppState.Idle;
+        }
+    }
+
+    private static async Task DeleteRecordingFileAsync(string? recordingPath)
+    {
+        if (recordingPath == null)
+        {
+            return;
+        }
+
+        try
+        {
+            await Task.Run(() =>
+            {
+                if (System.IO.File.Exists(recordingPath))
+                {
+                    System.IO.File.Delete(recordingPath);
+                }
+            });
+        }
+        catch
+        {
+            // Ignore cleanup errors
         }
     }
     

@@ -63,9 +63,9 @@ cd voice-agent
 # Debug build + run
 ./dev-debug.bat
 
-# Or create portable release
-./release-portable.bat
-# Output: build/VoicePaste-Release/VoicePaste.exe
+# Or create portable build
+./build-portable.bat
+# Output: build/VoicePaste-Portable/VoicePaste.exe
 ```
 
 ---

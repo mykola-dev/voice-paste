@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -12,6 +13,7 @@ namespace VoicePaste.TrayIcon;
 public class TrayIconManager : IDisposable
 {
     private readonly TaskbarIcon _taskbarIcon;
+    private readonly Dictionary<AppState, System.Drawing.Icon> _icons = new();
     private AppState _currentState = AppState.Idle;
 
     public event EventHandler? StartStopClicked;
@@ -62,7 +64,13 @@ public class TrayIconManager : IDisposable
             _ => Colors.Gray
         };
 
-        _taskbarIcon.Icon = CreateIcon(iconColor);
+        if (!_icons.TryGetValue(state, out var icon))
+        {
+            icon = CreateIcon(iconColor);
+            _icons[state] = icon;
+        }
+
+        _taskbarIcon.Icon = icon;
     }
 
     private void UpdateTooltip(AppState state)
@@ -155,5 +163,9 @@ public class TrayIconManager : IDisposable
     public void Dispose()
     {
         _taskbarIcon?.Dispose();
+        foreach (var icon in _icons.Values)
+        {
+            icon.Dispose();
+        }
     }
 }

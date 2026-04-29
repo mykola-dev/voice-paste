@@ -1,7 +1,8 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading.Tasks;
-using System.Windows;
+using VoicePaste.Logging;
 
 namespace VoicePaste.Paste;
 
@@ -21,83 +22,159 @@ public class ClipboardPaster
     /// <summary>
     /// Paste text into currently focused window.
     /// </summary>
-    public async Task PasteTextAsync(string text)
+    public Task<bool> PasteTextAsync(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
             Console.WriteLine("[Paste] WARNING: Empty text, nothing to paste");
-            return;
+            return Task.FromResult(true);
         }
-        
+
+        return Task.Run(() => PasteText(text));
+    }
+
+    private bool PasteText(string text)
+    {
         Console.WriteLine($"[Paste] Starting paste operation. Text length: {text.Length}");
-        Console.WriteLine($"[Paste] Text to paste: '{text}'");
         
         // Set new clipboard content
-        await Application.Current.Dispatcher.InvokeAsync(() =>
+        if (!TrySetClipboardTextWithRetry(text))
         {
-            TrySetClipboardTextWithRetry(text);
-            Console.WriteLine("[Paste] Text copied to clipboard");
-        });
+            return false;
+        }
+
+        Console.WriteLine("[Paste] Text copied to clipboard");
         
-        // Small delay to ensure clipboard is set
-        await Task.Delay(100);
+        // Keep the paste delay off the UI thread so the overlay animation stays smooth.
+        System.Threading.Thread.Sleep(100);
         
         // Send configured paste shortcut
         Console.WriteLine($"[Paste] Sending paste shortcut: {_pasteShortcut}");
-        SendPasteShortcut(_pasteShortcut);
+
+        if (!SendPasteShortcut(_pasteShortcut))
+        {
+            return false;
+        }
+
+        return true;
     }
     
     /// <summary>
-    /// Try to set clipboard text with retry logic (max 5 attempts).
+    /// Try to set clipboard text with short retry logic.
     /// </summary>
-    private static void TrySetClipboardTextWithRetry(string text)
+    private static bool TrySetClipboardTextWithRetry(string text)
     {
-        const int maxAttempts = 5;
+        const int maxAttempts = 6;
         for (int attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            try
+            if (TrySetClipboardText(text, out var error))
             {
-                Clipboard.SetText(text);
-                return; // Success
+                if (attempt > 1)
+                {
+                    Logger.Warning("Paste", $"Clipboard set succeeded after retry {attempt}/{maxAttempts}");
+                }
+
+                return true;
             }
-            catch (COMException ex) when (ex.ErrorCode == unchecked((int)0x800401D0)) // CLIPBRD_E_CANT_OPEN
+
+            if (attempt < maxAttempts)
             {
-                if (attempt < maxAttempts)
-                {
-                    int delayMs = attempt * 50; // 50ms, 100ms, 150ms, 200ms
-                    Console.WriteLine($"[Paste] Clipboard busy, retry {attempt}/{maxAttempts} in {delayMs}ms...");
-                    System.Threading.Thread.Sleep(delayMs);
-                }
-                else
-                {
-                    Console.WriteLine($"[Paste] ERROR: Could not set clipboard after {maxAttempts} attempts: {ex.Message}");
-                    throw new InvalidOperationException($"Failed to set clipboard after {maxAttempts} attempts", ex);
-                }
+                int delayMs = 10 * (1 << (attempt - 1)); // 10, 20, 40, 80, 160ms
+                Console.WriteLine($"[Paste] Clipboard busy, retry {attempt}/{maxAttempts} in {delayMs}ms. LastError: {error}");
+                Logger.Warning("Paste", $"Clipboard set failed on attempt {attempt}/{maxAttempts}. Retrying in {delayMs}ms. LastError: {error}");
+                System.Threading.Thread.Sleep(delayMs);
+                continue;
             }
+
+            Console.WriteLine($"[Paste] WARNING: Could not set clipboard after {maxAttempts} attempts. LastError: {error}");
+            Logger.Warning("Paste", $"Could not set clipboard after {maxAttempts} attempts. LastError: {error}");
+            return false;
         }
+
+        return false;
     }
     
-    private static void SendPasteShortcut(Settings.PasteShortcut shortcut)
+    private static bool TrySetClipboardText(string text, out int error)
+    {
+        error = 0;
+        if (!OpenClipboard(IntPtr.Zero))
+        {
+            error = Marshal.GetLastWin32Error();
+            return false;
+        }
+
+        IntPtr hGlobal = IntPtr.Zero;
+        try
+        {
+            if (!EmptyClipboard())
+            {
+                error = Marshal.GetLastWin32Error();
+                return false;
+            }
+
+            byte[] bytes = Encoding.Unicode.GetBytes(text + "\0");
+            hGlobal = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, (UIntPtr)bytes.Length);
+            if (hGlobal == IntPtr.Zero)
+            {
+                error = Marshal.GetLastWin32Error();
+                return false;
+            }
+
+            IntPtr target = GlobalLock(hGlobal);
+            if (target == IntPtr.Zero)
+            {
+                error = Marshal.GetLastWin32Error();
+                return false;
+            }
+
+            try
+            {
+                Marshal.Copy(bytes, 0, target, bytes.Length);
+            }
+            finally
+            {
+                GlobalUnlock(hGlobal);
+            }
+
+            if (SetClipboardData(CF_UNICODETEXT, hGlobal) == IntPtr.Zero)
+            {
+                error = Marshal.GetLastWin32Error();
+                return false;
+            }
+
+            // Clipboard owns the memory after SetClipboardData succeeds.
+            hGlobal = IntPtr.Zero;
+            return true;
+        }
+        finally
+        {
+            if (hGlobal != IntPtr.Zero)
+            {
+                GlobalFree(hGlobal);
+            }
+
+            CloseClipboard();
+        }
+    }
+
+    private static bool SendPasteShortcut(Settings.PasteShortcut shortcut)
     {
         switch (shortcut)
         {
             case Settings.PasteShortcut.CtrlV:
-                SendCtrlV();
-                return;
+                return SendCtrlV();
             case Settings.PasteShortcut.ShiftInsert:
-                SendShiftInsert();
-                return;
+                return SendShiftInsert();
             case Settings.PasteShortcut.CtrlShiftV:
             default:
-                SendCtrlShiftV();
-                return;
+                return SendCtrlShiftV();
         }
     }
 
     /// <summary>
     /// Send Ctrl+Shift+V using SendInput with correct 64-bit struct layout.
     /// </summary>
-    private static void SendCtrlShiftV()
+    private static bool SendCtrlShiftV()
     {
         var extraInfo = GetMessageExtraInfo();
         
@@ -183,10 +260,10 @@ public class ClipboardPaster
             }
         };
         
-        SendKeyboardInputs(inputs, expectedCount: 6);
+        return SendKeyboardInputs(inputs, expectedCount: 6);
     }
     
-    private static void SendCtrlV()
+    private static bool SendCtrlV()
     {
         var extraInfo = GetMessageExtraInfo();
 
@@ -198,10 +275,10 @@ public class ClipboardPaster
             KeyUp(VK_CONTROL, extraInfo)
         };
 
-        SendKeyboardInputs(inputs, expectedCount: 4);
+        return SendKeyboardInputs(inputs, expectedCount: 4);
     }
 
-    private static void SendShiftInsert()
+    private static bool SendShiftInsert()
     {
         var extraInfo = GetMessageExtraInfo();
 
@@ -213,7 +290,7 @@ public class ClipboardPaster
             KeyUp(VK_SHIFT, extraInfo)
         };
 
-        SendKeyboardInputs(inputs, expectedCount: 4);
+        return SendKeyboardInputs(inputs, expectedCount: 4);
     }
 
     private static INPUT KeyDown(ushort vk, IntPtr extraInfo, bool extended = false)
@@ -248,7 +325,7 @@ public class ClipboardPaster
         };
     }
 
-    private static void SendKeyboardInputs(INPUT[] inputs, int expectedCount)
+    private static bool SendKeyboardInputs(INPUT[] inputs, int expectedCount)
     {
         int size = Marshal.SizeOf<INPUT>();
         Console.WriteLine($"[Paste] INPUT struct size: {size} (expected 40 on x64)");
@@ -262,17 +339,47 @@ public class ClipboardPaster
         {
             var errorMessage = $"SendInput failed! Only {sent}/{expectedCount} inputs sent. Error code: {error}";
             Console.WriteLine($"[Paste] ERROR: {errorMessage}");
-            throw new InvalidOperationException(errorMessage);
+            Logger.Warning("Paste", errorMessage);
+            return false;
         }
+
+        return true;
     }
 
     // P/Invoke
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool OpenClipboard(IntPtr hWndNewOwner);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool CloseClipboard();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool EmptyClipboard();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetClipboardData(uint uFormat, IntPtr hMem);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GlobalAlloc(uint uFlags, UIntPtr dwBytes);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GlobalLock(IntPtr hMem);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GlobalUnlock(IntPtr hMem);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GlobalFree(IntPtr hMem);
+
     [DllImport("user32.dll")]
     private static extern IntPtr GetMessageExtraInfo();
 
+    private const uint CF_UNICODETEXT = 13;
+    private const uint GMEM_MOVEABLE = 0x0002;
+    private const uint GMEM_ZEROINIT = 0x0040;
     private const int INPUT_KEYBOARD = 1;
     private const uint KEYEVENTF_KEYUP = 0x0002;
     private const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
