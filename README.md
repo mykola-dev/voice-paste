@@ -7,13 +7,14 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-FF8C00.svg)](LICENSE)
 [![.NET 8.0](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![Windows](https://img.shields.io/badge/Windows-10%2F11-0078D6?logo=windows&logoColor=white)](https://www.microsoft.com/windows)
+[![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-000000?logo=apple&logoColor=white)](https://www.apple.com/macos/)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://python.org)
 [![CUDA](https://img.shields.io/badge/NVIDIA-CUDA-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/cuda)
 
 https://github.com/user-attachments/assets/68783c53-69fd-4d9c-a363-f89770ae0b15
 
 
-**Windows voice dictation that doesn't stop on silence** 🚀
+**Voice dictation that doesn't stop on silence** 🚀
 
 [📥 Download Latest](https://github.com/mykola-dev/voice-agent/releases) · [📖 Documentation](docs/) · [🐛 Report Bug](https://github.com/mykola-dev/voice-agent/issues)
 
@@ -23,7 +24,7 @@ https://github.com/user-attachments/assets/68783c53-69fd-4d9c-a363-f89770ae0b15
 
 ## ✨ What is VoicePaste?
 
-VoicePaste is a **resident system tray application** for Windows that lets you dictate text anywhere using your voice—without annoying auto-stop on silence.
+VoicePaste is a resident tray/menu bar application for Windows and Apple Silicon macOS that lets you dictate text anywhere using your voice—without annoying auto-stop on silence.
 
 🔴 **Press ScrollLock** → 🎙️ **Speak naturally** → 🟢 **Press ScrollLock again** → 📋 **Text appears instantly**
 
@@ -32,7 +33,7 @@ VoicePaste is a **resident system tray application** for Windows that lets you d
 | Feature | Description |
 |---------|-------------|
 | 🎙️ **Manual Control** | Recording starts/stops only when YOU decide (no silence auto-stop) |
-| ⚡ **GPU-Powered** | NVIDIA CUDA acceleration with automatic CPU fallback |
+| ⚡ **GPU-Powered** | NVIDIA CUDA on Windows, Apple Silicon MLX on macOS |
 | 🌍 **Bilingual** | Auto-detects English + Ukrainian (no language switching needed) |
 | 📋 **Universal Paste** | Works with any app: terminals, editors, browsers, IDEs |
 | 🎯 **Always Available** | Runs in system tray—ready whenever you need it |
@@ -45,6 +46,7 @@ VoicePaste is a **resident system tray application** for Windows that lets you d
 ### Prerequisites
 - Windows 10 or 11
 - NVIDIA GPU with CUDA (optional, for GPU acceleration)
+- Apple Silicon Mac for macOS builds
 
 ### Installation
 
@@ -67,6 +69,13 @@ cd voice-agent
 ./build-portable.bat
 # Output: build/VoicePaste-Portable/VoicePaste.exe
 ```
+
+#### macOS Apple Silicon
+```bash
+src/mac/build-mac.sh
+open build/VoicePasteMac/VoicePaste.app
+```
+Default macOS hotkey is Right Option.
 
 ---
 
@@ -102,10 +111,12 @@ Right-click the tray icon → **Settings** to customize:
 
 </div>
 
-- **Frontend**: C# / WPF (.NET 8.0)
-- **STT Engine**: OpenAI Whisper via [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
-- **Audio Capture**: WASAPI (NAudio)
-- **Platform**: Windows 10/11
+- **Windows Frontend**: C# / WPF (.NET 8.0)
+- **macOS Frontend**: Swift/AppKit menu bar app
+- **Windows STT Engine**: OpenAI Whisper via [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
+- **macOS STT Engine**: MLX Whisper on Apple Silicon
+- **Audio Capture**: WASAPI (Windows), AVFoundation (macOS)
+- **Platform**: Windows 10/11, Apple Silicon macOS
 
 ---
 
@@ -121,6 +132,7 @@ Right-click the tray icon → **Settings** to customize:
 | [📋 Paste Mechanism](docs/06-paste-mechanism.md) | Clipboard & SendInput |
 | [⚙️ Configuration](docs/07-configuration.md) | Settings & config file |
 | [🎯 Milestones](docs/08-milestones.md) | Development phases |
+| [🍎 macOS Port](docs/11-macos-port.md) | Apple Silicon MLX port |
 
 ---
 

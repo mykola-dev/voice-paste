@@ -1,0 +1,4 @@
+mlx>=0.18.0
+mlx-whisper>=0.2.0
+numpy>=1.26
+openai-whisper>=20250625

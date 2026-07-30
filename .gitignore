@@ -26,6 +26,7 @@ bld/
 [Dd]ebugPublic/
 [Rr]eleases/
 build/
+.build/
 *.dll
 *.exe
 *.pdb

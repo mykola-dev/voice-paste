@@ -1,0 +1,11 @@
+{
+  "debugLogging": false,
+  "hotkey": "RightOption",
+  "initialPrompt": "English and Ukrainian. Transcribe in these languages. Українська мова: ґ, є, і, ї.",
+  "languageMode": "bilingual",
+  "launchAtLogin": false,
+  "model": "openai-whisper:large-v3-turbo",
+  "pasteDelayMs": 120,
+  "preloadModelOnLaunch": true,
+  "version": 1
+}
