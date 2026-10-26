@@ -7,6 +7,7 @@ import argparse
 import sys
 import io
 import faulthandler
+import json
 from pathlib import Path
 from faster_whisper import WhisperModel
 
@@ -236,7 +237,7 @@ def main():
     parser.add_argument(
         "--wait",
         action="store_true",
-        help="Start in server mode: load model, print READY, and wait for input path on stdin"
+        help="Server mode: load once, accept paths on stdin, emit JSON ready/result/error messages"
     )
     parser.add_argument(
         "--check-model",
@@ -293,6 +294,8 @@ def main():
             else:
                 print(f"CUDA failed, falling back to CPU: {e}", file=sys.stderr)
                 model = WhisperModel(args.model, device="cpu", compute_type="int8")
+                args.device = "cpu"
+                compute_type = "int8"
         else:
             print(f"Error: {e}", file=sys.stderr)
             return 1
@@ -316,11 +319,14 @@ def main():
 
     if args.wait:
         # Server mode
-        print("READY", flush=True)
+        print(json.dumps({"type": "ready", "device": args.device}), flush=True)
         for line in sys.stdin:
-            input_path = Path(line.strip())
-            if not input_path or str(input_path) == "QUIT":
+            path_text = line.strip()
+            if path_text == "QUIT":
                 break
+            if not path_text:
+                continue
+            input_path = Path(path_text)
             
             try:
                 print(f"[Worker] Received path: {input_path}", file=sys.stderr, flush=True)
@@ -341,12 +347,10 @@ def main():
                 )
                 print(f"[Timer] Transcription took {result['duration_ms']}ms", file=sys.stderr)
                 print(f"[Worker] Done. Text length={len(result['text'])}", file=sys.stderr, flush=True)
-                print(result["text"], flush=True)
-                # Print separator for multiple requests if needed, 
-                # but currently we'll likely restart or use one-at-a-time
+                print(json.dumps({"type": "result", "text": result["text"]}, ensure_ascii=False), flush=True)
             except Exception as e:
                 print(f"Error: {e}", file=sys.stderr)
-                print("", flush=True) # Empty line for error
+                print(json.dumps({"type": "error", "message": str(e)}, ensure_ascii=False), flush=True)
     else:
         # One-off mode
         if not args.input:

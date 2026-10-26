@@ -4,11 +4,18 @@ Real-time streaming transcription with faster-whisper.
 Demonstrates how to transcribe audio as segments arrive.
 """
 import os
-os.environ['PATH'] = r"C:\Users\mykola\AppData\Roaming\Python\Python314\site-packages\nvidia\cublas\bin" + os.pathsep + os.environ['PATH']
+from pathlib import Path
+import site
+import time
+
+# Find CUDA libraries installed for the current Python interpreter.
+for packages_dir in [*site.getsitepackages(), site.getusersitepackages()]:
+    cuda_lib_path = Path(packages_dir) / "nvidia" / "cublas" / "bin"
+    if cuda_lib_path.is_dir():
+        os.environ['PATH'] = str(cuda_lib_path) + os.pathsep + os.environ.get('PATH', '')
+        break
 
 from faster_whisper import WhisperModel
-from pathlib import Path
-import time
 
 def stream_transcribe(audio_file: Path, model_size: str = "medium", device: str = "cuda"):
     """

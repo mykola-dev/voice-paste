@@ -2,5 +2,8 @@
   "hotkey": "ScrollLock",
   "pasteShortcut": "Ctrl+Shift+V",
   "model": "large-v3-turbo",
-  "device": "cuda"
+  "device": "cuda",
+  "keepInMemory": false,
+  "recordingAnimation": "levelBar",
+  "indicatorColor": "#FF8C00"
 }

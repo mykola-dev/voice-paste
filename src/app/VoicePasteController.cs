@@ -33,6 +33,8 @@ public class VoicePasteController : IDisposable
     private readonly GlobalHotkeyManager _hotkeyManager;
 
     private AppSettings _settings;
+    private AppSettings _transcriptionSettings;
+    private bool _disposed;
 
     private AppState _state = AppState.Idle;
     private string? _currentRecordingPath;
@@ -77,17 +79,13 @@ public class VoicePasteController : IDisposable
     public VoicePasteController(Window window, AppSettings settings)
     {
         _settings = SettingsManager.ValidateAndMigrate(settings);
+        _transcriptionSettings = _settings;
 
         _audioRecorder = new AudioRecorder();
         _audioRecorder.LevelChanged += (s, level) => AudioLevelChanged?.Invoke(this, level);
 
         _transcriptionService = CreateTranscriptionService(_settings);
-        _transcriptionService.CudaFallbackOccurred += (s, message) => 
-        {
-            Console.WriteLine($"[Controller] CUDA Fallback: {message}");
-            ErrorOccurred?.Invoke(this, message);
-        };
-        _transcriptionService.RestartWorker();
+        SubscribeToTranscriptionEvents();
         
         _clipboardPaster = CreateClipboardPaster(_settings);
 
@@ -95,6 +93,21 @@ public class VoicePasteController : IDisposable
         _hotkeyManager.HotkeyPressed += OnHotkeyPressed;
 
         RegisterConfiguredHotkey(_settings);
+    }
+
+    // Called after application UI and event subscriptions have been initialized.
+    public void Initialize()
+    {
+        if (_settings.KeepInMemory) _transcriptionService.StartPreloading();
+    }
+
+    public Task<WorkerMemoryUsage> GetMemoryUsageAsync(System.Threading.CancellationToken cancellationToken = default)
+        => _transcriptionService.GetMemoryUsageAsync(cancellationToken);
+
+    private void SubscribeToTranscriptionEvents()
+    {
+        _transcriptionService.CudaFallbackOccurred += (_, message) => ErrorOccurred?.Invoke(this, message);
+        _transcriptionService.PreloadingFailed += (_, message) => ErrorOccurred?.Invoke(this, $"Model loading failed: {message}");
     }
     
     /// <summary>
@@ -172,6 +185,7 @@ public class VoicePasteController : IDisposable
         catch (Exception ex)
         {
             Console.WriteLine($"[Controller] Failed to start recording: {ex.Message}");
+            ApplyIdleTranscriptionSettings();
             State = AppState.Idle;
             ErrorOccurred?.Invoke(this, ex.Message);
         }
@@ -245,7 +259,8 @@ public class VoicePasteController : IDisposable
         finally
         {
             await DeleteRecordingFileAsync(_currentRecordingPath);
-            
+
+            ApplyIdleTranscriptionSettings();
             State = AppState.Idle;
         }
     }
@@ -297,6 +312,7 @@ public class VoicePasteController : IDisposable
             }
         }
         
+        ApplyIdleTranscriptionSettings();
         State = AppState.Idle;
     }
     
@@ -311,13 +327,8 @@ public class VoicePasteController : IDisposable
         // Update paste behavior immediately (affects next paste);
         _clipboardPaster = CreateClipboardPaster(_settings);
 
-        // Transcription changes apply for next transcription.
-        _transcriptionService = CreateTranscriptionService(_settings);
-        _transcriptionService.CudaFallbackOccurred += (s, message) => 
-        {
-            Console.WriteLine($"[Controller] CUDA Fallback: {message}");
-            ErrorOccurred?.Invoke(this, message);
-        };
+        // Never replace a worker in the middle of recording/transcription.
+        if (State == AppState.Idle) ApplyIdleTranscriptionSettings();
 
         // Hotkey can be safely re-registered anytime.
         if (!string.Equals(old.Hotkey, _settings.Hotkey, StringComparison.OrdinalIgnoreCase))
@@ -325,6 +336,29 @@ public class VoicePasteController : IDisposable
             RegisterConfiguredHotkey(_settings);
         }
     }
+
+    private void ApplyIdleTranscriptionSettings()
+    {
+        if (_disposed) return;
+        if (RequiresWorkerReplacement(_transcriptionSettings, _settings))
+        {
+            _transcriptionService.Dispose();
+            _transcriptionService = CreateTranscriptionService(_settings);
+            SubscribeToTranscriptionEvents();
+        }
+        else
+        {
+            // Also releases a preloaded worker after a cancelled/failed recording.
+            _transcriptionService.SetKeepInMemory(_settings.KeepInMemory);
+        }
+        _transcriptionSettings = _settings;
+        if (_settings.KeepInMemory) _transcriptionService.StartPreloading();
+    }
+
+    internal static bool RequiresWorkerReplacement(AppSettings previous, AppSettings next) =>
+        previous.Model != next.Model || previous.Device != next.Device ||
+        previous.LanguageMode != next.LanguageMode || previous.BeamSize != next.BeamSize ||
+        previous.CustomInitialPrompt != next.CustomInitialPrompt || previous.EnableVad != next.EnableVad;
 
     private void RegisterConfiguredHotkey(AppSettings settings)
     {
@@ -356,7 +390,8 @@ public class VoicePasteController : IDisposable
             beamSize: settings.BeamSize,
             cudaAutoFallback: settings.Device == TranscriptionDevice.CudaAuto,
             initialPrompt: settings.CustomInitialPrompt,
-            enableVad: settings.EnableVad);
+            enableVad: settings.EnableVad,
+            keepInMemory: settings.KeepInMemory);
     }
 
     private static ClipboardPaster CreateClipboardPaster(AppSettings settings)
@@ -367,6 +402,8 @@ public class VoicePasteController : IDisposable
 
     public void Dispose()
     {
+        _disposed = true;
+        _transcriptionService.Dispose();
         _audioRecorder?.Dispose();
         _hotkeyManager?.Dispose();
     }

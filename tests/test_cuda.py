@@ -2,18 +2,21 @@
 Helper script to add CUDA libraries to PATH and test transcription.
 """
 import os
+from pathlib import Path
+import site
 import sys
 
-# Add CUDA libraries to PATH
-cuda_lib_path = r"C:\Users\mykola\AppData\Roaming\Python\Python314\site-packages\nvidia\cublas\bin"
-if os.path.exists(cuda_lib_path):
-    os.environ['PATH'] = cuda_lib_path + os.pathsep + os.environ['PATH']
-    print(f"Added to PATH: {cuda_lib_path}")
+# Find CUDA libraries installed for the current Python interpreter.
+for packages_dir in [*site.getsitepackages(), site.getusersitepackages()]:
+    cuda_lib_path = Path(packages_dir) / "nvidia" / "cublas" / "bin"
+    if cuda_lib_path.is_dir():
+        os.environ['PATH'] = str(cuda_lib_path) + os.pathsep + os.environ.get('PATH', '')
+        print(f"Added to PATH: {cuda_lib_path}")
+        break
 else:
-    print(f"WARNING: CUDA lib path not found: {cuda_lib_path}")
+    print("WARNING: CUDA libraries not found in Python site-packages")
 
 # Now import and run transcription
-from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src" / "transcribe"))
 
 from transcribe import transcribe_audio

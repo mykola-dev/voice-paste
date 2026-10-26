@@ -25,6 +25,12 @@ public enum PasteShortcut
     ShiftInsert
 }
 
+public enum RecordingAnimation
+{
+    LevelBar,
+    Waveform
+}
+
 public sealed record AppSettings
 {
     public int Version { get; init; } = 1;
@@ -40,6 +46,12 @@ public sealed record AppSettings
     public LanguageMode LanguageMode { get; init; } = LanguageMode.Auto;
 
     public bool EnableVad { get; init; } = false;
+
+    public bool KeepInMemory { get; init; } = false;
+
+    public RecordingAnimation RecordingAnimation { get; init; } = RecordingAnimation.LevelBar;
+
+    public string IndicatorColor { get; init; } = IndicatorColors.Default;
 
     public bool DebugLogging { get; init; } = false;
     

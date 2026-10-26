@@ -4,8 +4,11 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Threading;
+using System.Windows.Media;
 
 using VoicePaste.Overlay;
 using VoicePaste.Transcription;
@@ -17,6 +20,8 @@ public partial class SettingsWindow : Window
     private sealed record LanguageModeItem(LanguageMode Value, string Display, string Hint);
 
     private sealed record DeviceModeItem(TranscriptionDevice Value, string Display, string Hint);
+
+    private sealed record RecordingAnimationItem(RecordingAnimation Value, string Display);
 
     private void UpdateLanguageHint()
     {
@@ -32,16 +37,35 @@ public partial class SettingsWindow : Window
 
     private readonly SettingsManager _settingsManager;
     private AppSettings? _loadedSettings;
+    private readonly Func<CancellationToken, Task<WorkerMemoryUsage>>? _memoryProvider;
+    private readonly CancellationTokenSource _memoryCancellation = new();
+    private readonly DispatcherTimer _memoryTimer = new() { Interval = TimeSpan.FromSeconds(2) };
+    private bool _refreshingMemory;
+    private string _indicatorColor = IndicatorColors.Default;
 
-    public SettingsWindow(SettingsManager settingsManager, AppSettings current)
+    public SettingsWindow(SettingsManager settingsManager, AppSettings current,
+        Func<CancellationToken, Task<WorkerMemoryUsage>>? memoryProvider = null)
     {
         _settingsManager = settingsManager;
+        _memoryProvider = memoryProvider;
 
         InitializeComponent();
 
         PopulateCombos();
         LoadSettings(current);
         _loadedSettings = current;
+        _memoryTimer.Tick += OnMemoryTick;
+        Loaded += (_, _) =>
+        {
+            _memoryTimer.Start();
+            OnMemoryTick(this, EventArgs.Empty);
+        };
+        Closed += (_, _) =>
+        {
+            _memoryTimer.Stop();
+            _memoryTimer.Tick -= OnMemoryTick;
+            _memoryCancellation.Cancel();
+        };
 
         Width = current.SettingsWindowWidth;
         Height = current.SettingsWindowHeight;
@@ -70,6 +94,33 @@ public partial class SettingsWindow : Window
 
     public AppSettings? SavedSettings { get; private set; }
 
+    private async void OnMemoryTick(object? sender, EventArgs e)
+    {
+        if (_refreshingMemory || _memoryCancellation.IsCancellationRequested || _memoryProvider == null) return;
+        _refreshingMemory = true;
+        try
+        {
+            var usage = await _memoryProvider(_memoryCancellation.Token);
+            if (!_memoryCancellation.IsCancellationRequested) MemoryUsageText.Text = FormatMemoryUsage(usage);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            if (!_memoryCancellation.IsCancellationRequested) MemoryUsageText.Text = "Memory usage unavailable";
+            Console.WriteLine($"[Settings] Memory query failed: {ex.Message}");
+        }
+        finally { _refreshingMemory = false; }
+    }
+
+    internal static string FormatMemoryUsage(WorkerMemoryUsage usage)
+    {
+        if (usage.ProcessId == null) return "Model not loaded";
+        static string Bytes(long? bytes) => bytes is long value ? $"{value / (1024d * 1024):N0} MiB" : "unavailable";
+        var text = $"{usage.Model} ({usage.Device?.ToUpperInvariant()}{(usage.IsReady ? "" : ", loading")}): RAM {Bytes(usage.RamBytes)}";
+        return usage.Device == "cuda" && usage.VramBytes.HasValue
+            ? $"{text} · VRAM {Bytes(usage.VramBytes)}" : text;
+    }
+
     private void PopulateCombos()
     {
         HotkeyCombo.ItemsSource = new List<string>
@@ -82,6 +133,13 @@ public partial class SettingsWindow : Window
         };
 
         PasteShortcutCombo.ItemsSource = Enum.GetValues(typeof(PasteShortcut)).Cast<PasteShortcut>();
+        RecordingAnimationCombo.ItemsSource = new[]
+        {
+            new RecordingAnimationItem(RecordingAnimation.LevelBar, "Level bar"),
+            new RecordingAnimationItem(RecordingAnimation.Waveform, "Waveform")
+        };
+        RecordingAnimationCombo.DisplayMemberPath = nameof(RecordingAnimationItem.Display);
+        RecordingAnimationCombo.SelectedValuePath = nameof(RecordingAnimationItem.Value);
         ModelCombo.ItemsSource = AppSettings.ValidModels;
         DeviceCombo.ItemsSource = new List<DeviceModeItem>
         {
@@ -119,12 +177,35 @@ public partial class SettingsWindow : Window
         LanguageCombo.SelectedValue = settings.LanguageMode;
         BeamSizeSlider.Value = settings.BeamSize;
         VadCheck.IsChecked = settings.EnableVad;
+        KeepInMemoryCheck.IsChecked = settings.KeepInMemory;
+        RecordingAnimationCombo.SelectedValue = settings.RecordingAnimation;
+        SetIndicatorColorSelection(settings.IndicatorColor);
 
         CustomPromptText.Text = settings.CustomInitialPrompt;
         DebugLoggingCheck.IsChecked = settings.DebugLogging;
     }
 
     private sealed record UiState(bool Enabled, string Status);
+
+    internal void SetIndicatorColorSelection(string color)
+    {
+        _indicatorColor = IndicatorColors.Normalize(color);
+        IndicatorColorSwatch.Background = new SolidColorBrush(IndicatorColors.Parse(_indicatorColor));
+        IndicatorColorText.Text = _indicatorColor;
+    }
+
+    private void ChooseIndicatorColor_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (NativeColorPicker.TryChoose(this, IndicatorColors.Parse(_indicatorColor), out var selected))
+                SetIndicatorColorSelection(IndicatorColors.ToHex(selected));
+        }
+        catch (Exception ex) { ErrorText.Text = ex.Message; }
+    }
+
+    private void ResetIndicatorColor_Click(object sender, RoutedEventArgs e)
+        => SetIndicatorColorSelection(IndicatorColors.Default);
 
     private async Task InstallVadDependenciesAsync()
     {
@@ -218,6 +299,30 @@ public partial class SettingsWindow : Window
             ErrorText.Text = prior.Status;
     }
 
+    internal AppSettings GetSettingsFromUi()
+    {
+        return new AppSettings
+        {
+            Version = 1,
+            Hotkey = (HotkeyCombo.SelectedItem as string) ?? "ScrollLock",
+            PasteShortcut = (PasteShortcut)(PasteShortcutCombo.SelectedItem ?? PasteShortcut.CtrlShiftV),
+            Model = (ModelCombo.SelectedItem as string) ?? "large-v3-turbo",
+            Device = (TranscriptionDevice)(DeviceCombo.SelectedValue ?? TranscriptionDevice.CudaAuto),
+            LanguageMode = (LanguageMode)(LanguageCombo.SelectedValue ?? LanguageMode.Auto),
+            BeamSize = (int)BeamSizeSlider.Value,
+            EnableVad = VadCheck.IsChecked == true,
+            KeepInMemory = KeepInMemoryCheck.IsChecked == true,
+            RecordingAnimation = (RecordingAnimation)(RecordingAnimationCombo.SelectedValue ?? RecordingAnimation.LevelBar),
+            IndicatorColor = _indicatorColor,
+            CustomInitialPrompt = CustomPromptText.Text,
+            DebugLogging = DebugLoggingCheck.IsChecked == true,
+            SettingsWindowWidth = Width,
+            SettingsWindowHeight = Height,
+            SettingsWindowLeft = Left,
+            SettingsWindowTop = Top
+        };
+    }
+
     private async void Save_Click(object sender, RoutedEventArgs e)
     {
         ErrorText.Text = string.Empty;
@@ -229,27 +334,7 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        var selectedModel = (ModelCombo.SelectedItem as string) ?? "large-v3-turbo";
-
-        var settings = new AppSettings
-        {
-            Version = 1,
-            Hotkey = hotkey,
-            PasteShortcut = (PasteShortcut)(PasteShortcutCombo.SelectedItem ?? PasteShortcut.CtrlShiftV),
-            Model = selectedModel,
-            Device = (TranscriptionDevice)(DeviceCombo.SelectedValue ?? TranscriptionDevice.CudaAuto),
-            LanguageMode = (LanguageMode)(LanguageCombo.SelectedValue ?? LanguageMode.Auto),
-            BeamSize = (int)BeamSizeSlider.Value,
-            EnableVad = VadCheck.IsChecked == true,
-            CustomInitialPrompt = CustomPromptText.Text,
-            DebugLogging = DebugLoggingCheck.IsChecked == true,
-            SettingsWindowWidth = Width,
-            SettingsWindowHeight = Height,
-            SettingsWindowLeft = Left,
-            SettingsWindowTop = Top
-        };
-
-        settings = SettingsManager.ValidateAndMigrate(settings);
+        var settings = SettingsManager.ValidateAndMigrate(GetSettingsFromUi());
 
         var prior = SetUiBusy("Saving...");
 

@@ -1,8 +1,11 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Threading;
+using VoicePaste.Settings;
 
 namespace VoicePaste.Overlay;
 
@@ -12,6 +15,12 @@ namespace VoicePaste.Overlay;
 public partial class RecordingOverlay : Window
 {
     private readonly DispatcherTimer _timer;
+    private bool _renderingAudio;
+    private TimeSpan? _lastRenderingTime;
+    private readonly LevelMeterSmoother _levelSmoother = new();
+    private float _latestAudioLevel;
+    private float _pendingAudioPeak;
+    private RecordingAnimation _recordingAnimation;
     private DateTime _recordingStartTime;
     private bool _isRecording;
 
@@ -34,6 +43,29 @@ public partial class RecordingOverlay : Window
         _timer.Tick += Timer_Tick;
     }
 
+    public void SetRecordingAnimation(RecordingAnimation animation)
+    {
+        animation = Enum.IsDefined(animation) ? animation : RecordingAnimation.LevelBar;
+        if (_recordingAnimation == animation) return;
+        _recordingAnimation = animation;
+        AudioLevelMeter.Visibility = animation == RecordingAnimation.LevelBar ? Visibility.Visible : Visibility.Collapsed;
+        VoiceWaveform.Visibility = animation == RecordingAnimation.Waveform ? Visibility.Visible : Visibility.Collapsed;
+        _levelSmoother.Reset();
+        AudioLevelScale.ScaleX = 0;
+        VoiceWaveform.Reset();
+    }
+
+    public void SetIndicatorColor(string color)
+    {
+        var selected = IndicatorColors.Parse(color);
+        var brush = new SolidColorBrush(selected);
+        brush.Freeze();
+        AudioLevelBar.Fill = brush;
+        VoiceWaveform.SetColor(selected);
+        foreach (var bar in new[] { SpinnerBar1, SpinnerBar2, SpinnerBar3, SpinnerBar4, SpinnerBar5 })
+            bar.Fill = brush;
+    }
+
     private void PositionWindow()
     {
         // Position at top-right corner with some margin
@@ -52,13 +84,14 @@ public partial class RecordingOverlay : Window
         
         // Hide transcribing UI and show recording UI
         TranscribingOverlay.Visibility = Visibility.Collapsed;
-        RecordingIndicator.Visibility = Visibility.Visible;
-        StateText.Visibility = Visibility.Visible;
-        TimerText.Visibility = Visibility.Visible;
-        AudioLevelMeter.Visibility = Visibility.Visible;
+        RecordingContent.Visibility = Visibility.Visible;
         StateText.Text = "Recording";
 
-        
+        ResetAudioLevel();
+        _lastRenderingTime = null;
+        _renderingAudio = true;
+        CompositionTarget.Rendering += RenderAudio;
+
         _timer.Start();
         Show();
     }
@@ -70,12 +103,10 @@ public partial class RecordingOverlay : Window
     {
         _isRecording = false;
         _timer.Stop();
+        ResetAudioLevel();
         
         // Hide recording UI
-        RecordingIndicator.Visibility = Visibility.Collapsed;
-        StateText.Visibility = Visibility.Collapsed;
-        TimerText.Visibility = Visibility.Collapsed;
-        AudioLevelMeter.Visibility = Visibility.Collapsed;
+        RecordingContent.Visibility = Visibility.Collapsed;
         
         // Show transcribing UI
         TranscribingOverlay.Visibility = Visibility.Visible;
@@ -93,12 +124,10 @@ public partial class RecordingOverlay : Window
     {
         _isRecording = false;
         _timer.Stop();
+        ResetAudioLevel();
         
         // Hide recording UI
-        RecordingIndicator.Visibility = Visibility.Collapsed;
-        StateText.Visibility = Visibility.Collapsed;
-        TimerText.Visibility = Visibility.Collapsed;
-        AudioLevelMeter.Visibility = Visibility.Collapsed;
+        RecordingContent.Visibility = Visibility.Collapsed;
         
         // Show downloading UI (reuse transcribing overlay)
         TranscribingOverlay.Visibility = Visibility.Visible;
@@ -116,6 +145,7 @@ public partial class RecordingOverlay : Window
     {
         _isRecording = false;
         _timer.Stop();
+        ResetAudioLevel();
         base.Hide();
     }
 
@@ -153,21 +183,54 @@ public partial class RecordingOverlay : Window
     /// </summary>
     public void UpdateAudioLevel(float level)
     {
-        if (!_isRecording) return;
-
-        Dispatcher.Invoke(() =>
+        // Capture callbacks must not wait for the UI thread or queue a render for every sample.
+        level = float.IsFinite(level) ? Math.Clamp(level, 0, 1) : 0;
+        Volatile.Write(ref _latestAudioLevel, level);
+        // Preserve short peaks between render frames, including when the UI briefly stalls.
+        var peak = Volatile.Read(ref _pendingAudioPeak);
+        while (level > peak)
         {
-            // Clamp level between 0 and 1
-            level = Math.Clamp(level, 0f, 1f);
-            
-            // Update progress bar width
-            if (AudioLevelBar.Parent is System.Windows.Controls.Border border)
-            {
-                var maxWidth = Math.Max(0, border.ActualWidth - 2);
-                var newWidth = Math.Max(0, level * maxWidth);
-                AudioLevelBar.Width = newWidth;
-            }
-        });
+            var previous = Interlocked.CompareExchange(ref _pendingAudioPeak, level, peak);
+            if (previous == peak) break;
+            peak = previous;
+        }
+    }
+
+    private void RenderAudio(object? sender, EventArgs e)
+    {
+        if (!_isRecording) return;
+        // WPF can raise Rendering more than once for the same frame during layout updates.
+        var renderingTime = ((RenderingEventArgs)e).RenderingTime;
+        if (_lastRenderingTime == renderingTime) return;
+        // Advance by the presentation clock, not by jitter in when the UI callback happens to run.
+        var elapsed = _lastRenderingTime.HasValue ? renderingTime - _lastRenderingTime.Value : TimeSpan.Zero;
+        _lastRenderingTime = renderingTime;
+        RenderAudioFrame(elapsed);
+    }
+
+    internal void RenderAudioFrame(TimeSpan elapsed)
+    {
+        var input = Math.Max(Volatile.Read(ref _latestAudioLevel), Interlocked.Exchange(ref _pendingAudioPeak, 0));
+        var level = _levelSmoother.Update(input, elapsed);
+        if (_recordingAnimation == RecordingAnimation.Waveform)
+            VoiceWaveform.Update(level, elapsed);
+        else
+            AudioLevelScale.ScaleX = level;
+    }
+
+    private void ResetAudioLevel()
+    {
+        if (_renderingAudio)
+        {
+            CompositionTarget.Rendering -= RenderAudio;
+            _renderingAudio = false;
+        }
+        _lastRenderingTime = null;
+        Volatile.Write(ref _latestAudioLevel, 0);
+        Interlocked.Exchange(ref _pendingAudioPeak, 0);
+        _levelSmoother.Reset();
+        AudioLevelScale.ScaleX = 0;
+        VoiceWaveform.Reset();
     }
 
     private void Timer_Tick(object? sender, EventArgs e)

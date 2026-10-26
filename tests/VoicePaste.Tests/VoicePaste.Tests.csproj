@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\app\VoicePaste.csproj" />
+    <None Update="Fixtures\fake_worker.py" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

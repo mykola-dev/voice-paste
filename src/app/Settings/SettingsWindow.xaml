@@ -24,6 +24,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold" Text="VoicePaste Settings" />
@@ -54,6 +55,7 @@
                 <GroupBox Grid.Row="3" Header="Transcription" Margin="0,12,0,0">
                     <Grid Margin="10">
                         <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
@@ -92,6 +94,13 @@
                             <CheckBox x:Name="VadCheck" Content="Enable VAD (requires extra dependencies)" />
                             <TextBlock Text="Improves results by trimming silence; may increase download size." Margin="0,6,0,0" Foreground="#666" TextWrapping="Wrap" />
                         </StackPanel>
+                        <StackPanel Grid.Row="5" Grid.ColumnSpan="2" Margin="0,12,0,0">
+                            <CheckBox x:Name="KeepInMemoryCheck" Content="Keep in memory"
+                                      ToolTip="Keeps the selected model loaded between recordings. Uses RAM/VRAM while idle." />
+                            <TextBlock x:Name="MemoryUsageText" Margin="0,6,0,0" Foreground="#666" TextWrapping="Wrap"
+                                       Text="Model not loaded"
+                                       ToolTip="Live memory of the running transcription worker, including Python, model and buffers. RAM is the resident working set. VRAM is shown only when the driver provides a per-process measurement. Changes to the model apply after Save." />
+                        </StackPanel>
                     </Grid>
                 </GroupBox>
 
@@ -121,7 +130,34 @@
                     </Grid>
                 </GroupBox>
 
-                <GroupBox Grid.Row="5" Header="Logging" Margin="0,12,0,0">
+                <GroupBox Grid.Row="5" Header="Overlay" Margin="0,12,0,0">
+                    <Grid Margin="10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center" Text="Recording animation:" />
+                        <StackPanel Grid.Column="1">
+                            <ComboBox x:Name="RecordingAnimationCombo" MinWidth="240" />
+                            <TextBlock Text="Level bar or scrolling voice waveform. Does not affect transcription."
+                                       Margin="0,6,0,0" Foreground="#666" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="Indicator color:" Margin="0,12,0,0" />
+                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,12,0,0">
+                            <Border x:Name="IndicatorColorSwatch" Width="24" Height="22" BorderBrush="#888"
+                                    BorderThickness="1" CornerRadius="3" VerticalAlignment="Center" />
+                            <TextBlock x:Name="IndicatorColorText" Width="72" Margin="8,0,0,0" VerticalAlignment="Center" />
+                            <Button Content="Choose..." Padding="8,3" Click="ChooseIndicatorColor_Click" />
+                            <Button Content="Reset" Padding="8,3" Margin="8,0,0,0" Click="ResetIndicatorColor_Click" />
+                        </StackPanel>
+                    </Grid>
+                </GroupBox>
+
+                <GroupBox Grid.Row="6" Header="Logging" Margin="0,12,0,0">
                     <Grid Margin="10">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
@@ -132,7 +168,7 @@
                     </Grid>
                 </GroupBox>
 
-                <TextBlock Grid.Row="6" x:Name="ErrorText" Foreground="#B00020" Margin="0,12,0,0" TextWrapping="Wrap" />
+                <TextBlock Grid.Row="7" x:Name="ErrorText" Foreground="#B00020" Margin="0,12,0,0" TextWrapping="Wrap" />
             </Grid>
         </ScrollViewer>
 

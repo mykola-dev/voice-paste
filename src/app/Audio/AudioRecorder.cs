@@ -57,7 +57,7 @@ public class AudioRecorder : IDisposable
             _waveIn = new WaveInEvent
             {
                 WaveFormat = new WaveFormat(SampleRate, BitsPerSample, Channels),
-                BufferMilliseconds = 100  // 100ms buffer for responsive level meter
+                BufferMilliseconds = 30  // Shorter metering latency; recorded PCM format is unchanged
             };
             
             // Log microphone info

@@ -91,7 +91,10 @@ public partial class App : Application
             // Initialize overlay
             Log("Creating overlay...");
             _overlay = new RecordingOverlay();
+            _overlay.SetRecordingAnimation(_settings.RecordingAnimation);
+            _overlay.SetIndicatorColor(_settings.IndicatorColor);
             Log("Overlay created");
+            _controller.Initialize();
         }
         catch (Exception ex)
         {
@@ -144,7 +147,8 @@ public partial class App : Application
     private void OnErrorOccurred(object? sender, string message)
     {
         Log($"ERROR: {message}");
-        MessageBox.Show(message, "VoicePaste Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        Dispatcher.BeginInvoke(new Action(() =>
+            MessageBox.Show(message, "VoicePaste Error", MessageBoxButton.OK, MessageBoxImage.Error)));
     }
     
     
@@ -188,7 +192,8 @@ public partial class App : Application
                 return;
             }
 
-            var dialog = new SettingsWindow(_settingsManager, _settings)
+            var dialog = new SettingsWindow(_settingsManager, _settings,
+                token => _controller?.GetMemoryUsageAsync(token) ?? Task.FromResult(WorkerMemoryUsage.NotLoaded))
             {
                 Owner = MainWindow
             };
@@ -224,6 +229,8 @@ public partial class App : Application
 
         try
         {
+            _overlay?.SetRecordingAnimation(_settings.RecordingAnimation);
+            _overlay?.SetIndicatorColor(_settings.IndicatorColor);
             _controller?.UpdateSettings(_settings);
         }
         catch (Exception ex)
