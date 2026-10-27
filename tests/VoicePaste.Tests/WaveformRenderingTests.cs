@@ -30,10 +30,13 @@ public class WaveformRenderingTests
                     return pixels;
                 }
                 static byte Alpha(byte[] pixels, int x, int y) => pixels[(y * 280 + x) * 4 + 3];
+                static int ColumnAlpha(byte[] pixels, int x)
+                    => Enumerable.Range(0, 20).Sum(y => Alpha(pixels, x, y));
 
                 var silent = Render();
                 Assert.Equal(0, Alpha(silent, 275, 1));
-                Assert.InRange(Alpha(silent, 275, 10), 120, 129); // 50% baseline, including edge downsampling.
+                Assert.True(Alpha(silent, 275, 10) > 0);
+                Assert.InRange(ColumnAlpha(silent, 275), 116, 140); // One DIP at 50%, allowing WPF resampling coverage.
                 wave.Update(0.25, TimeSpan.Zero);
                 var boosted = Render();
                 Assert.True(Alpha(boosted, 279, 5) > 0); // 2x gain and immediate response at the live edge.
@@ -68,12 +71,12 @@ public class WaveformRenderingTests
                 wave.Update(0, TimeSpan.FromMilliseconds(60));
                 wave.Update(0, TimeSpan.FromMilliseconds(60));
                 var before = Render();
-                Assert.InRange(Alpha(before, 259, 10), 228, 231); // 80% displayed amplitude => 90% opacity.
-                Assert.InRange(Alpha(before, 200, 10), 120, 129); // Quiet history stays translucent.
+                Assert.InRange(Alpha(before, 259, 10), 238, 242); // 80% displayed level => ~94% local opacity.
+                Assert.Equal(ColumnAlpha(silent, 200), ColumnAlpha(before, 200));
                 wave.Update(0, TimeSpan.FromMilliseconds(16));
                 var after = Render();
-                Assert.InRange(Alpha(after, 256, 10), 228, 231); // Opacity travels with the pulse.
-                Assert.InRange(Alpha(after, 279, 10), 120, 129); // Live silence does not dim older peaks.
+                Assert.InRange(Alpha(after, 256, 10), 238, 242); // Local opacity travels with the pulse.
+                Assert.Equal(ColumnAlpha(silent, 279), ColumnAlpha(after, 279));
                 static (double X, double Area) PulseCenter(byte[] pixels)
                 {
                     double area = 0, moment = 0;
@@ -95,17 +98,25 @@ public class WaveformRenderingTests
                 Assert.True(filled.Length > 3);
                 Assert.Equal(Enumerable.Range(filled.First(), filled.Last() - filled.First() + 1), filled);
 
+                // Live loudness must no longer change older fragments' opacity or the silent baseline.
+                wave.Update(1, TimeSpan.Zero);
+                var loudLiveEdge = Render();
+                Assert.Equal(Alpha(after, 256, 10), Alpha(loudLiveEdge, 256, 10));
+                Assert.Equal(ColumnAlpha(after, 200), ColumnAlpha(loudLiveEdge, 200));
+                wave.Update(0, TimeSpan.Zero);
+                Assert.Equal(after, Render());
+
                 wave.Reset();
                 wave.SetColor(Color.FromRgb(12, 34, 56));
                 for (var i = 0; i < 150; i++) wave.Update(0.25, TimeSpan.FromSeconds(1d / 60));
                 var medium = Render();
                 for (var x = 0; x < 280; x++)
                 {
-                    Assert.InRange(Alpha(medium, x, 10), 190, 192); // Half height => 75% opacity.
+                    Assert.InRange(Alpha(medium, x, 10), 197, 199); // Half height: local opacity is ~78%.
                     var pixel = (10 * 280 + x) * 4;
                     // Premultiplied RGB must retain the chosen color, not a second gradient color.
-                    Assert.InRange(medium[pixel], 41, 43);
-                    Assert.InRange(medium[pixel + 1], 25, 26);
+                    Assert.InRange(medium[pixel], 42, 44);
+                    Assert.InRange(medium[pixel + 1], 25, 27);
                     Assert.Equal(9, medium[pixel + 2]);
                 }
                 for (var i = 0; i < 150; i++) wave.Update(1, TimeSpan.FromSeconds(1d / 60));

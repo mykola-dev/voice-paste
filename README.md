@@ -63,10 +63,16 @@ cd voice-agent
 # Debug build + run
 ./dev-debug.bat
 
-# Or create portable build
+# Or update the portable build and launch it automatically
 ./build-portable.bat
 # Output: build/VoicePaste-Portable/VoicePaste.exe
 ```
+
+`build-portable.bat` stops the VoicePaste instance running from the target output folder
+(including its worker processes), updates the portable files, then starts the new executable.
+This interrupts any active dictation. Other installations/debug instances are left alone.
+If publishing or dependency setup fails, the app is not started. Use `-NoLaunch` for a build
+without the final launch; this option still stops the target instance before updating it.
 
 ---
 
@@ -77,6 +83,9 @@ cd voice-agent
 3. **Speak naturally** with pauses—recording continues! 🎙️
 4. **Press** <kbd>ScrollLock</kbd> again to stop and transcribe ⏹️
 5. **Text auto-pastes** into your currently focused window 📋
+
+Changed your mind while recording? Press **Esc** to discard the audio without transcription or
+pasting. That Esc press is consumed; outside recording, Esc works normally.
 
 ### ⚙️ Configuration
 

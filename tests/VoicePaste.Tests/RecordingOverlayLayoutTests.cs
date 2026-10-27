@@ -37,11 +37,20 @@ public class RecordingOverlayLayoutTests
                 border.UpdateLayout();
                 var recording = Assert.IsType<Grid>(overlay.FindName("RecordingContent"));
                 var header = Assert.IsType<StackPanel>(overlay.FindName("RecordingHeader"));
+                Assert.Equal(2, header.Children.Count);
+                var dot = Assert.IsType<System.Windows.Shapes.Ellipse>(header.Children[0]);
+                Assert.Equal(Colors.Red, Assert.IsType<SolidColorBrush>(dot.Fill).Color);
+                var timer = Assert.IsType<TextBlock>(header.Children[1]);
+                Assert.Equal("00:00", timer.Text);
+                Assert.Equal(new Thickness(0), timer.Margin);
+                Assert.Null(overlay.FindName("StateText"));
                 Assert.InRange(header.DesiredSize.Width, 1, grid.ActualWidth);
                 var visualizer = Assert.IsType<Grid>(overlay.FindName("RecordingVisualization"));
                 Assert.InRange(header.DesiredSize.Height + visualizer.DesiredSize.Height, 1, grid.ActualHeight);
                 var bar = Assert.IsType<Border>(overlay.FindName("AudioLevelMeter"));
                 var wave = Assert.IsType<WaveformMeter>(overlay.FindName("VoiceWaveform"));
+                Assert.Null(wave.OpacityMask);
+                Assert.Null(bar.OpacityMask);
                 Assert.InRange(visualizer.TranslatePoint(new Point(), border).Y -
                     header.TranslatePoint(new Point(0, header.ActualHeight), border).Y, 11.99, 12.01);
                 Assert.True(visualizer.TranslatePoint(new Point(0, visualizer.ActualHeight), border).Y <= overlay.Height - 16);
@@ -49,8 +58,14 @@ public class RecordingOverlayLayoutTests
                 Assert.Equal(animation == RecordingAnimation.Waveform ? Visibility.Visible : Visibility.Collapsed, wave.Visibility);
                 if (animation == RecordingAnimation.Waveform)
                 {
-                    Assert.InRange(wave.ActualWidth, 1, grid.ActualWidth);
+                    Assert.Equal(overlay.Width, wave.ActualWidth, 5);
+                    Assert.Equal(0, wave.TranslatePoint(new Point(), border).X, 5);
                     Assert.Equal(30, wave.ActualHeight);
+                }
+                else
+                {
+                    Assert.Equal(17, bar.TranslatePoint(new Point(), border).X, 5);
+                    Assert.Equal(overlay.Width - 34, bar.ActualWidth, 5);
                 }
 
                 var color = Color.FromRgb(26, 159, 232);
@@ -59,8 +74,9 @@ public class RecordingOverlayLayoutTests
 
                 for (var i = 0; i < 150; i++)
                 {
-                    overlay.UpdateAudioLevel((float)(0.02 + 0.12 * Math.Abs(Math.Sin(i * 0.12)) * Math.Abs(Math.Sin(i * 0.037))));
-                    overlay.RenderAudioFrame(TimeSpan.FromSeconds(1d / 60));
+                    var timestamp = TimeSpan.FromSeconds((i + 1) / 60d);
+                    overlay.UpdateAudioLevel((float)(0.02 + 0.12 * Math.Abs(Math.Sin(i * 0.12)) * Math.Abs(Math.Sin(i * 0.037))), timestamp);
+                    overlay.RenderAudioFrame(TimeSpan.FromSeconds(1d / 60), timestamp);
                 }
                 border.UpdateLayout();
                 SavePreview(border, overlay.Width, overlay.Height, $"{animation}-recording");
@@ -68,6 +84,9 @@ public class RecordingOverlayLayoutTests
 
                 // Exercise actual rendering and mode switching without showing a window or recording audio.
                 overlay.SetRecordingAnimation(RecordingAnimation.LevelBar);
+                border.UpdateLayout();
+                Assert.Equal(17, bar.TranslatePoint(new Point(), border).X, 5);
+                Assert.Equal(overlay.Width - 34, bar.ActualWidth, 5);
                 var scale = Assert.IsType<ScaleTransform>(overlay.FindName("AudioLevelScale"));
                 overlay.UpdateAudioLevel(0.1f);
                 overlay.UpdateAudioLevel(0); // A short peak between frames must not be lost.
@@ -80,6 +99,9 @@ public class RecordingOverlayLayoutTests
                 overlay.SetRecordingAnimation(RecordingAnimation.Waveform);
                 Assert.Equal(Visibility.Visible, wave.Visibility);
                 Assert.Equal(Visibility.Collapsed, bar.Visibility);
+                border.UpdateLayout();
+                Assert.Equal(0, wave.TranslatePoint(new Point(), border).X, 5);
+                Assert.Equal(overlay.Width, wave.ActualWidth, 5);
 
                 var transcribing = Assert.IsType<Grid>(overlay.FindName("TranscribingOverlay"));
                 transcribing.Visibility = Visibility.Visible;

@@ -22,7 +22,12 @@ if "%PS_ARGS%"=="" (
 echo ========================================
 echo.
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0build-portable.ps1" %PS_ARGS% %*
+REM Sysnative bypasses System32 redirection when this batch is launched by a 32-bit program.
+set "POWERSHELL_EXE=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+if exist "%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe" (
+  set "POWERSHELL_EXE=%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+)
+"%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0build-portable.ps1" %PS_ARGS% %*
 
 if errorlevel 1 (
   echo.
@@ -32,5 +37,5 @@ if errorlevel 1 (
 )
 echo.
 
-echo Done. See build output above for the run path.
+echo Done. VoicePaste starts automatically unless -NoLaunch was specified.
 if "%~1"=="" pause

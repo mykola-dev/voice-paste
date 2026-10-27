@@ -93,6 +93,8 @@ public partial class App : Application
             _overlay = new RecordingOverlay();
             _overlay.SetRecordingAnimation(_settings.RecordingAnimation);
             _overlay.SetIndicatorColor(_settings.IndicatorColor);
+            if (Environment.GetEnvironmentVariable("VOICEPASTE_FRAME_DIAGNOSTICS") != "0")
+                Log($"Overlay frame diagnostics: {_overlay.EnableFrameDiagnostics()}");
             Log("Overlay created");
             _controller.Initialize();
         }
@@ -219,6 +221,8 @@ public partial class App : Application
         Log("Application exiting...");
         _trayIcon?.Dispose();
         _controller?.Dispose();
+        // Only application exit waits briefly for the background log; recording never does.
+        _overlay?.CompleteFrameDiagnostics().Wait(TimeSpan.FromSeconds(1));
         Log("=== VoicePaste Stopped ===");
         base.OnExit(e);
     }

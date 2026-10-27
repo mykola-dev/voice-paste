@@ -64,14 +64,15 @@ public class WaveformHistoryTests
     }
 
     [Fact]
-    public void History_RetainsOneOffscreenPredecessorAndExpiresOldPeaks()
+    public void History_RetainsTwoOffscreenPredecessorsAndExpiresOldPeaks()
     {
         var history = new WaveformHistory();
         history.Update(1, TimeSpan.Zero);
         for (var i = 0; i < 1000; i++) history.Update(0, TimeSpan.FromSeconds(1d / 60));
-        Assert.InRange(history.Count, 97, 101);
+        Assert.InRange(history.Count, 98, 102);
         Assert.True(history.GetSample(0).AgeSeconds >= WaveformHistory.VisibleSeconds);
-        Assert.True(history.GetSample(1).AgeSeconds < WaveformHistory.VisibleSeconds);
+        Assert.True(history.GetSample(1).AgeSeconds >= WaveformHistory.VisibleSeconds);
+        Assert.True(history.GetSample(2).AgeSeconds < WaveformHistory.VisibleSeconds);
         Assert.All(Enumerable.Range(0, history.Count), i => Assert.Equal(0, history.GetSample(i).Level));
     }
 

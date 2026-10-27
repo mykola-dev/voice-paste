@@ -31,6 +31,7 @@ public class VoicePasteController : IDisposable
     private TranscriptionService _transcriptionService;
     private ClipboardPaster _clipboardPaster;
     private readonly GlobalHotkeyManager _hotkeyManager;
+    private readonly RecordingCancelHotkey _cancelHotkey;
 
     private AppSettings _settings;
     private AppSettings _transcriptionSettings;
@@ -70,6 +71,7 @@ public class VoicePasteController : IDisposable
         {
             if (_state != value)
             {
+                _cancelHotkey.SetRecording(value == AppState.Recording);
                 _state = value;
                 StateChanged?.Invoke(this, _state);
             }
@@ -91,6 +93,9 @@ public class VoicePasteController : IDisposable
 
         _hotkeyManager = new GlobalHotkeyManager(window);
         _hotkeyManager.HotkeyPressed += OnHotkeyPressed;
+
+        _cancelHotkey = new RecordingCancelHotkey(window.Dispatcher);
+        _cancelHotkey.CancelRequested += OnCancelRequested;
 
         RegisterConfiguredHotkey(_settings);
     }
@@ -156,6 +161,24 @@ public class VoicePasteController : IDisposable
     }
     
     /// <summary>
+    /// Handle Escape cancellation outside the low-level keyboard callback.
+    /// </summary>
+    private void OnCancelRequested(object? sender, EventArgs e)
+    {
+        if (_disposed || State != AppState.Recording) return;
+        try
+        {
+            Console.WriteLine("[Controller] Escape pressed - discarding recording");
+            CancelRecording();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("Controller", "Failed to cancel recording", ex);
+            ErrorOccurred?.Invoke(this, $"Failed to cancel recording: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Start audio recording.
     /// </summary>
     public void StartRecording()
@@ -172,7 +195,6 @@ public class VoicePasteController : IDisposable
         Console.WriteLine($"[Controller] Captured focus window: {_focusedWindowBeforeRecording}");
         
         Console.WriteLine("[Controller] Starting recording...");
-        State = AppState.Recording;
         
         try
         {
@@ -180,13 +202,19 @@ public class VoicePasteController : IDisposable
             _transcriptionService.StartPreloading();
             
             _audioRecorder.StartRecording();
+            // Publish the recording state only once cancellation can actually stop the mic.
+            // Showing the overlay can pump messages, including a queued Escape cancellation.
+            State = AppState.Recording;
             Console.WriteLine("[Controller] Recording started");
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[Controller] Failed to start recording: {ex.Message}");
-            ApplyIdleTranscriptionSettings();
-            State = AppState.Idle;
+            try { DiscardAudioRecording(); }
+            catch (Exception cleanupError) { Logger.Warning("Controller", $"Recording cleanup failed: {cleanupError.Message}"); }
+            _focusedWindowBeforeRecording = IntPtr.Zero;
+            try { ApplyIdleTranscriptionSettings(); }
+            finally { State = AppState.Idle; }
             ErrorOccurred?.Invoke(this, ex.Message);
         }
     }
@@ -295,25 +323,41 @@ public class VoicePasteController : IDisposable
     {
         if (State != AppState.Recording)
             return;
-        
-        // Stop recording
-        _currentRecordingPath = _audioRecorder.StopRecording();
-        
-        // Clean up temp file
-        if (_currentRecordingPath != null && System.IO.File.Exists(_currentRecordingPath))
+
+        try
         {
-            try
-            {
-                System.IO.File.Delete(_currentRecordingPath);
-            }
-            catch
-            {
-                // Ignore cleanup errors
-            }
+            // Stop and discard without ever invoking transcription or clipboard/paste.
+            DiscardAudioRecording();
         }
-        
-        ApplyIdleTranscriptionSettings();
-        State = AppState.Idle;
+        finally
+        {
+            _currentRecordingPath = null;
+            _focusedWindowBeforeRecording = IntPtr.Zero;
+            try { ApplyIdleTranscriptionSettings(); }
+            finally { State = AppState.Idle; }
+        }
+    }
+
+    private void DiscardAudioRecording()
+    {
+        try
+        {
+            if (_audioRecorder.IsRecording) _currentRecordingPath = _audioRecorder.StopRecording();
+        }
+        catch
+        {
+            _audioRecorder.Dispose();
+            throw;
+        }
+        finally
+        {
+            if (_currentRecordingPath != null && System.IO.File.Exists(_currentRecordingPath))
+            {
+                try { System.IO.File.Delete(_currentRecordingPath); }
+                catch { /* Ignore cleanup errors. */ }
+            }
+            _currentRecordingPath = null;
+        }
     }
     
     public void UpdateSettings(AppSettings settings)
@@ -403,6 +447,7 @@ public class VoicePasteController : IDisposable
     public void Dispose()
     {
         _disposed = true;
+        _cancelHotkey.Dispose();
         _transcriptionService.Dispose();
         _audioRecorder?.Dispose();
         _hotkeyManager?.Dispose();

@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -7,12 +9,20 @@ namespace VoicePaste.Overlay;
 /// <summary>Continuous volume envelope with amplitude-dependent opacity, scrolling right to left.</summary>
 public sealed class WaveformMeter : FrameworkElement
 {
-    private readonly WaveformHistory _history = new();
+    private readonly WaveformEnvelope _envelope = new();
+    private WaveformHistory History => _envelope.History;
     internal const double HeightGain = 2;
     internal const int RasterScale = 2;
     private Color _waveColor = Color.FromRgb(255, 140, 0);
     private WriteableBitmap? _bitmap;
     private byte[] _pixels = [];
+    private bool _pixelsDirty = true;
+    private long _bitmapGeneration;
+    internal OverlayFrameDiagnostics? Diagnostics { get; set; }
+
+    internal (int Width, int Height, int Bytes, long Generation, int HistoryCount, WaveformQueueDiagnostics Queue) GetDiagnostics()
+        => (_bitmap?.PixelWidth ?? 0, _bitmap?.PixelHeight ?? 0, _pixels.Length, _bitmapGeneration,
+            History.Count, _envelope.GetDiagnostics());
 
     public WaveformMeter()
     {
@@ -23,31 +33,98 @@ public sealed class WaveformMeter : FrameworkElement
 
     public void Update(double level, TimeSpan elapsed)
     {
-        _history.Update(level, elapsed);
-        InvalidateVisual();
+        History.Update(level, elapsed);
+        Refresh(waitForCompositor: false);
+    }
+
+    internal void AddAudioMeasurement(float level, TimeSpan timestamp) => _envelope.AddMeasurement(level, timestamp);
+
+    internal void AdvanceAudio(TimeSpan elapsed, TimeSpan captureTime)
+    {
+        var measure = Diagnostics?.IsActive == true;
+        var start = measure ? Stopwatch.GetTimestamp() : 0;
+        _envelope.Advance(elapsed, captureTime);
+        if (measure) Diagnostics!.RecordEnvelope(Stopwatch.GetElapsedTime(start).TotalMilliseconds);
+        Refresh(waitForCompositor: false);
     }
 
     public void Reset()
     {
-        _history.Reset();
-        InvalidateVisual();
+        _envelope.Reset();
+        Refresh(waitForCompositor: true);
     }
 
     public void SetColor(Color color)
     {
         _waveColor = Color.FromRgb(color.R, color.G, color.B);
-        InvalidateVisual();
+        Refresh(waitForCompositor: true);
     }
 
     protected override void OnRender(DrawingContext drawingContext)
     {
+        var measure = Diagnostics?.IsActive == true;
+        var start = measure ? Stopwatch.GetTimestamp() : 0;
         base.OnRender(drawingContext);
         if (ActualWidth <= 0 || ActualHeight <= 0) return;
         EnsureSurface();
+        if (_pixelsDirty) UploadPixels(waitForCompositor: true);
+        drawingContext.DrawImage(_bitmap, new Rect(0, 0, ActualWidth, ActualHeight));
+        if (measure) Diagnostics!.RecordOnRender(Stopwatch.GetElapsedTime(start).TotalMilliseconds);
+    }
+
+    private void Refresh(bool waitForCompositor)
+    {
+        _pixelsDirty = true;
+        if (ActualWidth <= 0 || ActualHeight <= 0)
+        {
+            InvalidateVisual();
+            return;
+        }
+        // The retained ImageDrawing already references this mutable bitmap. Changing its pixels
+        // notifies WPF directly; InvalidateVisual would also invalidate arrange on every frame.
+        if (EnsureSurface()) InvalidateVisual();
+        UploadPixels(waitForCompositor);
+    }
+
+    private void UploadPixels(bool waitForCompositor)
+    {
+        var measure = Diagnostics?.IsActive == true;
+        var start = measure ? Stopwatch.GetTimestamp() : 0;
         var bitmap = _bitmap!;
-        WaveformRasterizer.Render(_history, _waveColor, ActualHeight, bitmap.PixelWidth, bitmap.PixelHeight, _pixels);
-        bitmap.WritePixels(new Int32Rect(0, 0, bitmap.PixelWidth, bitmap.PixelHeight), _pixels, bitmap.PixelWidth * 4, 0);
-        drawingContext.DrawImage(bitmap, new Rect(0, 0, ActualWidth, ActualHeight));
+        WaveformRasterizer.Render(History, _waveColor, ActualHeight, bitmap.PixelWidth, bitmap.PixelHeight, _pixels);
+        if (measure) Diagnostics!.RecordRaster(Stopwatch.GetElapsedTime(start).TotalMilliseconds);
+        // Never stall a recording frame waiting for the composition thread's previous bitmap copy.
+        // A busy bitmap keeps its previous image; the next frame retries at the current history time.
+        start = measure ? Stopwatch.GetTimestamp() : 0;
+        var locked = true;
+        if (waitForCompositor) bitmap.Lock();
+        else locked = bitmap.TryLock(new Duration(TimeSpan.Zero));
+        if (measure) Diagnostics!.RecordLock(Stopwatch.GetElapsedTime(start).TotalMilliseconds, !locked, waitForCompositor);
+        if (!locked) return;
+        start = measure ? Stopwatch.GetTimestamp() : 0;
+        try
+        {
+            var stride = bitmap.PixelWidth * 4;
+            if (bitmap.BackBufferStride == stride)
+                Marshal.Copy(_pixels, 0, bitmap.BackBuffer, _pixels.Length);
+            else
+                for (var y = 0; y < bitmap.PixelHeight; y++)
+                    Marshal.Copy(_pixels, y * stride, IntPtr.Add(bitmap.BackBuffer, y * bitmap.BackBufferStride), stride);
+            bitmap.AddDirtyRect(new Int32Rect(0, 0, bitmap.PixelWidth, bitmap.PixelHeight));
+            _pixelsDirty = false;
+        }
+        finally
+        {
+            bitmap.Unlock();
+            if (measure) Diagnostics!.RecordUpload(Stopwatch.GetElapsedTime(start).TotalMilliseconds);
+        }
+    }
+
+    protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
+    {
+        base.OnRenderSizeChanged(sizeInfo);
+        _pixelsDirty = true;
+        InvalidateVisual();
     }
 
     protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
@@ -56,14 +133,18 @@ public sealed class WaveformMeter : FrameworkElement
         InvalidateVisual();
     }
 
-    private void EnsureSurface()
+    private bool EnsureSurface()
     {
         var dpi = VisualTreeHelper.GetDpi(this);
         var width = Math.Max(1, (int)Math.Ceiling(ActualWidth * dpi.DpiScaleX * RasterScale));
         var height = Math.Max(1, (int)Math.Ceiling(ActualHeight * dpi.DpiScaleY * RasterScale));
-        if (_bitmap?.PixelWidth == width && _bitmap.PixelHeight == height) return;
+        if (_bitmap?.PixelWidth == width && _bitmap.PixelHeight == height) return false;
         _pixels = new byte[checked(width * height * 4)];
         _bitmap = new WriteableBitmap(width, height, 96 * dpi.DpiScaleX * RasterScale,
             96 * dpi.DpiScaleY * RasterScale, PixelFormats.Pbgra32, null);
+        _bitmapGeneration++;
+        Diagnostics?.SurfaceRebuilt();
+        _pixelsDirty = true;
+        return true;
     }
 }

@@ -1,24 +1,39 @@
+using System.Runtime.InteropServices;
 using System.Windows.Media;
 
 namespace VoicePaste.Overlay;
 
-/// <summary>Allocation-free coverage rendering of the same smoothstep volume contour and local alpha.</summary>
+/// <summary>Allocation-free coverage rendering; contour height and local alpha share one smooth curve.</summary>
 internal static class WaveformRasterizer
 {
     private const int SubpixelSamples = 4;
+    private const double BaselineHeightDips = 1;
+    private const double GainRampEnd = 0.1;
+    private const double FullOpacityLevel = 0.9;
 
     public static void Render(WaveformHistory history, Color color, double heightDips,
         int width, int height, byte[] pixels)
     {
         Array.Clear(pixels);
+        var packedPixels = MemoryMarshal.Cast<byte, uint>(pixels);
         Span<double> tops = stackalloc double[SubpixelSamples];
         Span<double> bottoms = stackalloc double[SubpixelSamples];
         Span<double> opacities = stackalloc double[SubpixelSamples];
+        var count = history.Count;
+        Span<double> ages = stackalloc double[count];
+        Span<double> levels = stackalloc double[count];
+        Span<double> tangents = stackalloc double[count];
+        for (var i = 0; i < count; i++)
+        {
+            var point = history.GetSample(i);
+            ages[i] = point.AgeSeconds;
+            levels[i] = GetDisplayLevel(point.Level);
+        }
+        WaveformContour.BuildTangents(ages, levels, tangents);
+        var liveLevel = GetDisplayLevel(history.LiveLevel);
         var nextIndex = 1;
-        var previous = history.GetSample(0);
-        var next = history.GetSample(nextIndex);
         var center = height / 2d;
-        var baselineHalfHeight = Math.Min(center, height / heightDips);
+        var baselineHalfHeight = Math.Min(center, BaselineHeightDips * height / heightDips / 2);
 
         // Scan the history once from left to right, retaining fractional time positions.
         for (var x = 0; x < width; x++)
@@ -27,20 +42,18 @@ internal static class WaveformRasterizer
             for (var sample = 0; sample < SubpixelSamples; sample++)
             {
                 var age = WaveformHistory.VisibleSeconds * (1 - (x + (sample + 0.5) / SubpixelSamples) / width);
-                while (nextIndex < history.Count - 1 && age < next.AgeSeconds)
-                {
-                    previous = next;
-                    next = history.GetSample(++nextIndex);
-                }
-                var t = Math.Clamp((previous.AgeSeconds - age) / (previous.AgeSeconds - next.AgeSeconds), 0, 1);
-                var eased = t * t * (3 - 2 * t);
-                var fromLevel = Math.Clamp(previous.Level * WaveformMeter.HeightGain, 0, 1);
-                var toLevel = Math.Clamp(next.Level * WaveformMeter.HeightGain, 0, 1);
-                var level = fromLevel + (toLevel - fromLevel) * eased;
+                while (nextIndex < count - 1 && age < ages[nextIndex]) nextIndex++;
+                var previousIndex = nextIndex - 1;
+                var seconds = ages[previousIndex] - ages[nextIndex];
+                var t = (ages[previousIndex] - age) / seconds;
+                var level = age < ages[count - 1]
+                    ? liveLevel + (levels[count - 1] - liveLevel) * age / ages[count - 1]
+                    : WaveformContour.Evaluate(levels[previousIndex], levels[nextIndex],
+                        tangents[previousIndex], tangents[nextIndex], seconds, t);
                 var halfHeight = baselineHalfHeight + level * (center - baselineHalfHeight);
                 tops[sample] = center - halfHeight;
                 bottoms[sample] = center + halfHeight;
-                opacities[sample] = 0.5 + 0.5 * level;
+                opacities[sample] = GetLocalOpacity(level);
                 opacitySum += opacities[sample];
                 minTop = Math.Min(minTop, tops[sample]);
                 maxTop = Math.Max(maxTop, tops[sample]);
@@ -49,21 +62,16 @@ internal static class WaveformRasterizer
             }
 
             var interiorAlpha = (byte)Math.Round(255 * opacitySum / SubpixelSamples);
-            var interiorB = Premultiply(color.B, interiorAlpha);
-            var interiorG = Premultiply(color.G, interiorAlpha);
-            var interiorR = Premultiply(color.R, interiorAlpha);
+            var interiorColor = PackColor(color, interiorAlpha);
             var firstFullRow = (int)Math.Ceiling(maxTop);
             var endFullRow = (int)Math.Floor(minBottom);
             var lastRow = Math.Min(height, (int)Math.Ceiling(maxBottom));
             for (var y = Math.Max(0, (int)Math.Floor(minTop)); y < lastRow; y++)
             {
-                var pixel = (y * width + x) * 4;
+                var pixel = y * width + x;
                 if (y >= firstFullRow && y < endFullRow)
                 {
-                    pixels[pixel] = interiorB;
-                    pixels[pixel + 1] = interiorG;
-                    pixels[pixel + 2] = interiorR;
-                    pixels[pixel + 3] = interiorAlpha;
+                    packedPixels[pixel] = interiorColor;
                     continue;
                 }
 
@@ -76,13 +84,28 @@ internal static class WaveformRasterizer
                     alpha += coverage * opacities[sample];
                 }
                 var a = (byte)Math.Round(255 * alpha / SubpixelSamples);
-                pixels[pixel] = Premultiply(color.B, a);
-                pixels[pixel + 1] = Premultiply(color.G, a);
-                pixels[pixel + 2] = Premultiply(color.R, a);
-                pixels[pixel + 3] = a;
+                packedPixels[pixel] = PackColor(color, a);
             }
         }
     }
 
+    internal static double GetDisplayLevel(double level)
+    {
+        level = double.IsFinite(level) ? Math.Clamp(level, 0, 1) : 0;
+        var t = Math.Clamp(level / GainRampEnd, 0, 1);
+        // Ease only the extra gain, not the full amplitude curve. Above 10% this is the same
+        // linear x2 response as before; near zero it tends smoothly to x1, without a noise gate.
+        var gain = 1 + (WaveformMeter.HeightGain - 1) * t * t * (3 - 2 * t);
+        return Math.Clamp(level * gain, 0, 1);
+    }
+
+    internal static double GetLocalOpacity(double displayedLevel)
+        => 0.5 + 0.5 * Math.Clamp(displayedLevel / FullOpacityLevel, 0, 1);
+
     private static byte Premultiply(byte channel, byte alpha) => (byte)((channel * alpha + 127) / 255);
+
+    // Windows BGRA is little-endian: publish all four channels with one store/bounds check.
+    private static uint PackColor(Color color, byte alpha)
+        => Premultiply(color.B, alpha) | ((uint)Premultiply(color.G, alpha) << 8)
+            | ((uint)Premultiply(color.R, alpha) << 16) | ((uint)alpha << 24);
 }

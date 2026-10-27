@@ -48,17 +48,10 @@
                         </Ellipse.Triggers>
                     </Ellipse>
 
-                    <TextBlock x:Name="StateText"
-                               Text="Recording"
-                               FontSize="16"
-                               FontWeight="SemiBold"
-                               VerticalAlignment="Center"/>
-
                     <TextBlock x:Name="TimerText"
                                Text="00:00"
                                FontSize="16"
                                FontWeight="SemiBold"
-                               Margin="16,0,0,0"
                                Width="48"
                                TextAlignment="Left"
                                VerticalAlignment="Center"/>
@@ -83,7 +76,8 @@
                             </Rectangle.RenderTransform>
                         </Rectangle>
                     </Border>
-                    <local:WaveformMeter x:Name="VoiceWaveform" Visibility="Collapsed" />
+                    <!-- Extend only the waveform through the 16-DIP padding and 1-DIP border. -->
+                    <local:WaveformMeter x:Name="VoiceWaveform" Margin="-17,0,-17,0" Visibility="Collapsed" />
                 </Grid>
             </Grid>
             <!-- Transcribing overlay (initially hidden) -->
