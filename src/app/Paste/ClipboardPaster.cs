@@ -26,7 +26,6 @@ public class ClipboardPaster
     {
         if (string.IsNullOrWhiteSpace(text))
         {
-            Console.WriteLine("[Paste] WARNING: Empty text, nothing to paste");
             return Task.FromResult(true);
         }
 
@@ -35,7 +34,6 @@ public class ClipboardPaster
 
     private bool PasteText(string text)
     {
-        Console.WriteLine($"[Paste] Starting paste operation. Text length: {text.Length}");
         
         // Set new clipboard content
         if (!TrySetClipboardTextWithRetry(text))
@@ -43,13 +41,12 @@ public class ClipboardPaster
             return false;
         }
 
-        Console.WriteLine("[Paste] Text copied to clipboard");
         
         // Keep the paste delay off the UI thread so the overlay animation stays smooth.
         System.Threading.Thread.Sleep(100);
         
         // Send configured paste shortcut
-        Console.WriteLine($"[Paste] Sending paste shortcut: {_pasteShortcut}");
+        Logger.Debug("Paste", $"Sending paste shortcut: {_pasteShortcut}");
 
         if (!SendPasteShortcut(_pasteShortcut))
         {
@@ -80,13 +77,11 @@ public class ClipboardPaster
             if (attempt < maxAttempts)
             {
                 int delayMs = 10 * (1 << (attempt - 1)); // 10, 20, 40, 80, 160ms
-                Console.WriteLine($"[Paste] Clipboard busy, retry {attempt}/{maxAttempts} in {delayMs}ms. LastError: {error}");
                 Logger.Warning("Paste", $"Clipboard set failed on attempt {attempt}/{maxAttempts}. Retrying in {delayMs}ms. LastError: {error}");
                 System.Threading.Thread.Sleep(delayMs);
                 continue;
             }
 
-            Console.WriteLine($"[Paste] WARNING: Could not set clipboard after {maxAttempts} attempts. LastError: {error}");
             Logger.Warning("Paste", $"Could not set clipboard after {maxAttempts} attempts. LastError: {error}");
             return false;
         }
@@ -328,17 +323,14 @@ public class ClipboardPaster
     private static bool SendKeyboardInputs(INPUT[] inputs, int expectedCount)
     {
         int size = Marshal.SizeOf<INPUT>();
-        Console.WriteLine($"[Paste] INPUT struct size: {size} (expected 40 on x64)");
 
         uint sent = SendInput((uint)inputs.Length, inputs, size);
         int error = Marshal.GetLastWin32Error();
 
-        Console.WriteLine($"[Paste] SendInput returned: {sent} (expected {expectedCount}), LastError: {error}");
 
         if (sent != expectedCount)
         {
             var errorMessage = $"SendInput failed! Only {sent}/{expectedCount} inputs sent. Error code: {error}";
-            Console.WriteLine($"[Paste] ERROR: {errorMessage}");
             Logger.Warning("Paste", errorMessage);
             return false;
         }

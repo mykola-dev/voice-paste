@@ -4,20 +4,45 @@ VoicePaste - Transcription Worker
 Transcribes audio using faster-whisper with GPU support.
 """
 import argparse
-import sys
 import io
-import faulthandler
 import json
+import os
 from pathlib import Path
-from faster_whisper import WhisperModel
-
+import site
+import sys
 import time
 import traceback
-import os
 
-# Force UTF-8 output on Windows (critical for Cyrillic)
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+from faster_whisper import WhisperModel
+
+
+def configure_cuda_paths() -> None:
+    """Prefer this interpreter's CUDA DLLs, then user-installed native DLL packages."""
+    package_dirs = [*site.getsitepackages(), site.getusersitepackages()]
+    # Embedded Python may rely on native CUDA DLLs installed for another user Python.
+    # Discover those folders rather than pinning a username or interpreter version.
+    package_dirs.extend(str(directory) for directory in
+                        sorted(Path(site.getuserbase()).glob("Python*/site-packages"), reverse=True))
+    cuda_paths = []
+    found_libraries = set()
+    for packages_dir in package_dirs:
+        for library in ("cublas", "cudnn"):
+            if library in found_libraries:
+                continue
+            directory = Path(packages_dir) / "nvidia" / library / "bin"
+            if directory.is_dir() and str(directory) not in cuda_paths:
+                cuda_paths.append(str(directory))
+                found_libraries.add(library)
+    if cuda_paths:
+        current_paths = [entry for entry in os.environ.get("PATH", "").split(os.pathsep)
+                         if entry and entry not in cuda_paths]
+        os.environ["PATH"] = os.pathsep.join([*cuda_paths, *current_paths])
+
+
+def debug_log(message: str) -> None:
+    """Keep verbose diagnostics off stdout and disabled unless explicitly requested."""
+    if os.environ.get("VOICEPASTE_DEBUG", "0").lower() in ("1", "true"):
+        print(message, file=sys.stderr, flush=True)
 
 
 def get_russian_suppress_tokens(tokenizer) -> list[int]:
@@ -31,10 +56,10 @@ def get_russian_suppress_tokens(tokenizer) -> list[int]:
             decoded = tokenizer.decode([i])
             if any(char in decoded for char in russian_chars):
                 suppress_tokens.append(i)
-        except:
+        except Exception:
             continue
                 
-    return sorted(list(set(suppress_tokens)))
+    return suppress_tokens
 
 
 def transcribe_audio(
@@ -69,7 +94,8 @@ def transcribe_audio(
     # Determine language and initial_prompt based on mode
     language = None
     initial_prompt = None
-    suppress_tokens = None
+    # Keep Whisper's default non-speech suppression in every language mode.
+    suppress_tokens = [-1]
 
     def is_vad_dependency_error(err: Exception) -> bool:
         msg = str(err).lower()
@@ -84,13 +110,7 @@ def transcribe_audio(
 
     def run_transcribe(lang: str | None):
         try:
-            if os.environ.get("VOICEPASTE_DEBUG", "0") in ("1", "true", "True"):
-                print(
-                    f"[Transcribe] model.transcribe(lang={lang}, vad_filter={vad_enabled}, beam_size={beam_size})",
-                    file=sys.stderr,
-                    flush=True,
-                )
-            faulthandler.dump_traceback_later(30, repeat=True, file=sys.stderr)
+            debug_log(f"[Transcribe] lang={lang}, vad_filter={vad_enabled}, beam_size={beam_size}")
             if vad_enabled:
                 return model.transcribe(
                     str(audio_path),
@@ -114,18 +134,16 @@ def transcribe_audio(
                     "Install required VAD deps (e.g., torch/onnxruntime).",
                     file=sys.stderr,
                 )
-                if os.environ.get("VOICEPASTE_DEBUG", "0") in ("1", "true", "True"):
+                if os.environ.get("VOICEPASTE_DEBUG", "0").lower() in ("1", "true"):
                     traceback.print_exc(file=sys.stderr)
             raise
-        finally:
-            faulthandler.cancel_dump_traceback_later()
 
     if language_mode == "en":
         language = "en"
     elif language_mode in ("ua", "uk"):
         language = "uk"
         # Force Ukrainian spelling for UK mode too
-        suppress_tokens = get_russian_suppress_tokens(model.hf_tokenizer)
+        suppress_tokens.extend(get_russian_suppress_tokens(model.hf_tokenizer))
     elif language_mode == "bilingual":
         # Bilingual mode: auto-detect but guide the model to prefer English and Ukrainian
         # This helps prevent Whisper from misidentifying Ukrainian as Russian.
@@ -136,7 +154,7 @@ def transcribe_audio(
             "Англійська та українська мови. ґ, є, і, ї. "
         )
         # Suppress Russian tokens in Bilingual mode as requested by user
-        suppress_tokens = get_russian_suppress_tokens(model.hf_tokenizer)
+        suppress_tokens.extend(get_russian_suppress_tokens(model.hf_tokenizer))
         
     # Append custom prompt if provided
     if custom_initial_prompt:
@@ -147,21 +165,15 @@ def transcribe_audio(
 
     segments, info = run_transcribe(language)
     
-    # [Bilingual Fix] If we detected Russian but we're in bilingual mode (EN/UA),
-    # it's highly likely it should have been Ukrainian.
+    # Retry likely misidentified Ukrainian speech in bilingual mode.
     
     if language_mode == "bilingual" and info.language == "ru":
-        print("[Language Guard] Detected Russian in Bilingual mode. Re-transcribing as Ukrainian with suppression...", file=sys.stderr)
-        
-        # Suppress Russian-only characters (ы, э, ъ, ё) to force Ukrainian spelling
-        if suppress_tokens is None:
-            suppress_tokens = get_russian_suppress_tokens(model.hf_tokenizer)
+        debug_log("[Language Guard] Re-transcribing as Ukrainian with suppression")
         
         segments, info = run_transcribe("uk")
     
     # Combine all segments into single text
     text = " ".join(seg.text.strip() for seg in segments)
-    print(f"[Transcribe] Segments joined. Text length={len(text)}", file=sys.stderr, flush=True)
     
     end_time = time.perf_counter()
     duration_ms = int((end_time - start_time) * 1000)
@@ -251,14 +263,13 @@ def main():
     )
 
     args = parser.parse_args()
+    configure_cuda_paths()
 
     # Handle --check-model flag
     if args.check_model:
         try:
-            from faster_whisper.utils import available_models
-            # Simple check: try to construct model path
             print(f"Checking model: {args.model}")
-            model = WhisperModel(args.model, device="cpu", compute_type="int8", download_root=None)
+            WhisperModel(args.model, device="cpu", compute_type="int8", local_files_only=True)
             print("MODEL_PRESENT")
             return 0
         except Exception as e:
@@ -305,17 +316,6 @@ def main():
         file=sys.stderr,
         flush=True,
     )
-    if os.environ.get("VOICEPASTE_DEBUG", "0") in ("1", "true", "True"):
-        try:
-            import torch  # type: ignore
-            print(f"[Worker] torch={getattr(torch, '__version__', 'unknown')}", file=sys.stderr, flush=True)
-        except Exception as e:
-            print(f"[Worker] torch import failed: {e}", file=sys.stderr, flush=True)
-        try:
-            import onnxruntime  # type: ignore
-            print(f"[Worker] onnxruntime={getattr(onnxruntime, '__version__', 'unknown')}", file=sys.stderr, flush=True)
-        except Exception as e:
-            print(f"[Worker] onnxruntime import failed: {e}", file=sys.stderr, flush=True)
 
     if args.wait:
         # Server mode
@@ -329,14 +329,6 @@ def main():
             input_path = Path(path_text)
             
             try:
-                print(f"[Worker] Received path: {input_path}", file=sys.stderr, flush=True)
-                try:
-                    size = input_path.stat().st_size
-                    print(f"[Worker] Audio size: {size} bytes", file=sys.stderr, flush=True)
-                except Exception as e:
-                    print(f"[Worker] Audio stat failed: {e}", file=sys.stderr, flush=True)
-                print("[Worker] Starting transcription...", file=sys.stderr, flush=True)
-                print(f"[Worker] VAD enabled: {args.vad}", file=sys.stderr, flush=True)
                 result = transcribe_audio(
                     input_path,
                     model,
@@ -345,8 +337,7 @@ def main():
                     custom_initial_prompt=args.initial_prompt,
                     enable_vad=args.vad
                 )
-                print(f"[Timer] Transcription took {result['duration_ms']}ms", file=sys.stderr)
-                print(f"[Worker] Done. Text length={len(result['text'])}", file=sys.stderr, flush=True)
+                debug_log(f"[Timer] Transcription took {result['duration_ms']}ms")
                 print(json.dumps({"type": "result", "text": result["text"]}, ensure_ascii=False), flush=True)
             except Exception as e:
                 print(f"Error: {e}", file=sys.stderr)
@@ -358,7 +349,6 @@ def main():
             return 1
             
         try:
-            print(f"[Worker] One-off mode VAD enabled: {args.vad}", file=sys.stderr, flush=True)
             result = transcribe_audio(
                 args.input,
                 model,
@@ -367,7 +357,7 @@ def main():
                 custom_initial_prompt=args.initial_prompt,
                 enable_vad=args.vad,
             )
-            print(f"[Timer] Transcription took {result['duration_ms']}ms", file=sys.stderr)
+            debug_log(f"[Timer] Transcription took {result['duration_ms']}ms")
             print(result["text"])
             return 0
         except Exception as e:
@@ -377,4 +367,7 @@ def main():
 
 
 if __name__ == "__main__":
+    # Configure CLI streams only; importing the worker must not replace the caller's streams.
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
     sys.exit(main())

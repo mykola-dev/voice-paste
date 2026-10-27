@@ -126,12 +126,12 @@ public class WaveformRasterizerTests
                 envelope.AddMeasurement((float)(0.02 + milliseconds / 30 * 0.006), timestamp);
             envelope.Advance(TimeSpan.FromMilliseconds(milliseconds == 0 ? 0 : 10), timestamp);
         }
-        const int width = 1620, height = 600;
+        const int width = 3240, height = 600;
         var pixels = new byte[width * height * 4];
         WaveformRasterizer.Render(envelope.History, Colors.DarkOrange, 30, width, height, pixels);
-        for (var x = 1380; x < 1600; x++)
+        for (var x = 3000; x < 3220; x++)
         {
-            var level = 0.2 + 0.002 * (x + 0.5 - 1320);
+            var level = 0.2 + 0.002 * (x + 0.5 - 2940);
             var opacity = WaveformRasterizer.GetLocalOpacity(level);
             var alpha = pixels[((height / 2) * width + x) * 4 + 3];
             Assert.InRange(Math.Abs(alpha - 255 * opacity), 0, 0.51);
@@ -189,7 +189,8 @@ public class WaveformRasterizerTests
     private static WaveformHistory UniformHistory(double level)
     {
         var history = new WaveformHistory();
-        for (var i = 0; i < 150; i++) history.Update(level, TimeSpan.FromSeconds(1d / 60));
+        for (var i = 0; i < Math.Ceiling((WaveformHistory.VisibleSeconds + 0.5) * 60); i++)
+            history.Update(level, TimeSpan.FromSeconds(1d / 60));
         return history;
     }
 }

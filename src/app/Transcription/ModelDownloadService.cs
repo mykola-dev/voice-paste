@@ -2,7 +2,6 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -25,7 +24,6 @@ public class ModelDownloadService
     public ModelDownloadService()
     {
         _pythonPath = PythonFinder.Find();
-        Console.WriteLine($"[ModelDownload] Python: {_pythonPath}");
     }
 
     /// <summary>
@@ -134,11 +132,6 @@ except Exception as e:
             psi.Environment["PYTHONUTF8"] = "1";
             psi.Environment["PYTHONIOENCODING"] = "utf-8";
             psi.Environment["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1";
-            if (Environment.GetEnvironmentVariable("VOICEPASTE_DEBUG") == "1")
-            {
-                psi.Environment["VOICEPASTE_DEBUG"] = "1";
-            }
-
             // Set PYTHONHOME if bundled Python exists
             var exeDir = AppDomain.CurrentDomain.BaseDirectory;
             var pythonDir = Path.GetFullPath(Path.Combine(exeDir, "python"));

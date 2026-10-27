@@ -3,7 +3,6 @@
 $ErrorActionPreference = "Stop"
 $buildScript = Join-Path (Split-Path $PSScriptRoot -Parent) "build-portable.ps1"
 $tempBase = [IO.Path]::GetTempPath()
-if (Test-Path (Join-Path $tempBase 'opencode')) { $tempBase = Join-Path $tempBase 'opencode' }
 $tempRoot = Join-Path $tempBase ("voicepaste-build-tests-" + [Guid]::NewGuid().ToString("N"))
 $global:VoicePasteBuildTestState = @{
     Events = [Collections.Generic.List[string]]::new()

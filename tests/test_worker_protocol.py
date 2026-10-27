@@ -41,16 +41,15 @@ runpy.run_path(worker, run_name="__main__")
 
 
 class WorkerProtocolTests(unittest.TestCase):
-    def run_worker(self, texts: list[str], *arguments: str, cuda_fail: bool = False) -> subprocess.CompletedProcess:
-        temp_root = Path(tempfile.gettempdir()) / "opencode"
-        temp_root.mkdir(exist_ok=True)
-        with tempfile.TemporaryDirectory(dir=temp_root) as directory:
+    def run_worker(self, texts: list[str], *arguments: str, cuda_fail: bool = False,
+                   debug: bool = False) -> subprocess.CompletedProcess:
+        with tempfile.TemporaryDirectory(prefix="VoicePaste.Tests-") as directory:
             paths = []
             for index, text in enumerate(texts):
                 path = Path(directory) / f"запис {index}.wav"
                 path.write_text(text, encoding="utf-8")
                 paths.append(str(path))
-            environment = {**os.environ, "PYTHONIOENCODING": "utf-8", "VOICEPASTE_DEBUG": "0"}
+            environment = {**os.environ, "PYTHONIOENCODING": "utf-8", "VOICEPASTE_DEBUG": "1" if debug else "0"}
             environment.pop("FAKE_CUDA_FAIL", None)
             if cuda_fail:
                 environment["FAKE_CUDA_FAIL"] = "1"
@@ -88,6 +87,22 @@ class WorkerProtocolTests(unittest.TestCase):
         self.assertEqual("", completed.stdout)
         self.assertIn("CUDA_ERROR", completed.stderr)
         self.assertNotIn("MODEL_LOAD:cpu", completed.stderr)
+
+    def test_verbose_request_diagnostics_are_disabled_by_default(self) -> None:
+        completed = self.run_worker(["private dictation"], "--device", "cpu")
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertNotIn("private dictation", completed.stderr)
+        self.assertNotIn("[Timer]", completed.stderr)
+        self.assertNotIn("[Transcribe]", completed.stderr)
+        self.assertNotIn("Received path", completed.stderr)
+
+    def test_debug_diagnostics_preserve_json_protocol_without_logging_text(self) -> None:
+        completed = self.run_worker(["private dictation"], "--device", "cpu", debug=True)
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertIn("[Transcribe]", completed.stderr)
+        self.assertNotIn("private dictation", completed.stderr)
+        messages = [json.loads(line) for line in completed.stdout.splitlines()]
+        self.assertEqual("private dictation", messages[1]["text"])
 
 
 if __name__ == "__main__":

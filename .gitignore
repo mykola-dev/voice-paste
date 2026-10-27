@@ -51,6 +51,7 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 ENV/
 env.bak/
 venv.bak/
@@ -71,6 +72,11 @@ models/
 *.wav
 *.mp3
 *.flac
+*.m4a
+*.ogg
+*.aac
+*.wma
+*.pcm
 temp_audio/
 
 # IDE / Editors
@@ -84,6 +90,26 @@ temp_audio/
 # User config (exclude generated configs)
 **/VoicePaste/config.json
 %AppData%/VoicePaste/
+
+# Local secrets (keep sanitized examples publishable)
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.pfx
+*.p12
+credentials.json
+client_secret*.json
+service-account*.json
+
+# Local diagnostics and accidental shell redirection artifacts
+*.etl
+*.nettrace
+*.dmp
+overlay-frames-*.jsonl*
+/nul
 
 # Test artifacts
 TestResults/

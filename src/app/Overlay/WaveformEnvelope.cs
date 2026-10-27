@@ -12,9 +12,6 @@ internal sealed class WaveformEnvelope
     private TimeSpan? _captureOrigin;
     private TimeSpan _presentationTime;
     private float _lastInput;
-    private long _received, _overflowDropped, _discarded;
-    private int _lastDrainCount;
-    private double _clockLeadMaxMs;
 
     public WaveformHistory History { get; } = new();
 
@@ -22,10 +19,8 @@ internal sealed class WaveformEnvelope
     {
         lock (_sync)
         {
-            _received++;
             if (_count == _pending.Length)
             {
-                _overflowDropped++;
                 _first = (_first + 1) % _pending.Length;
                 _count--;
             }
@@ -43,7 +38,6 @@ internal sealed class WaveformEnvelope
             for (var i = 0; i < count; i++) measurements[i] = _pending[(_first + i) % _pending.Length];
             _first = _count = 0;
         }
-        _lastDrainCount = count;
 
         History.Advance(elapsed);
         if (elapsed.TotalSeconds >= WaveformHistory.VisibleSeconds)
@@ -65,10 +59,8 @@ internal sealed class WaveformEnvelope
                 age.TotalSeconds >= WaveformHistory.VisibleSeconds ||
                 (_lastMeasurementTime.HasValue && measurement.Timestamp < _lastMeasurementTime.Value))
             {
-                _discarded++;
                 continue;
             }
-            _clockLeadMaxMs = Math.Max(_clockLeadMaxMs, -age.TotalMilliseconds);
             var delta = _lastMeasurementTime.HasValue ? measurement.Timestamp - _lastMeasurementTime.Value : TimeSpan.Zero;
             var level = _smoother.Update(measurement.Level, delta);
             History.AddMeasurement(level, age);
@@ -85,10 +77,7 @@ internal sealed class WaveformEnvelope
 
     public void Reset()
     {
-        lock (_sync) { _first = _count = 0; _received = _overflowDropped = 0; }
-        _discarded = 0;
-        _lastDrainCount = 0;
-        _clockLeadMaxMs = 0;
+        lock (_sync) { _first = _count = 0; }
         _lastMeasurementTime = null;
         _captureOrigin = null;
         _presentationTime = TimeSpan.Zero;
@@ -97,14 +86,5 @@ internal sealed class WaveformEnvelope
         History.Reset();
     }
 
-    public WaveformQueueDiagnostics GetDiagnostics()
-    {
-        lock (_sync)
-            return new(_count, _lastDrainCount, _received, _overflowDropped, _discarded, _clockLeadMaxMs);
-    }
-
     private readonly record struct Measurement(float Level, TimeSpan Timestamp);
 }
-
-internal readonly record struct WaveformQueueDiagnostics(int Pending, int LastDrained, long Received,
-    long OverflowDropped, long Discarded, double ClockLeadMaxMs);

@@ -118,6 +118,3 @@ build or stop the user's actual VoicePaste installation. Run the second test fro
 - Whisper/faster-whisper model downloads are handled by the app at runtime.
 - GPU failures fall back to CPU when configured as CUDA auto-fallback.
 - Settings live in `config.json` and can be edited before distribution.
-- Recording frame diagnostics are enabled in the real portable app by default. Collect
-  `%TEMP%\VoicePaste\overlay-frames-<PID>.jsonl` after reproducing stutter; see
-  [Production frame diagnostics](07-configuration.md#production-frame-diagnostics) for fields and controls.

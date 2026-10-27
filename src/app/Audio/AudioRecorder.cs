@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using NAudio.Wave;
+using VoicePaste.Logging;
 
 namespace VoicePaste.Audio;
 
@@ -60,20 +61,7 @@ public class AudioRecorder : IDisposable
                 BufferMilliseconds = 30  // Shorter metering latency; recorded PCM format is unchanged
             };
             
-            // Log microphone info
-            string micName = "Default Microphone";
-            try
-            {
-                if (_waveIn.DeviceNumber >= 0 && _waveIn.DeviceNumber < WaveInEvent.DeviceCount)
-                {
-                    var capabilities = WaveInEvent.GetCapabilities(_waveIn.DeviceNumber);
-                    micName = capabilities.ProductName;
-                }
-            }
-            catch { /* Ignore errors getting device name */ }
-            
-            Console.WriteLine($"[Audio] Using microphone: {micName}");
-            Console.WriteLine($"[Audio] Format: {SampleRate}Hz, {Channels} channel(s), {BitsPerSample}-bit");
+            Logger.Debug("Audio", $"Format: {SampleRate}Hz, {Channels} channel(s), {BitsPerSample}-bit");
             
             _writer = new WaveFileWriter(_tempFilePath, _waveIn.WaveFormat);
             
@@ -148,7 +136,7 @@ public class AudioRecorder : IDisposable
     {
         if (e.Exception != null)
         {
-            Console.WriteLine($"[Audio] Recording stopped with error: {e.Exception.Message}");
+            Logger.Error("Audio", "Recording stopped unexpectedly", e.Exception);
             CleanupResources();
             throw new AudioRecordingException(
                 "Recording stopped unexpectedly. The microphone may have been disconnected.",
@@ -170,7 +158,7 @@ public class AudioRecorder : IDisposable
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Audio] Error during cleanup: {ex.Message}");
+            Logger.Warning("Audio", $"Error during cleanup: {ex.Message}");
         }
     }
     

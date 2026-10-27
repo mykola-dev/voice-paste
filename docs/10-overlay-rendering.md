@@ -9,11 +9,10 @@ Do not set `RenderOptions.ProcessRenderMode`, alter CUDA, change timer resolutio
 rewrite the approved waveform interpolation/rasterizer.
 
 `VOICEPASTE_OVERLAY_SOFTWARE_RENDERING=0` before launch restores WPF's default rendering for A/B.
-The frame log's `Context.WindowRenderMode` confirms the effective mode after showing the overlay.
 
 ## Production evidence (2026-10-27)
 
-On the user's RTX 4070 Ti / 120-Hz display at 150% DPI:
+On a reference Windows machine with an NVIDIA GPU, a 120-Hz display and 150% DPI:
 
 - Hardware-eligible portable recordings sometimes degraded from ~120 to 60–100 rendering
   callbacks/s, although the waveform callback generally took at most ~0.2 ms.
@@ -46,8 +45,6 @@ machine. The approved waveform's contour, gain, opacity, timestamped audio histo
 bitmap, and nonblocking publication are unchanged. A busy bitmap can still skip an upload;
 callback counts and successful uploads are not measurements of physical presentation.
 
-If stutter returns, preserve the executable/build ID, effective window render mode, session and
-timestamps. Correlate frame reports with thread-time/graphics ETW during the same recording;
-do not infer a blocked UI thread from callback gaps alone. Keep native system traces local:
-unlike the bounded frame log, they include system-wide process/graphics metadata. Stop only the
-diagnostic session you started, never an unrelated WPR session.
+If stutter returns, preserve the executable/build ID, effective window render mode, and
+timestamps. Correlate with thread-time/graphics ETW during the same recording;
+do not infer a blocked UI thread from callback gaps alone. Keep native system traces local.

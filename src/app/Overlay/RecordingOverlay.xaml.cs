@@ -1,7 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.Globalization;
-using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
@@ -26,9 +24,6 @@ public partial class RecordingOverlay : Window
     private RecordingAnimation _recordingAnimation;
     private DateTime _recordingStartTime;
     private bool _isRecording;
-    private OverlayFrameDiagnostics? _frameDiagnostics;
-    private FrameDiagnosticsWriter? _frameDiagnosticsWriter;
-    private DispatcherFrameObserver? _dispatcherObserver;
 
 
     public RecordingOverlay() : this(SelectRenderMode(
@@ -62,44 +57,6 @@ public partial class RecordingOverlay : Window
             Interval = TimeSpan.FromMilliseconds(100)
         };
         _timer.Tick += Timer_Tick;
-    }
-
-    internal string EnableFrameDiagnostics(string? path = null)
-    {
-        if (_frameDiagnosticsWriter != null) return _frameDiagnosticsWriter.Path;
-        path ??= Path.Combine(Path.GetTempPath(), "VoicePaste", $"overlay-frames-{Environment.ProcessId}.jsonl");
-        _frameDiagnosticsWriter = new FrameDiagnosticsWriter(path);
-        _dispatcherObserver = new DispatcherFrameObserver(Dispatcher);
-        double? targetFps = double.TryParse(Environment.GetEnvironmentVariable("VOICEPASTE_FRAME_TARGET_FPS"),
-            NumberStyles.Float, CultureInfo.InvariantCulture, out var fps) && fps is > 0 and <= 1000 ? fps : null;
-        _frameDiagnostics = new OverlayFrameDiagnostics(_frameDiagnosticsWriter.Publish, GetFrameContext, targetFps);
-        VoiceWaveform.Diagnostics = _frameDiagnostics;
-        if (_isRecording)
-        {
-            _dispatcherObserver.Start();
-            _frameDiagnostics.Start(Stopwatch.GetElapsedTime(0));
-        }
-        return path;
-    }
-
-    internal Task CompleteFrameDiagnostics()
-    {
-        _frameDiagnostics?.Stop(Stopwatch.GetElapsedTime(0));
-        _dispatcherObserver?.Dispose();
-        _frameDiagnosticsWriter?.Dispose();
-        return _frameDiagnosticsWriter?.Completion ?? Task.CompletedTask;
-    }
-
-    private OverlayFrameContext GetFrameContext()
-    {
-        var dpi = VisualTreeHelper.GetDpi(VoiceWaveform);
-        var surface = VoiceWaveform.GetDiagnostics();
-        var source = PresentationSource.FromVisual(this) as HwndSource;
-        return new(_recordingAnimation.ToString(), ActualWidth, ActualHeight, Left, Top,
-            dpi.DpiScaleX, dpi.DpiScaleY, RenderCapability.Tier >> 16,
-            RenderOptions.ProcessRenderMode.ToString(), source?.CompositionTarget?.RenderMode.ToString() ?? "unknown",
-            source?.Handle.ToString("X") ?? "0", surface.Width, surface.Height, surface.Bytes, surface.Generation,
-            surface.HistoryCount, surface.Queue, _dispatcherObserver?.Snapshot());
     }
 
     public void SetRecordingAnimation(RecordingAnimation animation)
@@ -147,8 +104,6 @@ public partial class RecordingOverlay : Window
         TimerText.Text = "00:00";
 
         ResetAudioLevel();
-        _dispatcherObserver?.Start();
-        _frameDiagnostics?.Start(Stopwatch.GetElapsedTime(0));
         _lastRenderingTime = null;
         _renderingAudio = true;
         CompositionTarget.Rendering += RenderAudio;
@@ -181,7 +136,7 @@ public partial class RecordingOverlay : Window
     /// <summary>
     /// Show overlay in downloading state.
     /// </summary>
-    public void ShowDownloading(string message = "Downloading models...")
+    public void ShowDownloading()
     {
         _isRecording = false;
         _timer.Stop();
@@ -247,9 +202,6 @@ public partial class RecordingOverlay : Window
 
     internal void UpdateAudioLevel(float level, TimeSpan timestamp)
     {
-        var diagnostics = _frameDiagnostics;
-        var measure = diagnostics?.IsActive == true;
-        var start = measure ? Stopwatch.GetTimestamp() : 0;
         // Capture callbacks must not wait for the UI thread or queue a render for every sample.
         level = float.IsFinite(level) ? Math.Clamp(level, 0, 1) : 0;
         VoiceWaveform.AddAudioMeasurement(level, timestamp);
@@ -262,7 +214,6 @@ public partial class RecordingOverlay : Window
             if (previous == peak) break;
             peak = previous;
         }
-        if (measure) diagnostics!.RecordAudio(timestamp, Stopwatch.GetElapsedTime(start));
     }
 
     private void RenderAudio(object? sender, EventArgs e)
@@ -270,21 +221,11 @@ public partial class RecordingOverlay : Window
         if (!_isRecording) return;
         // WPF can raise Rendering more than once for the same frame during layout updates.
         var renderingTime = ((RenderingEventArgs)e).RenderingTime;
-        if (_lastRenderingTime == renderingTime)
-        {
-            _frameDiagnostics?.DuplicateFrame();
-            return;
-        }
+        if (_lastRenderingTime == renderingTime) return;
         // Advance by the presentation clock, not by jitter in when the UI callback happens to run.
         var elapsed = _lastRenderingTime.HasValue ? renderingTime - _lastRenderingTime.Value : TimeSpan.Zero;
         _lastRenderingTime = renderingTime;
-        var diagnostics = _frameDiagnostics;
-        var measure = diagnostics?.IsActive == true;
-        var now = Stopwatch.GetElapsedTime(0);
-        var start = measure ? Stopwatch.GetTimestamp() : 0;
-        if (measure) diagnostics!.BeginFrame(now, elapsed);
         RenderAudioFrame(elapsed);
-        if (measure) diagnostics!.EndFrame(Stopwatch.GetElapsedTime(0), Stopwatch.GetElapsedTime(start).TotalMilliseconds);
     }
 
     internal void RenderAudioFrame(TimeSpan elapsed, TimeSpan? captureTime = null)
@@ -299,8 +240,6 @@ public partial class RecordingOverlay : Window
 
     private void ResetAudioLevel()
     {
-        _frameDiagnostics?.Stop(Stopwatch.GetElapsedTime(0));
-        _dispatcherObserver?.Dispose();
         if (_renderingAudio)
         {
             CompositionTarget.Rendering -= RenderAudio;
@@ -317,7 +256,6 @@ public partial class RecordingOverlay : Window
     private void Timer_Tick(object? sender, EventArgs e)
     {
         if (!_isRecording) return;
-        _frameDiagnostics?.Heartbeat(Stopwatch.GetElapsedTime(0));
 
         var elapsed = DateTime.Now - _recordingStartTime;
         TimerText.Text = $"{elapsed:mm\\:ss}";

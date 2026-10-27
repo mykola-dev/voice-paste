@@ -3,7 +3,7 @@ namespace VoicePaste.Overlay;
 /// <summary>Timestamped measurements; presentation frames advance time without duplicating held input.</summary>
 internal sealed class WaveformHistory
 {
-    public const double VisibleSeconds = 1.62;
+    public const double VisibleSeconds = 3.24;
     internal const int Capacity = 512;
     private readonly Sample[] _samples = new Sample[Capacity];
     private int _first;

@@ -129,7 +129,7 @@ Right-click the tray icon → **Settings** to customize:
 | [📝 Transcription](docs/05-transcription.md) | Whisper integration |
 | [📋 Paste Mechanism](docs/06-paste-mechanism.md) | Clipboard & SendInput |
 | [⚙️ Configuration](docs/07-configuration.md) | Settings & config file |
-| [🎯 Milestones](docs/08-milestones.md) | Development phases |
+| [🧪 Testing](docs/10-testing.md) | Automated and manual checks |
 
 ---
 

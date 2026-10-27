@@ -1,133 +1,50 @@
-# VoicePaste - Development Scripts
+# Running VoicePaste
 
-## Quick Start
+## Development
 
-### Option 1: Build and Run (Recommended for Development)
 ```batch
 dev-debug.bat
 ```
-This script will:
-1. Build the project in Debug configuration
-2. Stop any running instances
-3. Run VoicePaste with console output visible
 
-**Use this when**: You've made code changes and want to see the latest build.
+The script sets up bundled Python if necessary, builds the Debug configuration, and runs the app
+with a console. It does not stop other running instances. Quit an older instance from its tray
+menu first if it holds the configured hotkey.
 
-### Option 2: Quick Run
+Alternatively:
 
-Removed in favor of keeping a single entry point.
-Use `dev-debug.bat`.
-
-## What You'll See
-
-When running in debug mode, you'll see console output like:
-
-```
-[CUDA] Added to PATH: C:\Users\...\nvidia\cublas\bin
-VoicePaste is running. Press ScrollLock to record.
-Log file: C:\Users\...\AppData\Local\Temp\VoicePaste\voicepaste.log
-
-[Hotkey] Registering hotkey - Key: 0x91, Modifiers: 0, Handle: 123456
-[Hotkey] Hotkey registered successfully with ID: 12345
-
-[Hotkey] WM_HOTKEY received! ID: 12345
-[Controller] Hotkey pressed! Current state: Idle
-[Controller] Starting recording...
-[Controller] Recording started
-
-[Controller] Hotkey pressed! Current state: Recording
-[Controller] Stopping recording...
-[Controller] Recording saved to: C:\Users\...\Temp\VoicePaste\recording_20260112_130755.wav
-[Controller] Starting transcription...
-[Transcribe] Attempting transcription with device: cuda
-[Transcribe] Hello, this is a test
-[Controller] Transcription complete. Text: 'Hello, this is a test'
-[Controller] Pasting text...
-[Paste] Text to paste: 'Hello, this is a test'
-[Paste] Sending paste shortcut: Ctrl+Shift+V
-[Controller] Paste complete
-```
-
-## How to Use VoicePaste
-
-1. **Start Recording**: Press **ScrollLock** (or click "Start Recording" in tray menu)
-2. **Speak**: Talk into your microphone (recording continues even during silence)
-3. **Stop & Transcribe**: Press **ScrollLock** again
-4. **Text Appears**: Transcribed text pastes into your focused window
-
-## Features
-
-- ✅ **GPU Transcription**: Uses NVIDIA CUDA for fast transcription
-- ✅ **Bilingual**: Auto-detects English and Ukrainian
-- ✅ **Tray Icon**: Shows recording state (gray/red/orange)
-- ✅ **Recording Overlay**: Top-right window with timer and audio meter
-- ✅ **Debug Output**: See what's happening in real-time
-
-## Troubleshooting
-
-### ScrollLock Not Working
-Check the console for:
-```
-[Hotkey] Hotkey registered successfully with ID: 12345
-```
-If you see "Failed to register hotkey", another app is using ScrollLock.
-
-### CUDA Not Working
-Check the console for:
-```
-[CUDA] Added to PATH: C:\Users\...\nvidia\cublas\bin
-```
-If missing, CUDA libraries aren't installed. Run:
-```bash
-pip install nvidia-cublas-cu12
-```
-
-### No Audio / Microphone Not Working
-1. Check Windows Settings → Privacy → Microphone access
-2. Verify default input device in Sound settings
-3. Watch the green audio level bar in the overlay - should move when speaking
-
-### Transcription Fails
-Check console for Python errors. Make sure faster-whisper is installed:
-```bash
-pip install faster-whisper
-```
-
-## Log File Location
-
-Full logs are saved to:
-```
-%TEMP%\VoicePaste\voicepaste.log
-```
-
-Or typically:
-```
-C:\Users\YourName\AppData\Local\Temp\VoicePaste\voicepaste.log
-```
-
-## Stop the App
-
-- **From Console**: Press `Ctrl+C`
-- **From Tray**: Right-click tray icon → Quit
-- **Force Stop**: `taskkill /F /IM VoicePaste.exe`
-
-## Building Manually
-
-If you prefer to build manually:
-
-```bash
-# Build
-dotnet build src/app/VoicePaste.csproj
-
-# Run
+```powershell
 dotnet run --project src/app/VoicePaste.csproj
 ```
 
-## Next: Phase 3 - Settings
+For the self-contained portable build, see [Portable build](09-portable-build.md).
 
-Coming soon:
-- Settings dialog (hotkey configuration, model selection, etc.)
-- Config file persistence
-- More configuration options
+## Dictation
 
-Enjoy dictating! 🎤
+1. Focus the destination window.
+2. Press the configured hotkey (default **ScrollLock**) to start recording.
+3. Press it again to transcribe and paste, or **Esc** to discard the recording.
+4. Right-click the tray icon for Settings or Quit.
+
+## Logging and troubleshooting
+
+Startup, state changes, warnings and errors are written to `%TEMP%\VoicePaste\voicepaste.log`.
+Detailed component diagnostics are off by default. Enable **Settings → Logging → Enable debug
+logging**, or set `VOICEPASTE_DEBUG=1` before launching. Python worker verbosity is selected when
+the worker starts; a resident worker picks up a changed setting after its next restart.
+
+Neither the
+normal operation log nor any diagnostics intentionally log dictated text or clipboard contents.
+Exception messages and stack traces can still include local paths; inspect logs before sharing.
+
+- **Hotkey unavailable:** quit the other instance or choose another hotkey in Settings.
+- **Microphone unavailable:** check Windows microphone permissions and the default input device.
+- **CUDA unavailable:** check NVIDIA drivers and dependencies in the Python environment used by
+  the worker. CUDA DLLs installed under that interpreter's `site-packages/nvidia` are discovered
+  automatically, with a fallback to other user Python installations for native CUDA DLLs, without
+  a hardcoded username or Python version. CUDA auto-fallback can use CPU;
+  CUDA-only mode reports a failure instead.
+- **Paste fails:** try the shortcut appropriate for the destination (`Ctrl+V`, `Ctrl+Shift+V`, or
+  `Shift+Insert`). The text may remain in the clipboard if simulated input fails.
+
+Use the tray's **Quit** command for a normal shutdown so the worker stops cleanly.
+See [Testing](10-testing.md) for automated checks that do not perform dictation or paste.

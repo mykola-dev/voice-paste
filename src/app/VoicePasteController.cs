@@ -120,7 +120,7 @@ public class VoicePasteController : IDisposable
     /// </summary>
     private async void OnHotkeyPressed(object? sender, EventArgs e)
     {
-        Console.WriteLine($"[Controller] Hotkey pressed! Current state: {State}");
+        Logger.Debug("Controller", $"Hotkey pressed in state {State}");
         
         // Debounce: ignore rapid successive presses
         var now = DateTime.Now;
@@ -128,7 +128,7 @@ public class VoicePasteController : IDisposable
         
         if (timeSinceLastPress < HotkeyDebounceMs)
         {
-            Console.WriteLine($"[Controller] Hotkey ignored - debouncing ({timeSinceLastPress:F0}ms since last press)");
+            Logger.Debug("Controller", "Hotkey ignored during debounce");
             return;
         }
         
@@ -148,13 +148,13 @@ public class VoicePasteController : IDisposable
                     
                 case AppState.Transcribing:
                     // Ignore hotkey during transcription (non-interruptible)
-                    Console.WriteLine("[Controller] Hotkey ignored - currently transcribing");
+                    Logger.Debug("Controller", "Hotkey ignored during transcription");
                     break;
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Controller] ERROR: {ex.Message}");
+            Logger.Error("Controller", "Hotkey operation failed", ex);
             ErrorOccurred?.Invoke(this, $"Error: {ex.Message}");
             State = AppState.Idle;
         }
@@ -168,7 +168,7 @@ public class VoicePasteController : IDisposable
         if (_disposed || State != AppState.Recording) return;
         try
         {
-            Console.WriteLine("[Controller] Escape pressed - discarding recording");
+            Logger.Debug("Controller", "Escape pressed; discarding recording");
             CancelRecording();
         }
         catch (Exception ex)
@@ -185,16 +185,15 @@ public class VoicePasteController : IDisposable
     {
         if (State != AppState.Idle)
         {
-            Console.WriteLine($"[Controller] Cannot start recording - current state is {State}");
+            Logger.Warning("Controller", $"Cannot start recording in state {State}");
             ErrorOccurred?.Invoke(this, $"Cannot start recording while {State.ToString().ToLower()}");
             return;
         }
         
         // Capture the currently focused window BEFORE we start recording
         _focusedWindowBeforeRecording = GetForegroundWindow();
-        Console.WriteLine($"[Controller] Captured focus window: {_focusedWindowBeforeRecording}");
         
-        Console.WriteLine("[Controller] Starting recording...");
+        Logger.Debug("Controller", "Starting recording");
         
         try
         {
@@ -205,11 +204,10 @@ public class VoicePasteController : IDisposable
             // Publish the recording state only once cancellation can actually stop the mic.
             // Showing the overlay can pump messages, including a queued Escape cancellation.
             State = AppState.Recording;
-            Console.WriteLine("[Controller] Recording started");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Controller] Failed to start recording: {ex.Message}");
+            Logger.Error("Controller", "Failed to start recording", ex);
             try { DiscardAudioRecording(); }
             catch (Exception cleanupError) { Logger.Warning("Controller", $"Recording cleanup failed: {cleanupError.Message}"); }
             _focusedWindowBeforeRecording = IntPtr.Zero;
@@ -228,18 +226,16 @@ public class VoicePasteController : IDisposable
             throw new InvalidOperationException($"Cannot stop recording in state: {State}");
         
         // Stop recording
-        Console.WriteLine("[Controller] Stopping recording...");
+        Logger.Debug("Controller", "Stopping recording");
         _currentRecordingPath = _audioRecorder.StopRecording();
-        Console.WriteLine($"[Controller] Recording saved to: {_currentRecordingPath}");
         
         State = AppState.Transcribing;
         
         try
         {
             // Transcribe audio
-            Console.WriteLine("[Controller] Starting transcription...");
+            Logger.Debug("Controller", "Starting transcription");
             string transcript = await _transcriptionService.TranscribeAsync(_currentRecordingPath);
-            Console.WriteLine($"[Controller] Transcription complete. Text length: {transcript.Length}");
             
             // Paste result
             if (!string.IsNullOrWhiteSpace(transcript))
@@ -247,40 +243,33 @@ public class VoicePasteController : IDisposable
                 // Restore focus to the window that was active before recording
                 if (_focusedWindowBeforeRecording != IntPtr.Zero)
                 {
-                    Console.WriteLine($"[Controller] Restoring focus to window: {_focusedWindowBeforeRecording}");
                     bool focusRestored = SetForegroundWindow(_focusedWindowBeforeRecording);
                     if (!focusRestored)
                     {
-                        Logger.Warning("Controller", $"SetForegroundWindow({_focusedWindowBeforeRecording}) returned false");
+                        Logger.Warning("Controller", "Could not restore focus to the original window");
                     }
                     
                     // Give Windows a short message-pump turn without adding a visible pre-paste stall.
                     await Task.Delay(50);
                 }
                 
-                Console.WriteLine("[Controller] Pasting text...");
+                Logger.Debug("Controller", "Pasting text");
                 try
                 {
                     bool pasted = await _clipboardPaster.PasteTextAsync(transcript);
-                    if (pasted)
+                    if (!pasted)
                     {
-                        Console.WriteLine("[Controller] Paste complete");
-                    }
-                    else
-                    {
-                        Console.WriteLine("[Controller] WARNING: Paste did not complete. Transcript may still be available in clipboard.");
-                        Logger.Warning("Controller", "Paste did not complete. Suppressing user-facing error dialog.");
+                        Logger.Warning("Controller", "Paste did not complete. Text may still be available in the clipboard.");
                     }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[Controller] WARNING: Unexpected paste error suppressed: {ex.Message}");
                     Logger.Warning("Controller", $"Unexpected paste error suppressed: {ex}");
                 }
             }
             else
             {
-                Console.WriteLine("[Controller] No speech detected in recording");
+                Logger.Debug("Controller", "No speech detected");
                 ErrorOccurred?.Invoke(this, "No speech detected. Please try again and speak clearly into the microphone.");
             }
         }

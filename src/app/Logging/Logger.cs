@@ -8,15 +8,13 @@ namespace VoicePaste.Logging;
 /// </summary>
 public static class Logger
 {
-    private static string? _logFilePath;
-    private static bool _isDebugMode;
+    private static readonly string? _logFilePath;
+    private static volatile bool _isDebugMode;
     private static readonly object _lock = new();
 
     static Logger()
     {
-        // Check for VOICEPASTE_DEBUG environment variable
-        var debugEnv = Environment.GetEnvironmentVariable("VOICEPASTE_DEBUG");
-        _isDebugMode = debugEnv == "1" || debugEnv?.ToLowerInvariant() == "true";
+        Configure(false);
 
         // Setup log file in temp directory
         var tempDir = Path.Combine(Path.GetTempPath(), "VoicePaste");
@@ -24,12 +22,6 @@ public static class Logger
         {
             Directory.CreateDirectory(tempDir);
             _logFilePath = Path.Combine(tempDir, "voicepaste.log");
-            
-            // Write startup message
-            WriteToFile($"=== VoicePaste Started at {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
-            WriteToFile($"Debug Mode: {_isDebugMode}");
-            WriteToFile($"Environment: {Environment.OSVersion}, {Environment.Version}");
-            WriteToFile($"Working Directory: {Environment.CurrentDirectory}");
         }
         catch (Exception ex)
         {
@@ -39,6 +31,13 @@ public static class Logger
     }
 
     public static bool IsDebugMode => _isDebugMode;
+
+    public static void Configure(bool debugLogging)
+    {
+        var debugEnv = Environment.GetEnvironmentVariable("VOICEPASTE_DEBUG");
+        _isDebugMode = debugLogging || debugEnv == "1" ||
+            string.Equals(debugEnv, "true", StringComparison.OrdinalIgnoreCase);
+    }
 
     public static void Info(string component, string message)
     {

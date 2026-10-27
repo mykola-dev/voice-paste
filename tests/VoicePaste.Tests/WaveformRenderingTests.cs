@@ -71,11 +71,13 @@ public class WaveformRenderingTests
                 wave.Update(0, TimeSpan.FromMilliseconds(60));
                 wave.Update(0, TimeSpan.FromMilliseconds(60));
                 var before = Render();
-                Assert.InRange(Alpha(before, 259, 10), 238, 242); // 80% displayed level => ~94% local opacity.
+                var beforePeakX = (int)(280 * (1 - 0.12 / WaveformHistory.VisibleSeconds));
+                Assert.InRange(Alpha(before, beforePeakX, 10), 238, 242); // 80% displayed level => ~94% local opacity.
                 Assert.Equal(ColumnAlpha(silent, 200), ColumnAlpha(before, 200));
                 wave.Update(0, TimeSpan.FromMilliseconds(16));
                 var after = Render();
-                Assert.InRange(Alpha(after, 256, 10), 238, 242); // Local opacity travels with the pulse.
+                var afterPeakX = (int)(280 * (1 - 0.136 / WaveformHistory.VisibleSeconds));
+                Assert.InRange(Alpha(after, afterPeakX, 10), 237, 242); // Local opacity travels with the pulse, allowing WPF resampling.
                 Assert.Equal(ColumnAlpha(silent, 279), ColumnAlpha(after, 279));
                 static (double X, double Area) PulseCenter(byte[] pixels)
                 {
@@ -101,14 +103,15 @@ public class WaveformRenderingTests
                 // Live loudness must no longer change older fragments' opacity or the silent baseline.
                 wave.Update(1, TimeSpan.Zero);
                 var loudLiveEdge = Render();
-                Assert.Equal(Alpha(after, 256, 10), Alpha(loudLiveEdge, 256, 10));
+                Assert.Equal(Alpha(after, afterPeakX, 10), Alpha(loudLiveEdge, afterPeakX, 10));
                 Assert.Equal(ColumnAlpha(after, 200), ColumnAlpha(loudLiveEdge, 200));
                 wave.Update(0, TimeSpan.Zero);
                 Assert.Equal(after, Render());
 
                 wave.Reset();
                 wave.SetColor(Color.FromRgb(12, 34, 56));
-                for (var i = 0; i < 150; i++) wave.Update(0.25, TimeSpan.FromSeconds(1d / 60));
+                var fillFrames = (int)Math.Ceiling((WaveformHistory.VisibleSeconds + 0.5) * 60);
+                for (var i = 0; i < fillFrames; i++) wave.Update(0.25, TimeSpan.FromSeconds(1d / 60));
                 var medium = Render();
                 for (var x = 0; x < 280; x++)
                 {
@@ -119,7 +122,7 @@ public class WaveformRenderingTests
                     Assert.InRange(medium[pixel + 1], 25, 27);
                     Assert.Equal(9, medium[pixel + 2]);
                 }
-                for (var i = 0; i < 150; i++) wave.Update(1, TimeSpan.FromSeconds(1d / 60));
+                for (var i = 0; i < fillFrames; i++) wave.Update(1, TimeSpan.FromSeconds(1d / 60));
                 var uniform = Render();
                 for (var x = 0; x < 280; x++)
                 {

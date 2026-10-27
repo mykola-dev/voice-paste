@@ -105,13 +105,13 @@ public class WaveformEnvelopeTests
         envelope.Advance(Ms(2000), Ms(2000));
         Assert.InRange(envelope.History.Count, 2, WaveformHistory.Capacity);
         Assert.Equal(0.001, envelope.History.GetSample(envelope.History.Count - 1).AgeSeconds, 9);
-        envelope.Advance(Ms(2000), Ms(4000));
-        envelope.Advance(Ms(16), Ms(4016));
+        envelope.Advance(Ms(4000), Ms(6000));
+        envelope.Advance(Ms(16), Ms(6016));
         Assert.Equal(0, envelope.History.LiveLevel);
         Assert.All(Enumerable.Range(0, envelope.History.Count), i => Assert.Equal(0, envelope.History.GetSample(i).Level));
-        envelope.AddMeasurement(1, Ms(4020));
+        envelope.AddMeasurement(1, Ms(6020));
         envelope.Reset();
-        envelope.Advance(Ms(16), Ms(4032));
+        envelope.Advance(Ms(16), Ms(6032));
         Assert.Equal(0, envelope.History.LiveLevel);
         Assert.Equal(3, envelope.History.Count);
     }

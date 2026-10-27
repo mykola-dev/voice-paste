@@ -2,6 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using VoicePaste.Logging;
 
 namespace VoicePaste.Hotkey;
 
@@ -66,7 +67,6 @@ public class GlobalHotkeyManager : IDisposable
         var helper = new WindowInteropHelper(_window);
         var handle = helper.Handle;
         
-        Console.WriteLine($"[Hotkey] Registering hotkey - Key: 0x{key:X}, Modifiers: {modifiers}, Handle: {handle}");
         
         // Add hook for WM_HOTKEY messages
         _source = HwndSource.FromHwnd(handle);
@@ -75,13 +75,12 @@ public class GlobalHotkeyManager : IDisposable
         // Register hotkey
         if (!RegisterHotKey(handle, _hotkeyId, modifiers, key))
         {
-            Console.WriteLine($"[Hotkey] ERROR: Failed to register hotkey!");
             throw new InvalidOperationException(
                 $"Failed to register hotkey. Key may be in use by another application."
             );
         }
         
-        Console.WriteLine($"[Hotkey] Hotkey registered successfully with ID: {_hotkeyId}");
+        Logger.Debug("Hotkey", "Global hotkey registered");
         _isRegistered = true;
     }
     
@@ -103,7 +102,6 @@ public class GlobalHotkeyManager : IDisposable
     {
         if (msg == WM_HOTKEY && wParam.ToInt32() == _hotkeyId)
         {
-            Console.WriteLine($"[Hotkey] WM_HOTKEY received! ID: {_hotkeyId}");
             HotkeyPressed?.Invoke(this, EventArgs.Empty);
             handled = true;
         }

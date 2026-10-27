@@ -24,7 +24,6 @@ if ($StopOnly) {
 
 if (-not [Environment]::Is64BitProcess) { throw 'Run this regression runner from a 64-bit PowerShell host.' }
 $tempBase = [IO.Path]::GetTempPath()
-if (Test-Path (Join-Path $tempBase 'opencode')) { $tempBase = Join-Path $tempBase 'opencode' }
 $sandbox = Join-Path $tempBase ('voicepaste-process-tests-' + [Guid]::NewGuid().ToString('N'))
 $fixtures = [Collections.Generic.List[Diagnostics.Process]]::new()
 

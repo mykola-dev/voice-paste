@@ -77,7 +77,7 @@
    The waveform spans the full window width, without horizontal padding or an inset frame;
    the legacy level bar retains its 16-DIP horizontal padding inside the window border.
    No horizontal edge fades are applied; local amplitude-dependent opacity remains unchanged.
-  The right edge is live; timestamped volume history travels right to left (~1.6 s visible).
+  The right edge is live; timestamped volume history travels right to left (~3.2 s visible).
   Historical points keep their height and move at a constant speed using fractional coordinates,
   not fixed slots or 60 ms steps. A bounded audio/UI queue preserves individual callback timestamps
   and short peaks; held input is not duplicated into history on every presentation frame. Release

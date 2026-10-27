@@ -10,6 +10,7 @@ using System.Windows;
 using System.Windows.Threading;
 using System.Windows.Media;
 
+using VoicePaste.Logging;
 using VoicePaste.Overlay;
 using VoicePaste.Transcription;
 
@@ -81,7 +82,7 @@ public partial class SettingsWindow : Window
             Top = current.SettingsWindowTop;
         }
 
-        LogPathText.Text = $"Log: {Path.Combine(Path.GetTempPath(), "VoicePaste", "voicepaste.log")}";
+        LogPathText.Text = Logger.GetLogFilePath() is { } logPath ? $"Log: {logPath}" : "File logging unavailable";
     }
 
     private void CenterWindowOnScreen()
@@ -107,7 +108,7 @@ public partial class SettingsWindow : Window
         catch (Exception ex)
         {
             if (!_memoryCancellation.IsCancellationRequested) MemoryUsageText.Text = "Memory usage unavailable";
-            Console.WriteLine($"[Settings] Memory query failed: {ex.Message}");
+            Logger.Debug("Settings", $"Memory query failed: {ex.Message}");
         }
         finally { _refreshingMemory = false; }
     }
@@ -215,7 +216,7 @@ public partial class SettingsWindow : Window
 
         var overlay = new RecordingOverlay();
         overlay.Show();
-        overlay.ShowDownloading("Installing VAD dependencies...");
+        overlay.ShowDownloading();
 
         try
         {

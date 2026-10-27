@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using VoicePaste.Logging;
 
 namespace VoicePaste.Transcription;
 
@@ -129,7 +130,7 @@ public class TranscriptionService : IDisposable
         catch (ObjectDisposedException) { }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Transcribe] Preloading failed: {ex.Message}");
+            Logger.Warning("Transcribe", $"Preloading failed: {ex.Message}");
             PreloadingFailed?.Invoke(this, ex.Message);
         }
         finally
@@ -154,13 +155,6 @@ public class TranscriptionService : IDisposable
             }
         }
         StopWorker(retired);
-    }
-
-    public void RestartWorker()
-    {
-        lock (_sync) _preloadVersion++;
-        StopCurrentWorker();
-        lock (_sync) _workerDevice = _device;
     }
 
     public async Task<string> TranscribeAsync(string audioFilePath)
@@ -284,7 +278,7 @@ public class TranscriptionService : IDisposable
             process.ErrorDataReceived += (_, e) =>
             {
                 if (e.Data == null) return;
-                Console.WriteLine($"[Transcribe stderr] {e.Data}");
+                Logger.Debug("Transcribe", e.Data);
                 worker.AddError(e.Data);
             };
             process.EnableRaisingEvents = true;
@@ -421,6 +415,7 @@ public class TranscriptionService : IDisposable
         }
         info.Environment["PYTHONIOENCODING"] = "utf-8";
         info.Environment["PYTHONUTF8"] = "1";
+        info.Environment["VOICEPASTE_DEBUG"] = Logger.IsDebugMode ? "1" : "0";
         var pythonDir = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "python"));
         if (Directory.Exists(pythonDir))
         {

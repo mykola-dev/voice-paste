@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
@@ -17,12 +16,6 @@ public sealed class WaveformMeter : FrameworkElement
     private WriteableBitmap? _bitmap;
     private byte[] _pixels = [];
     private bool _pixelsDirty = true;
-    private long _bitmapGeneration;
-    internal OverlayFrameDiagnostics? Diagnostics { get; set; }
-
-    internal (int Width, int Height, int Bytes, long Generation, int HistoryCount, WaveformQueueDiagnostics Queue) GetDiagnostics()
-        => (_bitmap?.PixelWidth ?? 0, _bitmap?.PixelHeight ?? 0, _pixels.Length, _bitmapGeneration,
-            History.Count, _envelope.GetDiagnostics());
 
     public WaveformMeter()
     {
@@ -41,10 +34,7 @@ public sealed class WaveformMeter : FrameworkElement
 
     internal void AdvanceAudio(TimeSpan elapsed, TimeSpan captureTime)
     {
-        var measure = Diagnostics?.IsActive == true;
-        var start = measure ? Stopwatch.GetTimestamp() : 0;
         _envelope.Advance(elapsed, captureTime);
-        if (measure) Diagnostics!.RecordEnvelope(Stopwatch.GetElapsedTime(start).TotalMilliseconds);
         Refresh(waitForCompositor: false);
     }
 
@@ -62,14 +52,11 @@ public sealed class WaveformMeter : FrameworkElement
 
     protected override void OnRender(DrawingContext drawingContext)
     {
-        var measure = Diagnostics?.IsActive == true;
-        var start = measure ? Stopwatch.GetTimestamp() : 0;
         base.OnRender(drawingContext);
         if (ActualWidth <= 0 || ActualHeight <= 0) return;
         EnsureSurface();
         if (_pixelsDirty) UploadPixels(waitForCompositor: true);
         drawingContext.DrawImage(_bitmap, new Rect(0, 0, ActualWidth, ActualHeight));
-        if (measure) Diagnostics!.RecordOnRender(Stopwatch.GetElapsedTime(start).TotalMilliseconds);
     }
 
     private void Refresh(bool waitForCompositor)
@@ -88,20 +75,14 @@ public sealed class WaveformMeter : FrameworkElement
 
     private void UploadPixels(bool waitForCompositor)
     {
-        var measure = Diagnostics?.IsActive == true;
-        var start = measure ? Stopwatch.GetTimestamp() : 0;
         var bitmap = _bitmap!;
         WaveformRasterizer.Render(History, _waveColor, ActualHeight, bitmap.PixelWidth, bitmap.PixelHeight, _pixels);
-        if (measure) Diagnostics!.RecordRaster(Stopwatch.GetElapsedTime(start).TotalMilliseconds);
         // Never stall a recording frame waiting for the composition thread's previous bitmap copy.
         // A busy bitmap keeps its previous image; the next frame retries at the current history time.
-        start = measure ? Stopwatch.GetTimestamp() : 0;
         var locked = true;
         if (waitForCompositor) bitmap.Lock();
         else locked = bitmap.TryLock(new Duration(TimeSpan.Zero));
-        if (measure) Diagnostics!.RecordLock(Stopwatch.GetElapsedTime(start).TotalMilliseconds, !locked, waitForCompositor);
         if (!locked) return;
-        start = measure ? Stopwatch.GetTimestamp() : 0;
         try
         {
             var stride = bitmap.PixelWidth * 4;
@@ -116,7 +97,6 @@ public sealed class WaveformMeter : FrameworkElement
         finally
         {
             bitmap.Unlock();
-            if (measure) Diagnostics!.RecordUpload(Stopwatch.GetElapsedTime(start).TotalMilliseconds);
         }
     }
 
@@ -142,8 +122,6 @@ public sealed class WaveformMeter : FrameworkElement
         _pixels = new byte[checked(width * height * 4)];
         _bitmap = new WriteableBitmap(width, height, 96 * dpi.DpiScaleX * RasterScale,
             96 * dpi.DpiScaleY * RasterScale, PixelFormats.Pbgra32, null);
-        _bitmapGeneration++;
-        Diagnostics?.SurfaceRebuilt();
         _pixelsDirty = true;
         return true;
     }

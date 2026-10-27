@@ -39,6 +39,17 @@ public class WaveformHistoryTests
         Assert.All(Enumerable.Range(0, history.Count), i => Assert.Equal(0, history.GetSample(i).Level));
     }
 
+    [Fact]
+    public void Pulse_TakesThreePointTwoFourSecondsToCrossVisibleHistory()
+    {
+        var history = new WaveformHistory();
+        history.Update(1, TimeSpan.Zero);
+        history.Advance(TimeSpan.FromSeconds(1.62));
+        var peak = history.GetSample(history.Count - 1);
+        Assert.Equal(1, peak.Level);
+        Assert.Equal(0.5, peak.AgeSeconds / WaveformHistory.VisibleSeconds, 9);
+    }
+
     [Theory]
     [InlineData(double.NaN)]
     [InlineData(double.PositiveInfinity)]
@@ -69,7 +80,7 @@ public class WaveformHistoryTests
         var history = new WaveformHistory();
         history.Update(1, TimeSpan.Zero);
         for (var i = 0; i < 1000; i++) history.Update(0, TimeSpan.FromSeconds(1d / 60));
-        Assert.InRange(history.Count, 98, 102);
+        Assert.InRange(history.Count, 195, 199);
         Assert.True(history.GetSample(0).AgeSeconds >= WaveformHistory.VisibleSeconds);
         Assert.True(history.GetSample(1).AgeSeconds >= WaveformHistory.VisibleSeconds);
         Assert.True(history.GetSample(2).AgeSeconds < WaveformHistory.VisibleSeconds);

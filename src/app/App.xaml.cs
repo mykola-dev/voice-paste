@@ -3,6 +3,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using VoicePaste.Logging;
 using VoicePaste.Overlay;
 using VoicePaste.Settings;
 using VoicePaste.Transcription;
@@ -47,9 +48,6 @@ public partial class App : Application
             Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
             Log("=== VoicePaste Starting ===");
             
-            // Add CUDA libraries to PATH
-            AddCudaToPath();
-            
             base.OnStartup(e);
             
             Log("Creating main window...");
@@ -66,6 +64,7 @@ public partial class App : Application
             
             _settingsManager = new SettingsManager();
             _settings = _settingsManager.Load();
+            Logger.Configure(_settings.DebugLogging);
 
             Log("Initializing controller...");
             _controller = new VoicePasteController(mainWindow, _settings);
@@ -77,7 +76,7 @@ public partial class App : Application
             _controller.AudioLevelChanged += OnAudioLevelChanged;
             
             Log("Application started successfully");
-            Console.WriteLine("VoicePaste is running. Press ScrollLock to record.");
+            Console.WriteLine($"VoicePaste is running. Press {_settings.Hotkey} to record.");
             Console.WriteLine($"Log file: {LogPath}");
             
             // Initialize tray icon
@@ -93,8 +92,6 @@ public partial class App : Application
             _overlay = new RecordingOverlay();
             _overlay.SetRecordingAnimation(_settings.RecordingAnimation);
             _overlay.SetIndicatorColor(_settings.IndicatorColor);
-            if (Environment.GetEnvironmentVariable("VOICEPASTE_FRAME_DIAGNOSTICS") != "0")
-                Log($"Overlay frame diagnostics: {_overlay.EnableFrameDiagnostics()}");
             Log("Overlay created");
             _controller.Initialize();
         }
@@ -137,7 +134,6 @@ public partial class App : Application
         });
         
         var message = $"State changed: {state}";
-        Console.WriteLine(message);
         Log(message);
     }
     
@@ -221,8 +217,6 @@ public partial class App : Application
         Log("Application exiting...");
         _trayIcon?.Dispose();
         _controller?.Dispose();
-        // Only application exit waits briefly for the background log; recording never does.
-        _overlay?.CompleteFrameDiagnostics().Wait(TimeSpan.FromSeconds(1));
         Log("=== VoicePaste Stopped ===");
         base.OnExit(e);
     }
@@ -230,6 +224,7 @@ public partial class App : Application
     private void ApplySettings(AppSettings settings)
     {
         _settings = settings;
+        Logger.Configure(_settings.DebugLogging);
 
         try
         {
@@ -245,59 +240,7 @@ public partial class App : Application
     }
     
     private static void Log(string message)
-    {
-        try
-        {
-            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-            File.AppendAllText(LogPath, $"[{timestamp}] {message}\n");
-        }
-        catch
-        {
-            // Ignore logging errors
-        }
-    }
-    
-    /// <summary>
-    /// Add CUDA libraries to PATH environment variable.
-    /// Required for faster-whisper GPU transcription.
-    /// </summary>
-    private void AddCudaToPath()
-    {
-        try
-        {
-            // Find CUDA libraries in Python site-packages
-            var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            var pythonVersion = "Python314"; // TODO: Make this dynamic
-            
-            var cudaPaths = new[]
-            {
-                Path.Combine(userProfile, "AppData", "Roaming", "Python", pythonVersion, "site-packages", "nvidia", "cublas", "bin"),
-                Path.Combine(userProfile, "AppData", "Roaming", "Python", pythonVersion, "site-packages", "nvidia", "cudnn", "bin"),
-                // Add more CUDA library paths if needed
-            };
-            
-            foreach (var cudaPath in cudaPaths)
-            {
-                if (Directory.Exists(cudaPath))
-                {
-                    var currentPath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Process);
-                    if (!currentPath!.Contains(cudaPath))
-                    {
-                        Environment.SetEnvironmentVariable("PATH", 
-                            cudaPath + Path.PathSeparator + currentPath, 
-                            EnvironmentVariableTarget.Process);
-                        Log($"Added CUDA lib to PATH: {cudaPath}");
-                        Console.WriteLine($"[CUDA] Added to PATH: {cudaPath}");
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Log($"WARNING: Could not add CUDA to PATH: {ex.Message}");
-            Console.WriteLine($"[CUDA] WARNING: {ex.Message}");
-        }
-    }
+        => Logger.Info("App", message);
 
     private async Task CheckAndDownloadModelsAsync()
     {
@@ -318,9 +261,9 @@ public partial class App : Application
         // Create overlay and show download UI
         var overlay = new RecordingOverlay();
         overlay.Show();
-        overlay.ShowDownloading("Downloading models...");
+        overlay.ShowDownloading();
 
-        var cts = new CancellationTokenSource();
+        using var cts = new CancellationTokenSource();
 
         // Handle progress updates
         downloadService.ProgressChanged += (sender, progress) =>
@@ -328,7 +271,6 @@ public partial class App : Application
             Dispatcher.Invoke(() =>
             {
                 var message = $"{progress.Status} ({progress.Percentage}%)";
-                overlay.ShowDownloading(message);
                 Log($"[ModelDownload] {message}");
             });
         };
