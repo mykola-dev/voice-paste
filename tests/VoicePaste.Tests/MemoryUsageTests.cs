@@ -55,7 +55,7 @@ public class MemoryUsageTests
     {
         var previous = AppSettings.Default;
         var next = previous with { KeepInMemory = true, Hotkey = "F8", PasteShortcut = PasteShortcut.CtrlV,
-            DebugLogging = true, SettingsWindowWidth = 800, RecordingAnimation = RecordingAnimation.Waveform,
+            DebugLogging = true, SettingsWindowWidth = 800,
             IndicatorColor = "#4287F5" };
         Assert.False(VoicePasteController.RequiresWorkerReplacement(previous, next));
         Assert.True(VoicePasteController.RequiresWorkerReplacement(previous, next with { Model = "large-v2" }));

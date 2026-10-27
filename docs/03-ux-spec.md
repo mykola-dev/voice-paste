@@ -40,13 +40,13 @@
 ```
 ┌────────────────────────────┐
 │          ● 00:12           │
-│  ████████░░░░░░░░░░        │
+│ ▁▂▅▇▅▂▁▂▃▆█▆▃▂▁▂▅▃▁▁▂▁    │
 └────────────────────────────┘
 ```
 - Pulsing red recording indicator and timer only; no visible "Recording" label.
 - Timer (mm:ss format)
-- Recording animation selectable in Settings: **Level bar** (default) or **Waveform**.
-- Both use additional display-only gain of 5x over the existing RMS input, clamped to full scale.
+- The scrolling **Waveform** is the only recording visualization; there is no mode selector.
+- It uses additional display-only gain of 5x over the existing RMS input, clamped to full scale.
   Peaks rise immediately on the next frame, with no attack ramp; falling levels use a 140 ms
   release time constant. Microphone buffers are 30 ms; rendering follows WPF composition frames
   (typically ~60 fps) rather than a separate timer. These capture/render
@@ -68,14 +68,13 @@
   It is rendered at 2x the monitor's physical pixel resolution in each axis, with subpixel edge
   coverage and high-quality downsampling; size/DPI changes rebuild the surface. This improves
   contour antialiasing without blurring the whole waveform or increasing its on-screen size.
-  After the shared meter response, extra height gain rises smoothly from 1x to 2x over input levels
+  After the level response, extra height gain rises smoothly from 1x to 2x over input levels
   0–10% using smoothstep (`t*t*(3-2*t)`, `t = clamp(level / 0.1)`). At/above 10% it remains the
   previous linear 2x response, clamped to full height. This is a low-level gain ramp, not an
   exponential amplitude curve or noise gate. The minimum silhouette thickness is independently
   fixed at 1 DIP, with subpixel antialiasing, so gain never thickens digital silence.
    Its drawing area is 30 DIPs high, placed 12 DIPs below the header; the taller window prevents clipping.
-   The waveform spans the full window width, without horizontal padding or an inset frame;
-   the legacy level bar retains its 16-DIP horizontal padding inside the window border.
+   The waveform spans the full window width, without horizontal padding or an inset frame.
    No horizontal edge fades are applied; local amplitude-dependent opacity remains unchanged.
   The right edge is live; timestamped volume history travels right to left (~3.2 s visible).
   Historical points keep their height and move at a constant speed using fractional coordinates,
@@ -88,10 +87,10 @@
   simply translate. The bounded history retains two offscreen predecessors to preserve clip-edge
   tangents. Actual 30 ms measurements still limit temporal detail; real plateaus are preserved.
   Silence leaves a thin baseline. This is real volume history, not a frequency spectrum.
-- Neither style changes recorded PCM or performs automatic gain control. Rendering stops and
-  both visualizers reset outside recording; switching styles clears previous history.
+- The visualization does not change recorded PCM or perform automatic gain control. Rendering
+  stops and waveform history resets outside recording.
 - Settings → Overlay → Indicator color opens the standard Windows color chooser. The saved
-  color applies to both recording visualizers and the transcription/download spinner; the
+  color applies to the waveform and the transcription/download spinner; the
   recording-status dot remains red. There is no fixed horizontal color/fade gradient.
 - Configured hotkey (ScrollLock by default) = stop and transcribe.
 - Esc = discard recording; the click-through overlay has no Stop/Cancel buttons.

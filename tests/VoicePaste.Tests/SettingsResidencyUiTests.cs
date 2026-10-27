@@ -40,10 +40,8 @@ public class SettingsResidencyUiTests
         if (error != null) ExceptionDispatchInfo.Capture(error).Throw();
     }
 
-    [Theory]
-    [InlineData(RecordingAnimation.LevelBar)]
-    [InlineData(RecordingAnimation.Waveform)]
-    public void AnimationDropdown_LoadsAndSavesSelectedValue(RecordingAnimation animation)
+    [Fact]
+    public void OverlaySettings_OnlyOffersIndicatorColorAndPreservesColorEditing()
     {
         Exception? error = null;
         var thread = new Thread(() =>
@@ -52,14 +50,8 @@ public class SettingsResidencyUiTests
             try
             {
                 window = new SettingsWindow(new SettingsManager(), AppSettings.Default with
-                    { RecordingAnimation = animation, IndicatorColor = "#1A9FE8" });
-                var combo = Assert.IsType<ComboBox>(window.FindName("RecordingAnimationCombo"));
-                Assert.Equal(2, combo.Items.Count);
-                Assert.Equal(animation, combo.SelectedValue);
-                Assert.Equal(animation, window.GetSettingsFromUi().RecordingAnimation);
-                var other = animation == RecordingAnimation.LevelBar ? RecordingAnimation.Waveform : RecordingAnimation.LevelBar;
-                combo.SelectedValue = other;
-                Assert.Equal(other, window.GetSettingsFromUi().RecordingAnimation);
+                    { IndicatorColor = "#1A9FE8" });
+                Assert.Null(window.FindName("RecordingAnimationCombo"));
                 var swatch = Assert.IsType<Border>(window.FindName("IndicatorColorSwatch"));
                 Assert.Equal(Color.FromRgb(26, 159, 232), Assert.IsType<SolidColorBrush>(swatch.Background).Color);
                 window.SetIndicatorColorSelection("#aa3377");
@@ -67,6 +59,10 @@ public class SettingsResidencyUiTests
                 var hex = Assert.IsType<TextBlock>(window.FindName("IndicatorColorText"));
                 Assert.Equal("#AA3377", hex.Text);
                 var colorPanel = Assert.IsType<StackPanel>(hex.Parent);
+                var overlayGrid = Assert.IsType<Grid>(colorPanel.Parent);
+                Assert.Empty(overlayGrid.RowDefinitions);
+                Assert.Empty(overlayGrid.Children.OfType<ComboBox>());
+                Assert.Equal(new Thickness(0), colorPanel.Margin);
                 colorPanel.Children.OfType<Button>().Single(button => Equals(button.Content, "Reset"))
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 Assert.Equal("#FF8C00", window.GetSettingsFromUi().IndicatorColor);

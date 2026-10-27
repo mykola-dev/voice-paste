@@ -90,7 +90,6 @@ public partial class App : Application
             // Initialize overlay
             Log("Creating overlay...");
             _overlay = new RecordingOverlay();
-            _overlay.SetRecordingAnimation(_settings.RecordingAnimation);
             _overlay.SetIndicatorColor(_settings.IndicatorColor);
             Log("Overlay created");
             _controller.Initialize();
@@ -228,7 +227,6 @@ public partial class App : Application
 
         try
         {
-            _overlay?.SetRecordingAnimation(_settings.RecordingAnimation);
             _overlay?.SetIndicatorColor(_settings.IndicatorColor);
             _controller?.UpdateSettings(_settings);
         }

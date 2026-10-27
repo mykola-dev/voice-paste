@@ -4,6 +4,5 @@
   "model": "large-v3-turbo",
   "device": "cuda",
   "keepInMemory": false,
-  "recordingAnimation": "levelBar",
   "indicatorColor": "#FF8C00"
 }

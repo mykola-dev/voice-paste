@@ -132,22 +132,12 @@
 
                 <GroupBox Grid.Row="5" Header="Overlay" Margin="0,12,0,0">
                     <Grid Margin="10">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="140"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock VerticalAlignment="Center" Text="Recording animation:" />
-                        <StackPanel Grid.Column="1">
-                            <ComboBox x:Name="RecordingAnimationCombo" MinWidth="240" />
-                            <TextBlock Text="Level bar or scrolling voice waveform. Does not affect transcription."
-                                       Margin="0,6,0,0" Foreground="#666" TextWrapping="Wrap" />
-                        </StackPanel>
-                        <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="Indicator color:" Margin="0,12,0,0" />
-                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,12,0,0">
+                        <TextBlock VerticalAlignment="Center" Text="Indicator color:" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
                             <Border x:Name="IndicatorColorSwatch" Width="24" Height="22" BorderBrush="#888"
                                     BorderThickness="1" CornerRadius="3" VerticalAlignment="Center" />
                             <TextBlock x:Name="IndicatorColorText" Width="72" Margin="8,0,0,0" VerticalAlignment="Center" />

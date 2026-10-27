@@ -18,7 +18,6 @@ public class SettingsManagerTests
         Assert.Equal("ScrollLock", settings.Hotkey);
         Assert.Equal(PasteShortcut.CtrlShiftV, settings.PasteShortcut);
         Assert.False(settings.KeepInMemory);
-        Assert.Equal(RecordingAnimation.LevelBar, settings.RecordingAnimation);
         Assert.Equal("#FF8C00", settings.IndicatorColor);
     }
 
@@ -39,7 +38,6 @@ public class SettingsManagerTests
             LanguageMode = LanguageMode.Bilingual,
             DebugLogging = true,
             KeepInMemory = true,
-            RecordingAnimation = RecordingAnimation.Waveform,
             IndicatorColor = "#4287F5"
         };
 
@@ -53,9 +51,8 @@ public class SettingsManagerTests
         Assert.Equal(LanguageMode.Bilingual, loaded.LanguageMode);
         Assert.True(loaded.DebugLogging);
         Assert.True(loaded.KeepInMemory);
-        Assert.Equal(RecordingAnimation.Waveform, loaded.RecordingAnimation);
         Assert.Equal("#4287F5", loaded.IndicatorColor);
-        Assert.Contains("\"recordingAnimation\": \"waveform\"", File.ReadAllText(path));
+        Assert.DoesNotContain("recordingAnimation", File.ReadAllText(path));
         Assert.Contains("\"keepInMemory\": true", File.ReadAllText(path));
     }
 
@@ -69,7 +66,6 @@ public class SettingsManagerTests
             File.WriteAllText(path, """{"model":"large-v2","hotkey":"F8"}""");
             var settings = new SettingsManager(path).Load();
             Assert.False(settings.KeepInMemory);
-            Assert.Equal(RecordingAnimation.LevelBar, settings.RecordingAnimation);
             Assert.Equal("#FF8C00", settings.IndicatorColor);
             Assert.Equal("large-v2", settings.Model);
             Assert.Equal("F8", settings.Hotkey);
@@ -78,30 +74,34 @@ public class SettingsManagerTests
     }
 
     [Theory]
+    [InlineData("\"levelBar\"")]
+    [InlineData("\"waveform\"")]
+    [InlineData("0")]
+    [InlineData("1")]
     [InlineData("\"futureAnimation\"")]
     [InlineData("999")]
     [InlineData("null")]
     [InlineData("{}")]
-    public void Load_UnknownAnimation_FallsBackWithoutLosingOtherSettings(string jsonValue)
+    public void Load_LegacyAnimation_IsIgnoredAndRemovedOnSaveWithoutLosingOtherSettings(string jsonValue)
     {
         var directory = Path.Combine(Path.GetTempPath(), "VoicePaste.Tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         try
         {
             var path = Path.Combine(directory, "config.json");
-            File.WriteAllText(path, "{\"hotkey\":\"F8\",\"model\":\"large-v2\",\"recordingAnimation\":" + jsonValue + "}");
-            var settings = new SettingsManager(path).Load();
-            Assert.Equal(RecordingAnimation.LevelBar, settings.RecordingAnimation);
+            File.WriteAllText(path, "{\"hotkey\":\"F8\",\"model\":\"large-v2\",\"keepInMemory\":true,\"indicatorColor\":\"#1A9FE8\",\"recordingAnimation\":" + jsonValue + "}");
+            var manager = new SettingsManager(path);
+            var settings = manager.Load();
             Assert.Equal("F8", settings.Hotkey);
             Assert.Equal("large-v2", settings.Model);
+            Assert.True(settings.KeepInMemory);
+            Assert.Equal("#1A9FE8", settings.IndicatorColor);
+            manager.Save(settings);
+            Assert.DoesNotContain("recordingAnimation", File.ReadAllText(path));
+            Assert.Equal(settings, manager.Load());
         }
         finally { Directory.Delete(directory, true); }
     }
-
-    [Fact]
-    public void Validate_InvalidAnimation_UsesLevelBar()
-        => Assert.Equal(RecordingAnimation.LevelBar,
-            SettingsManager.ValidateAndMigrate(AppSettings.Default with { RecordingAnimation = (RecordingAnimation)999 }).RecordingAnimation);
 
     [Fact]
     public void ValidateAndMigrate_FixesInvalidSettings()

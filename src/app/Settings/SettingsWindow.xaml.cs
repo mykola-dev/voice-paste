@@ -22,8 +22,6 @@ public partial class SettingsWindow : Window
 
     private sealed record DeviceModeItem(TranscriptionDevice Value, string Display, string Hint);
 
-    private sealed record RecordingAnimationItem(RecordingAnimation Value, string Display);
-
     private void UpdateLanguageHint()
     {
         var selected = LanguageCombo.SelectedItem as LanguageModeItem;
@@ -134,13 +132,6 @@ public partial class SettingsWindow : Window
         };
 
         PasteShortcutCombo.ItemsSource = Enum.GetValues(typeof(PasteShortcut)).Cast<PasteShortcut>();
-        RecordingAnimationCombo.ItemsSource = new[]
-        {
-            new RecordingAnimationItem(RecordingAnimation.LevelBar, "Level bar"),
-            new RecordingAnimationItem(RecordingAnimation.Waveform, "Waveform")
-        };
-        RecordingAnimationCombo.DisplayMemberPath = nameof(RecordingAnimationItem.Display);
-        RecordingAnimationCombo.SelectedValuePath = nameof(RecordingAnimationItem.Value);
         ModelCombo.ItemsSource = AppSettings.ValidModels;
         DeviceCombo.ItemsSource = new List<DeviceModeItem>
         {
@@ -179,7 +170,6 @@ public partial class SettingsWindow : Window
         BeamSizeSlider.Value = settings.BeamSize;
         VadCheck.IsChecked = settings.EnableVad;
         KeepInMemoryCheck.IsChecked = settings.KeepInMemory;
-        RecordingAnimationCombo.SelectedValue = settings.RecordingAnimation;
         SetIndicatorColorSelection(settings.IndicatorColor);
 
         CustomPromptText.Text = settings.CustomInitialPrompt;
@@ -313,7 +303,6 @@ public partial class SettingsWindow : Window
             BeamSize = (int)BeamSizeSlider.Value,
             EnableVad = VadCheck.IsChecked == true,
             KeepInMemory = KeepInMemoryCheck.IsChecked == true,
-            RecordingAnimation = (RecordingAnimation)(RecordingAnimationCombo.SelectedValue ?? RecordingAnimation.LevelBar),
             IndicatorColor = _indicatorColor,
             CustomInitialPrompt = CustomPromptText.Text,
             DebugLogging = DebugLoggingCheck.IsChecked == true,

@@ -67,7 +67,6 @@ public sealed class SettingsManager
             NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals,
             Converters =
             {
-                new RecordingAnimationConverter(),
                 new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)
             }
         };
@@ -121,8 +120,6 @@ public sealed class SettingsManager
             Model = model,
             Hotkey = hotkey,
             EnableVad = current.EnableVad,
-            RecordingAnimation = Enum.IsDefined(current.RecordingAnimation)
-                ? current.RecordingAnimation : RecordingAnimation.LevelBar,
             IndicatorColor = IndicatorColors.Normalize(current.IndicatorColor),
             CustomInitialPrompt = current.CustomInitialPrompt?.Trim() ?? string.Empty,
             SettingsWindowWidth = width,

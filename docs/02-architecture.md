@@ -86,7 +86,7 @@ voicepaste/
 2. **Recording**
    - WASAPI captures mic → PCM buffer
    - Write to temp WAV file (16kHz mono)
-   - Overlay shows timer + level meter
+   - Overlay shows timer + scrolling waveform
 
 3. **Hotkey Press (Stop)**
    - State → Transcribing

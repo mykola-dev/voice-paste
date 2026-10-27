@@ -57,28 +57,9 @@
                                VerticalAlignment="Center"/>
                 </StackPanel>
 
-                <!-- Audio level meter -->
-                <Grid x:Name="RecordingVisualization" Grid.Row="1" Margin="0,12,0,0" Height="30">
-                    <Border x:Name="AudioLevelMeter"
-                            Height="14"
-                            VerticalAlignment="Center"
-                            BorderBrush="#CCCCCC"
-                            BorderThickness="1"
-                            Background="#F5F5F5"
-                            CornerRadius="4">
-                        <Rectangle x:Name="AudioLevelBar"
-                                   Fill="#FF8C00"
-                                   RenderTransformOrigin="0,0.5"
-                                   RadiusX="4"
-                                   RadiusY="4">
-                            <Rectangle.RenderTransform>
-                                <ScaleTransform x:Name="AudioLevelScale" ScaleX="0"/>
-                            </Rectangle.RenderTransform>
-                        </Rectangle>
-                    </Border>
-                    <!-- Extend only the waveform through the 16-DIP padding and 1-DIP border. -->
-                    <local:WaveformMeter x:Name="VoiceWaveform" Margin="-17,0,-17,0" Visibility="Collapsed" />
-                </Grid>
+                <!-- Extend the waveform through the 16-DIP padding and 1-DIP border. -->
+                <local:WaveformMeter x:Name="VoiceWaveform" Grid.Row="1"
+                                     Margin="-17,12,-17,0" Height="30" />
             </Grid>
             <!-- Transcribing overlay (initially hidden) -->
             <Grid x:Name="TranscribingOverlay" 

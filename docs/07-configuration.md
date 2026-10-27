@@ -42,12 +42,9 @@ See [Transcription](05-transcription.md) for worker lifecycle and measurement de
 
 ## Recording animation
 
-Under **Overlay → Recording animation**, choose:
-
-- **Level bar** (`"recordingAnimation": "levelBar"`) — the original horizontal level meter.
-- **Waveform** (`"recordingAnimation": "waveform"`) — a continuous filled volume envelope, smoothly
+**Waveform** is the only recording visualization — a continuous filled volume envelope, smoothly
   moving right to left, with a live right edge and a single configurable color (no color gradient).
-  Waveform's extra height gain eases from 1x to 2x over the lowest 0–10% of the shared level response
+  Waveform's extra height gain eases from 1x to 2x over the lowest 0–10% of the level response
   using smoothstep, then remains at 2x (clamped). Above that range the linear amplitude response is
   unchanged; there is no exponential amplitude remapping or hard noise gate.
   There are no columns or gaps. Timestamped points translate at a constant speed between frames,
@@ -70,18 +67,17 @@ Under **Overlay → Recording animation**, choose:
   layout. Bitmap uploads do not wait for a busy compositor; the next frame uses current history,
   not a queued backlog. This does not reduce supersampling quality or alter the waveform curve.
 
-Level bar is the default for old configs, missing fields and unrecognized animation values.
-Unknown animation values do not reset unrelated configuration. Save applies the selected style
-immediately, including during recording, without restarting the model or recording timer.
-Cancel does not apply a selection. The transcription/download spinner is unchanged.
+There is no visualization selector in Settings. The obsolete `recordingAnimation` field in old
+configs is ignored and omitted on the next Save; other settings are preserved.
+The transcription/download spinner is unchanged.
 
-Both styles have immediate rise (no attack ramp), a 140 ms release time constant and the same
+The waveform has immediate rise (no attack ramp), a 140 ms release time constant and
 display-only gain. Capture uses 30 ms buffers; rendering follows WPF composition frames
 (typically 60 fps) only while recording, with no independent animation timer.
 The overlay is 224 × 100 DIPs, with a 30-DIP waveform area and more spacing below the header.
 Its recording header shows only the pulsing red dot and timer, without the "Recording" label.
 The transcription spinner centers in its own layer, unaffected by collapsed recording controls.
-Neither style changes recorded sound or adds automatic gain control.
+The visualization does not change recorded sound or add automatic gain control.
 
 ### Transparent overlay rendering
 
@@ -114,5 +110,5 @@ dialog keeps the previous choice; cancelling Settings does not apply it.
 
 `"indicatorColor": "#FF8C00"` is the default, including for older configs. Values are opaque
 `#RRGGBB` colors; invalid values fall back to orange. The saved color applies immediately to the
-level bar, waveform and transcription/download spinner, without restarting the worker.
+waveform and transcription/download spinner, without restarting the worker.
 The red recording-status dot is intentionally unchanged.
