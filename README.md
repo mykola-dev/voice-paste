@@ -10,8 +10,7 @@
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://python.org)
 [![CUDA](https://img.shields.io/badge/NVIDIA-CUDA-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/cuda)
 
-https://github.com/user-attachments/assets/68783c53-69fd-4d9c-a363-f89770ae0b15
-
+https://github.com/user-attachments/assets/fab84116-ae55-4019-8e6d-b59ed1ddcb68
 
 **Windows voice dictation that doesn't stop on silence** 🚀
 
