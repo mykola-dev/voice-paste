@@ -393,6 +393,7 @@ impl Overlay {
             let instance = GetModuleHandleW(null());
             let mut class: WNDCLASSW = zeroed();
             class.hInstance = instance;
+            class.hIcon = crate::adapters::application_icon::load()?;
             class.lpfnWndProc = Some(overlay_proc);
             class.lpszClassName = windows_sys::w!("VoicePasteRustOverlay");
             if RegisterClassW(&class) == 0 && GetLastError() != ERROR_CLASS_ALREADY_EXISTS {

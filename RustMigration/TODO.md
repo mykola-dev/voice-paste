@@ -6,12 +6,15 @@ clipboard/focus, реальним завантаженням моделей чи
 
 ## Виправлення й оптимізація
 
-- [ ] **Quit/shutdown:** після закриття вікон host/worker іноді залишаються живими
-  понад 15 секунд. Зняти bounded diagnostics, виправити ownership/join/shutdown;
-  перевірити idle, loading, busy, cancel/error та повторні запуски. Примусове
-  завершення windowless-процесу — workaround, не виправлення.
+- [ ] **Quit/shutdown qualification:** deadlock при drop GPUI Kit text cleanup
+  локалізовано native stack: async-channel/EventListener повторно брав mutex після
+  знищення dispatcher. Platform тепер живе довше Application/globals; звичайний
+  `cx.quit()` збережений, без process::exit/kill workaround. Короткий процесний
+  тест `tests/quit-process.Tests.ps1` відтворив старий дефект і пройшов після фіксу
+  без моделі/мережі/мікрофона. Loading, busy, cancel/error та loaded-worker exit
+  залишаються окремою qualification; успішний preview-тест їх не доводить.
 - [ ] **Пам'ять (U08):** виміряти allocations/modules/buffers worker за lifecycle
-  stages (CT2, CUDA/cuBLAS/cuDNN, ORT/VAD, tokenizer/frontend, staging/copies).
+  stages (CT2, CUDA/cuBLAS, ORT/VAD, tokenizer/frontend, staging/copies).
   Усунути лише виміряне зайве утримання/копії. Порівняти повні Rust/legacy process
   trees у однакових cold, loaded-idle та post-dictation станах, з UI-open cost,
   peaks і окремою VRAM. Однакові модель/options/residency; не trim working set і

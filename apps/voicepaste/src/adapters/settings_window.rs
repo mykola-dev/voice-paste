@@ -36,7 +36,7 @@ impl SettingsWindow {
         let bounds = initial_bounds(&base, cx);
         let models = voicepaste_core::models::catalog()?
             .into_iter()
-            .map(|m| m.name)
+            .map(|m| voicepaste_core::models::display_name(&m.name))
             .collect();
         let (handle, view) = gpui_kit::open_window(
             WindowOptions {
@@ -288,7 +288,10 @@ impl SettingsView {
             window,
             cx,
         );
-        let model_index = models.iter().position(|m| m == &draft.model).unwrap_or(0);
+        let model_index = models
+            .iter()
+            .position(|m| *m == voicepaste_core::models::display_name(&draft.model))
+            .unwrap_or(0);
         let model = choice(models, model_index, window, cx);
         let device = choice(
             strings(&["CUDA (auto CPU fallback)", "CUDA only", "CPU"]),
@@ -364,12 +367,13 @@ impl SettingsView {
             subscriptions.push(cx.observe(control, |_, _, cx| cx.notify()));
         }
         subscriptions.push(cx.observe(&model, |this, model, cx| {
-            if let Some(selected) = model.read(cx).selected_value()
-                && this.status_model != *selected
-            {
-                this.status_model = selected.clone();
-                this.model_query = Some(selected.clone());
-                this.status = "Checking model…".into();
+            if let Some(selected) = model.read(cx).selected_value() {
+                let id = voicepaste_core::models::id_from_display(selected);
+                if this.status_model != id {
+                    this.status_model = id.clone();
+                    this.model_query = Some(id);
+                    this.status = "Checking model…".into();
+                }
             }
             cx.notify();
         }));
@@ -445,12 +449,12 @@ impl SettingsView {
             1 => PasteShortcut::CtrlShiftV,
             _ => PasteShortcut::ShiftInsert,
         };
-        draft.model = self
-            .model
-            .read(cx)
-            .selected_value()
-            .ok_or("Select a model")?
-            .clone();
+        draft.model = voicepaste_core::models::id_from_display(
+            self.model
+                .read(cx)
+                .selected_value()
+                .ok_or("Select a model")?,
+        );
         draft.device = match index(&self.device)? {
             0 => Device::CudaAuto,
             1 => Device::CudaOnly,

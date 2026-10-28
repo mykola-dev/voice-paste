@@ -67,8 +67,7 @@ struct Window {
     hwnd: HWND,
     hook: HHOOK,
     idle: HICON,
-    recording: HICON,
-    transcribing: HICON,
+    busy: HICON,
     icon_size: usize,
     active_key: Option<Binding>,
     pending_key: Option<Binding>,
@@ -84,6 +83,7 @@ impl Window {
             let mut class: WNDCLASSW = zeroed();
             class.lpfnWndProc = Some(window_proc);
             class.hInstance = instance;
+            class.hIcon = super::application_icon::load()?;
             class.lpszClassName = class_name.as_ptr();
             if RegisterClassW(&class) == 0 {
                 return Err(std::io::Error::last_os_error().to_string());
@@ -109,8 +109,7 @@ impl Window {
                 hwnd,
                 hook: null_mut(),
                 idle: null_mut(),
-                recording: null_mut(),
-                transcribing: null_mut(),
+                busy: null_mut(),
                 icon_size: tray_icons::system_icon_size(hwnd),
                 active_key: None,
                 pending_key: None,
@@ -175,22 +174,22 @@ impl Window {
         // SAFETY: old handles are owned by this thread and destroyed after
         // the replacements succeed, so the tray never points at a dead icon.
         unsafe {
-            let idle = tray_icons::create_icon(instance, self.icon_size, Lips::Idle)?;
-            let recording = tray_icons::create_icon(instance, self.icon_size, Lips::Recording)?;
-            let transcribing =
-                tray_icons::create_icon(instance, self.icon_size, Lips::Transcribing)?;
+            let idle = tray_icons::create_icon(instance, self.icon_size, Lips::Bitten)?;
+            let busy = match tray_icons::create_icon(instance, self.icon_size, Lips::Open) {
+                Ok(icon) => icon,
+                Err(error) => {
+                    DestroyIcon(idle);
+                    return Err(error);
+                }
+            };
             if !self.idle.is_null() {
                 DestroyIcon(self.idle);
             }
-            if !self.recording.is_null() {
-                DestroyIcon(self.recording);
-            }
-            if !self.transcribing.is_null() {
-                DestroyIcon(self.transcribing);
+            if !self.busy.is_null() {
+                DestroyIcon(self.busy);
             }
             self.idle = idle;
-            self.recording = recording;
-            self.transcribing = transcribing;
+            self.busy = busy;
         }
         Ok(())
     }
@@ -211,11 +210,7 @@ impl Window {
         }
         let mut data = self.tray_data();
         data.uFlags = NIF_ICON | NIF_TIP;
-        data.hIcon = if preparing {
-            self.transcribing
-        } else {
-            self.idle
-        };
+        data.hIcon = if preparing { self.busy } else { self.idle };
         put(&mut data.szTip, TRAY_TOOLTIP);
         // SAFETY: owned tray identifier and live icon handles.
         unsafe {
@@ -240,10 +235,9 @@ impl Window {
         );
         let mut data = self.tray_data();
         data.uFlags = NIF_ICON | NIF_TIP;
-        data.hIcon = match state {
-            State::Recording(_) => self.recording,
-            State::Transcribing(_) => self.transcribing,
-            State::Idle => self.idle,
+        data.hIcon = match Lips::from(state) {
+            Lips::Open => self.busy,
+            Lips::Bitten => self.idle,
         };
         put(&mut data.szTip, TRAY_TOOLTIP);
         // SAFETY: data and owned icons remain valid for the synchronous call.
@@ -255,7 +249,7 @@ impl Window {
         let mut data = self.tray_data();
         data.uFlags = NIF_INFO;
         data.dwInfoFlags = if error { NIIF_ERROR } else { NIIF_INFO };
-        put(&mut data.szInfoTitle, "VoicePaste Rust (development)");
+        put(&mut data.szInfoTitle, "Voice Paste");
         put(&mut data.szInfo, message);
         // SAFETY: data contains owned inline UTF-16 arrays and a live HWND.
         unsafe {
@@ -280,11 +274,8 @@ impl Drop for Window {
             if !self.idle.is_null() {
                 DestroyIcon(self.idle);
             }
-            if !self.recording.is_null() {
-                DestroyIcon(self.recording);
-            }
-            if !self.transcribing.is_null() {
-                DestroyIcon(self.transcribing);
+            if !self.busy.is_null() {
+                DestroyIcon(self.busy);
             }
         }
     }
@@ -401,7 +392,12 @@ pub fn run(
     // (including OS/app quit) joins it after the UI and native frame context stop.
     let runtime = Rc::new(RefCell::new(runtime));
     let background = runtime.clone();
-    gpui_kit::application()
+    // Kit's RetainedLayoutCleanup global closes an async channel on drop. Its
+    // receiver must still have a live dispatcher: otherwise waking it drops the
+    // receive future synchronously under event-listener's own notification lock.
+    // Retain the platform outside Application so all app globals drop first.
+    let platform = gpui_kit::platform::current_platform(false);
+    gpui_kit::Application::with_platform(platform.clone())
         .with_assets(gpui_kit::assets::Assets)
         .run(move |cx| {
             cx.set_quit_mode(QuitMode::Explicit);
@@ -427,6 +423,7 @@ pub fn run(
             .detach();
         });
     runtime.borrow_mut().shutdown();
+    drop(platform);
     outcome.borrow_mut().clone()
 }
 

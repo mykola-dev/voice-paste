@@ -1,7 +1,7 @@
 //! Raster lips extracted from the user-provided artwork (no procedural drawing).
 //!
-//! Shape encodes state: idle = toothy smile, recording = open mouth,
-//! transcribing = bitten lip. Original proportions/colors are preserved.
+//! Idle uses the bitten lip; recording and transcription use the open mouth.
+//! Original proportions/colors are preserved without extra inset.
 //! Native-size premultiplied pixels cover standard Windows tray DPIs.
 
 use voicepaste_core::State;
@@ -17,17 +17,15 @@ use windows_sys::Win32::{
 /// Tray face per application state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Lips {
-    Idle,
-    Recording,
-    Transcribing,
+    Bitten,
+    Open,
 }
 
 impl From<State> for Lips {
     fn from(state: State) -> Self {
         match state {
-            State::Idle => Self::Idle,
-            State::Recording(_) => Self::Recording,
-            State::Transcribing(_) => Self::Transcribing,
+            State::Idle => Self::Bitten,
+            State::Recording(_) | State::Transcribing(_) => Self::Open,
         }
     }
 }
@@ -89,15 +87,16 @@ macro_rules! tray_blobs {
 }
 
 tray_blobs! {
-    (Idle, "idle", 16), (Idle, "idle", 20), (Idle, "idle", 24), (Idle, "idle", 28),
-    (Idle, "idle", 32), (Idle, "idle", 40), (Idle, "idle", 48),
-    (Recording, "recording", 16), (Recording, "recording", 20), (Recording, "recording", 24),
-    (Recording, "recording", 28), (Recording, "recording", 32), (Recording, "recording", 40),
-    (Recording, "recording", 48),
-    (Transcribing, "transcribing", 16), (Transcribing, "transcribing", 20),
-    (Transcribing, "transcribing", 24), (Transcribing, "transcribing", 28),
-    (Transcribing, "transcribing", 32), (Transcribing, "transcribing", 40),
-    (Transcribing, "transcribing", 48)
+    (Bitten, "bitten", 16), (Bitten, "bitten", 20), (Bitten, "bitten", 24),
+    (Bitten, "bitten", 28), (Bitten, "bitten", 32), (Bitten, "bitten", 40),
+    (Bitten, "bitten", 48),
+    (Open, "open", 16), (Open, "open", 20), (Open, "open", 24),
+    (Open, "open", 28), (Open, "open", 32), (Open, "open", 40), (Open, "open", 48)
+}
+
+// CreateIcon expects WORD-aligned monochrome scanlines, not packed rows.
+fn mask_stride(edge: usize) -> usize {
+    edge.div_ceil(16) * 2
 }
 
 /// Create a tray icon from the shipped blob nearest to `size`.
@@ -107,7 +106,7 @@ pub fn create_icon(instance: HINSTANCE, size: usize, state: Lips) -> Result<HICO
     let edge = canonical_size(size);
     let pixels = blob_bytes(state, edge);
     debug_assert_eq!(pixels.len(), edge * edge * 4);
-    let row = edge.div_ceil(8);
+    let row = mask_stride(edge);
     let mut mask = vec![255u8; row * edge];
     for y in 0..edge {
         for x in 0..edge {
@@ -156,29 +155,22 @@ mod tests {
 
     #[test]
     fn every_state_ships_every_canonical_blob_with_distinct_pixels() {
-        let states = [Lips::Idle, Lips::Recording, Lips::Transcribing];
+        let states = [Lips::Bitten, Lips::Open];
         for state in states {
             for size in CANONICAL {
                 assert_eq!(blob_bytes(state, size).len(), size * size * 4);
             }
         }
         // Unknown sizes fall back to the 32px blob of the same state.
-        assert_eq!(blob_bytes(Lips::Idle, 25), blob_bytes(Lips::Idle, 32));
+        assert_eq!(blob_bytes(Lips::Bitten, 25), blob_bytes(Lips::Bitten, 32));
         for size in CANONICAL {
-            let (idle, rec, bitten) = (
-                blob_bytes(Lips::Idle, size),
-                blob_bytes(Lips::Recording, size),
-                blob_bytes(Lips::Transcribing, size),
-            );
-            assert_ne!(idle, rec);
-            assert_ne!(idle, bitten);
-            assert_ne!(rec, bitten);
+            assert_ne!(blob_bytes(Lips::Bitten, size), blob_bytes(Lips::Open, size));
         }
     }
 
     #[test]
     fn all_blobs_are_premultiplied_and_have_visible_artwork() {
-        for state in [Lips::Idle, Lips::Recording, Lips::Transcribing] {
+        for state in [Lips::Bitten, Lips::Open] {
             for size in CANONICAL {
                 let (pixels, remainder) = blob_bytes(state, size).as_chunks::<4>();
                 assert!(remainder.is_empty());
@@ -193,13 +185,53 @@ mod tests {
 
     #[test]
     fn blobs_have_transparent_corners_and_opaque_centers() {
-        for state in [Lips::Idle, Lips::Recording, Lips::Transcribing] {
+        for state in [Lips::Bitten, Lips::Open] {
             let edge = 32;
             let blob = blob_bytes(state, edge);
             for (x, y) in [(0, 0), (31, 0), (0, 31), (31, 31)] {
                 assert_eq!(blob[(y * edge + x) * 4 + 3], 0, "{state:?} corner");
             }
             assert!(blob[(16 * edge + 16) * 4 + 3] > 200, "{state:?} center");
+        }
+    }
+
+    #[test]
+    fn state_mapping_uses_only_two_faces() {
+        let session = voicepaste_core::SessionId(1);
+        assert_eq!(Lips::from(State::Idle), Lips::Bitten);
+        assert_eq!(Lips::from(State::Recording(session)), Lips::Open);
+        assert_eq!(Lips::from(State::Transcribing(session)), Lips::Open);
+    }
+
+    #[test]
+    fn monochrome_mask_rows_are_word_aligned() {
+        for (edge, stride) in [
+            (16, 2),
+            (20, 4),
+            (24, 4),
+            (28, 4),
+            (32, 4),
+            (40, 6),
+            (48, 6),
+        ] {
+            assert_eq!(mask_stride(edge), stride);
+        }
+    }
+
+    #[test]
+    fn artwork_fills_the_square_without_extra_inset() {
+        for state in [Lips::Bitten, Lips::Open] {
+            for edge in CANONICAL {
+                let pixels = blob_bytes(state, edge);
+                // Both retained masters are wider than tall: their visible bounds
+                // reach both horizontal edges, with proportional vertical padding.
+                for x in [0, edge - 1] {
+                    assert!(
+                        (0..edge).any(|y| pixels[(y * edge + x) * 4 + 3] > 0),
+                        "{state:?} {edge}px has an extra horizontal inset"
+                    );
+                }
+            }
         }
     }
 }

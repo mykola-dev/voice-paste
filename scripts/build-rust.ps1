@@ -11,7 +11,9 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+. (Join-Path $PSScriptRoot 'portable-output.ps1')
 function Invoke-PortablePackage {
+    param([switch]$SkipBuild, [bool]$CreateArchive = $true)
     if (-not $IsWindows -or -not [Environment]::Is64BitProcess) { throw 'PowerShell 7 x64 on Windows is required.' }
     $versionMatch = [regex]::Match((Get-Content (Join-Path $root 'Cargo.toml') -Raw), '(?m)^version = "([0-9]+\.[0-9]+\.[0-9]+)"')
     if (-not $versionMatch.Success) { throw 'Workspace version missing.' }
@@ -19,13 +21,11 @@ function Invoke-PortablePackage {
     $profile = if ($Release) { 'release' } else { 'debug' }
     $suffix = if ($Release) { '' } else { '-debug' }
     $name = "VoicePaste-$version-windows-x86_64$suffix"
-    $output = Join-Path $root "build/$profile"
-    $destination = Join-Path $output $name
+    $output = Join-Path $root 'build/packages'
+    $destination = Join-Path $root "build/$profile"
     $archive = Join-Path $output "$name.zip"
     $checksum = "$archive.sha256"
-    foreach ($path in @($destination, $archive, $checksum)) {
-        if (Test-Path -LiteralPath $path) { throw "Output exists; move the previous package elsewhere first: $path" }
-    }
+    # Archives are derived outputs and may be regenerated. User data under data/ is never deleted.
     $nativeSource = if ($NativeRuntimeSource) { [IO.Path]::GetFullPath($NativeRuntimeSource) } else { Join-Path $root 'build/native-runtime' }
     $files = (Import-PowerShellDataFile (Join-Path $PSScriptRoot 'native-runtime.psd1')).Files
     foreach ($file in $files) {
@@ -35,13 +35,15 @@ function Invoke-PortablePackage {
     if ($RequireNotices) {
         & (Join-Path $PSScriptRoot 'test-native-inputs.ps1') -NativeRuntimeSource $nativeSource
     }
-    if (-not $PSCmdlet.ShouldProcess($destination, "Build $profile host/worker, stage and ZIP portable package")) { return }
+    $operation = if ($CreateArchive) { "Build $profile host/worker, publish portable folder and ZIP" } else { "Publish $profile portable folder" }
+    if (-not $PSCmdlet.ShouldProcess($destination, $operation)) { return }
     # Reuse this entry point's compilation/toolchain path, without dev deployment.
-    & $PSCommandPath -Action build -Release:$Release -NoDeploy -NativeRuntimeSource $nativeSource -Ct2Include $Ct2Include
-    $stage = Join-Path $output ('.stage-' + [guid]::NewGuid().ToString('N'))
+    if (-not $SkipBuild) {
+        & $PSCommandPath -Action build -Release:$Release -NoDeploy -NativeRuntimeSource $nativeSource -Ct2Include $Ct2Include
+    }
+    $stage = Join-Path $root ('build/.stage-' + [guid]::NewGuid().ToString('N'))
     $payload = Join-Path $stage $name
     $stagedZip = Join-Path $stage "$name.zip"
-    $published = @()
     try {
         New-Item -ItemType Directory -Path (Join-Path $payload 'runtime'), (Join-Path $payload 'notices/ui') -Force | Out-Null
         Copy-Item (Join-Path $root "build/voicepaste-rust/target/$profile/voicepaste.exe") (Join-Path $payload 'VoicePaste.exe')
@@ -68,25 +70,26 @@ function Invoke-PortablePackage {
         foreach ($entry in $entries) {
             if ((Get-FileHash (Join-Path $payload $entry.path)).Hash -ne $entry.sha256) { throw "Staging hash mismatch: $($entry.path)" }
         }
-        Add-Type -AssemblyName System.IO.Compression.FileSystem
-        [IO.Compression.ZipFile]::CreateFromDirectory($payload, $stagedZip, [IO.Compression.CompressionLevel]::Optimal, $true)
-        & (Join-Path $PSScriptRoot 'test-portable-windows.ps1') -ArchivePath $stagedZip -ExpectedProfile $profile
-        "$( (Get-FileHash $stagedZip).Hash.ToLowerInvariant() )  $name.zip" | Set-Content (Join-Path $stage "$name.zip.sha256") -Encoding ascii
-        foreach ($pair in @(@($payload, $destination), @($stagedZip, $archive), @((Join-Path $stage "$name.zip.sha256"), $checksum))) {
-            Move-Item -LiteralPath $pair[0] -Destination $pair[1]
-            $published += $pair[1]
+        if ($CreateArchive) {
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            [IO.Compression.ZipFile]::CreateFromDirectory($payload, $stagedZip, [IO.Compression.CompressionLevel]::Optimal, $true)
+            & (Join-Path $PSScriptRoot 'test-portable-windows.ps1') -ArchivePath $stagedZip -ExpectedProfile $profile
+            "$( (Get-FileHash $stagedZip).Hash.ToLowerInvariant() )  $name.zip" | Set-Content (Join-Path $stage "$name.zip.sha256") -Encoding ascii
+        }
+        Publish-PortableFolder -Source $payload -Destination $destination
+        if ($CreateArchive) {
+            New-Item -ItemType Directory -Path $output -Force | Out-Null
+            Copy-Item -LiteralPath $stagedZip -Destination $archive -Force
+            Copy-Item -LiteralPath (Join-Path $stage "$name.zip.sha256") -Destination $checksum -Force
+            Write-Output "Archive: $archive"
         }
         Write-Output "Portable $profile package: $destination"
-        Write-Output "Archive: $archive"
-    } catch {
-        foreach ($path in $published) { Move-Item -LiteralPath $path -Destination $stage }
-        throw
     } finally {
         if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
     }
 }
 if ($Action -eq 'package') {
-    if ($ModelSource -or $NoDeploy) { throw 'Package excludes user models and never deploys; omit ModelSource/NoDeploy.' }
+    if ($ModelSource -or $NoDeploy) { throw 'Package excludes user models and always updates the portable folder; omit ModelSource/NoDeploy.' }
     Invoke-PortablePackage
     return
 }
@@ -103,8 +106,8 @@ try {
     } else { $cargo = (Get-Command cargo.exe -ErrorAction Stop).Source }
     $env:RUSTUP_TOOLCHAIN = '1.98.1'
     $env:CARGO_TARGET_DIR = Join-Path $root 'build/voicepaste-rust/target'
-    $destination = Join-Path $root 'build/VoicePaste-Rust'
-    $runtime = Join-Path $destination 'runtime'
+    $profile = if ($Release) { 'release' } else { 'debug' }
+    $destination = Join-Path $root "build/$profile"
     if (-not $NativeRuntimeSource) { $NativeRuntimeSource = Join-Path $root 'build/native-runtime' }
     if ($Action -notin @('fmt', 'fetch')) {
         $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
@@ -132,16 +135,6 @@ try {
         @('LIBRARY ctranslate2.dll', 'EXPORTS') + $symbols | Set-Content -LiteralPath $definition -Encoding ascii
         & lib.exe /nologo /machine:x64 "/def:$definition" "/out:$(Join-Path $env:VOICEPASTE_CT2_LIB 'ctranslate2.lib')"
         if ($LASTEXITCODE -ne 0) { throw 'CT2 import-library generation failed.' }
-        function Copy-Runtime([string]$Source) {
-            $target = Join-Path $runtime ([IO.Path]::GetFileName($Source))
-            if (-not (Test-Path -LiteralPath $target) -or (Get-FileHash -LiteralPath $target).Hash -ne (Get-FileHash -LiteralPath $Source).Hash) {
-                Copy-Item -LiteralPath $Source -Destination $target
-            }
-        }
-        if ($Action -eq 'build' -and -not $NoDeploy) {
-            New-Item -ItemType Directory -Path $runtime -Force | Out-Null
-            foreach ($name in $nativeFiles) { Copy-Runtime (Join-Path $NativeRuntimeSource $name) }
-        }
         $env:PATH = "$NativeRuntimeSource;$env:PATH"
     }
     $arguments = @($Action, '--manifest-path', (Join-Path $root 'Cargo.toml'))
@@ -156,20 +149,7 @@ try {
     & $cargo @arguments
     if ($LASTEXITCODE -ne 0) { throw "Rust $Action failed ($LASTEXITCODE)." }
     if ($Action -eq 'build' -and -not $NoDeploy) {
-        $profile = if ($Release) { 'release' } else { 'debug' }
-        New-Item -ItemType Directory -Path $destination -Force | Out-Null
-        Copy-Item -LiteralPath (Join-Path $env:CARGO_TARGET_DIR "$profile/voicepaste.exe") -Destination (Join-Path $destination 'VoicePaste.exe')
-        Copy-Item -LiteralPath (Join-Path $env:CARGO_TARGET_DIR "$profile/voicepaste-stt-worker.exe") -Destination $runtime
-        $licenses = Join-Path $destination 'package/ui-assets'
-        New-Item -ItemType Directory -Path $licenses -Force | Out-Null
-        Copy-Item -LiteralPath (Join-Path $root 'apps/voicepaste/assets/README.md') -Destination $licenses
-        Copy-Item -LiteralPath (Join-Path $root 'apps/voicepaste/assets/tray/README.md') -Destination (Join-Path $licenses 'Tray-Artwork-Provenance.md')
-        Copy-Item -LiteralPath (Join-Path $root 'apps/voicepaste/assets/one/LICENSE') -Destination (Join-Path $licenses 'One-Dark-MIT.txt')
-        Copy-Item -LiteralPath (Join-Path $root 'apps/voicepaste/assets/fonts/OFL.txt') -Destination (Join-Path $licenses 'IBM-Plex-Sans-OFL.txt')
-        $registry = Join-Path $env:CARGO_HOME 'registry/src'
-        $lucide = @(Get-ChildItem -Path "$registry/*/gpui-kit-assets-0.8.1/LICENSE-LUCIDE" -File)
-        if ($lucide.Count -ne 1) { throw 'Pinned Lucide license not found.' }
-        Copy-Item -LiteralPath $lucide[0].FullName -Destination (Join-Path $licenses 'Lucide.txt')
+        Invoke-PortablePackage -SkipBuild -CreateArchive $false
         if ($ModelSource) {
             $manifest = Get-Content -Raw -LiteralPath (Join-Path $root 'crates/core/assets/model-artifacts.json') | ConvertFrom-Json
             $model = $manifest.models | Where-Object name -eq 'large-v2'
@@ -189,7 +169,6 @@ try {
                 Move-Item -LiteralPath $partial -Destination $target
             }
         }
-        Get-ChildItem -LiteralPath $runtime -File | ForEach-Object { [PSCustomObject]@{ name=$_.Name; bytes=$_.Length; sha256=(Get-FileHash -LiteralPath $_.FullName).Hash } } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $destination 'runtime-manifest.json')
         "Built host + resident native worker: $destination. Not launched; no models downloaded."
     }
 } finally {

@@ -46,7 +46,7 @@ upgrading; quit the app before replacing files.
 ## 🛠️ Build it yourself
 
 Run **`build-portable-windows.bat`** from the repository root. It builds a Release
-portable folder and ZIP under `build/release/` without starting or stopping the app.
+portable app directly in `build/release/` and a ZIP under `build/packages/`, without starting or stopping the app.
 Build tools and native dependencies must already be available — see the
 [Windows build guide](docs/build-windows.md#build-and-checks-windows-x64).
 

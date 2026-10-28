@@ -54,8 +54,8 @@ jobs:
         with:
           name: VoicePaste-windows-x86_64
           path: |
-            build/release/*.zip
-            build/release/*.zip.sha256
+            build/packages/*.zip
+            build/packages/*.zip.sha256
           if-no-files-found: error
           compression-level: 0
           retention-days: 14

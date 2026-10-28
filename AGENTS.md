@@ -2,7 +2,7 @@
 
 ## Scope and sources of truth
 
-- Work on branch `Rust`; leave changes uncommitted/unpushed unless requested.
+- Continue development on branch `master`; leave changes uncommitted/unpushed unless requested.
 - Production source lives in `apps/` and `crates/`. The C#/WPF/Python application
   and its build scripts were removed; do not restore legacy dependencies.
 - Follow `docs/engineering-principles.md` and `docs/architecture.md`.
@@ -66,6 +66,13 @@ layout, scrolling, rendering, DPI or UI event/lifetime handling.
 
 - `scripts/build-rust.ps1 -Action build -NoDeploy`, `-Action fmt`, `-Action clippy`,
   `-Action test`; see README/worker README for native prerequisites.
+- Ready-to-run portable builds have one canonical location per profile:
+  `build/debug/` (default) and `build/release/` (`-Release`). Rebuild through
+  `scripts/build-rust.ps1 -Action build [-Release]` to update those folders;
+  `-NoDeploy` only compiles into the internal Cargo cache, not a runnable package.
+  `build-portable-windows.bat` updates the same Release folder and writes ZIP/checksum
+  to `build/packages/`. Never deploy to the old `build/VoicePaste-Rust/` or a
+  version-named subfolder. Rebuilds preserve `data/`; never archive personal data.
 - Native files come from an explicit flat `-NativeRuntimeSource` folder (default
   ignored `build/native-runtime/`), never pip, a Python installation or legacy app.
 - Run Windows commands with hidden console windows and without focus theft.

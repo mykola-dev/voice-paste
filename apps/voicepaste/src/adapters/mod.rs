@@ -1,3 +1,4 @@
+mod application_icon;
 pub mod audio;
 mod hotkey;
 mod memory;

@@ -12,6 +12,7 @@ if not "%result%"=="0" (
     echo Build failed. See the error above.
 ) else (
     echo Portable release is ready in "%~dp0build\release".
+    echo ZIP and checksum are in "%~dp0build\packages".
 )
 if not defined CI pause
 exit /b %result%

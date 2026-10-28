@@ -23,6 +23,8 @@
   never changes saved PCM. Stream capture to owned temporary files and clean up
   after success, failure or cancel; no fixed recording-duration/silence timeout.
 - Models: `large-v2` and `large-v3-turbo`, pinned by the core model catalog.
+  The Settings dropdown shows them with a Whisper prefix; saved configs and
+  on-disk folders keep the short ids.
   Fresh startup provisions only large-v2; alternatives require explicit save or
   provisioning request. Dropdown edits and availability checks are read-only.
 - CPU stays CPU; CUDA-only fails instead of silently falling back. Auto mode may
@@ -51,6 +53,9 @@
   load/download/save a model. No permanent model Retry/Cancel controls.
 - Left tray click opens Settings; right opens Start/Stop, Settings, Quit menu.
   Menu tracking must not stall recording/busy animation.
+- Tray artwork: lips-source2 artwork at idle; open mouth during recording, transcription
+  and model preparation. Outside the tray the open-mouth application icon is
+  stable. Preserve artwork proportions/corners with no extra inset in square assets.
 - System contains residency, readable host/worker/combined memory with shared-page
   caveat, separate/unavailable GPU memory, logging and optional sign-in startup.
   Startup defaults off, uses the current-user Run value `VoicePasteRust`, applies

@@ -113,17 +113,17 @@ parity and full behavioral parity are not claimed.
 ./scripts/build-rust.ps1 -ModelSource '<existing-large-v2-directory>' # hash-check/copy, no download
 ./scripts/build-rust.ps1 -Action test
 ./scripts/build-rust.ps1 -Action clippy
-./build/VoicePaste-Rust/VoicePaste.exe --check # config-only; no mic/hotkey/tray
-./build/VoicePaste-Rust/VoicePaste.exe --settings # setup only; no model loading/download
-./build/VoicePaste-Rust/VoicePaste.exe --download-model # explicit selected-model provisioning
-./build/VoicePaste-Rust/VoicePaste.exe --capture-preview # interactive, opt-in
-./build/VoicePaste-Rust/VoicePaste.exe # normal tray dictation; microphone used only on Start
-./build/VoicePaste-Rust/VoicePaste.exe --transcribe-file '<wav>' # same worker, no clipboard/mic
+./build/debug/VoicePaste.exe --check # config-only; no mic/hotkey/tray
+./build/debug/VoicePaste.exe --settings # setup only; no model loading/download
+./build/debug/VoicePaste.exe --download-model # explicit selected-model provisioning
+./build/debug/VoicePaste.exe --capture-preview # interactive, opt-in
+./build/debug/VoicePaste.exe # normal tray dictation; microphone used only on Start
+./build/debug/VoicePaste.exe --transcribe-file '<wav>' # same worker, no clipboard/mic
 ```
 
 The script uses the existing local Rust 1.98.1 toolchain when present, otherwise
 the installed Cargo/rustup. Outputs/config/models/session data stay under
-`build/VoicePaste-Rust/`; native build inputs live in `build/native-runtime/`. Requested
+`build/debug/` (or `build/release/` with `-Release`); native build inputs live in `build/native-runtime/`. Requested
 exceptions are diagnostics in Windows Temp and opt-in current-user startup.
 It neither stops apps nor downloads models. This is a developer build, not the
 finished portable pipeline.

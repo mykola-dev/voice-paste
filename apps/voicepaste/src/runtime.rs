@@ -257,8 +257,9 @@ impl Runtime {
 
     pub fn shutdown(&mut self) {
         self.shutdown.store(true, Ordering::Release);
-        // Quit is reliable; normal callbacks use try_send and never block.
-        let _ = self.commands.send(Command::Quit);
+        // The flag is authoritative, even with a full command queue. Wake an
+        // idle receiver if possible; never block shutdown trying to enqueue Quit.
+        let _ = self.commands.try_send(Command::Quit);
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
@@ -303,5 +304,41 @@ fn prepare(storage: &Storage, model: &str, sender: &SyncSender<Event>) -> Option
             report(storage, sender, error);
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shutdown_does_not_block_on_a_full_command_queue() {
+        let (commands, receiver) = mpsc::sync_channel(1);
+        commands.send(Command::Quit).unwrap();
+        let (_, events) = mpsc::sync_channel(1);
+        let (_, levels) = crossbeam_channel::bounded(1);
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let mut runtime = Runtime {
+            commands,
+            events,
+            thread: None,
+            clock: Instant::now(),
+            levels,
+            shutdown: shutdown.clone(),
+        };
+        let (done, completed) = mpsc::channel();
+        let task = thread::spawn(move || {
+            runtime.shutdown();
+            done.send(()).unwrap();
+        });
+        let result = completed.recv_timeout(Duration::from_secs(1));
+        // Unblock the old implementation before joining even when it fails.
+        drop(receiver);
+        task.join().unwrap();
+        assert!(
+            result.is_ok(),
+            "shutdown waited for space in the command queue"
+        );
+        assert!(shutdown.load(Ordering::Acquire));
     }
 }

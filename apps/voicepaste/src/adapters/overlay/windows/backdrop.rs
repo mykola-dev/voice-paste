@@ -26,6 +26,7 @@ impl Backdrop {
             let instance = GetModuleHandleW(null());
             let mut class: WNDCLASSW = zeroed();
             class.hInstance = instance;
+            class.hIcon = crate::adapters::application_icon::load().ok()?;
             class.lpfnWndProc = Some(backdrop_proc);
             class.lpszClassName = windows_sys::w!("VoicePasteRustBackdrop");
             if RegisterClassW(&class) == 0 && GetLastError() != ERROR_CLASS_ALREADY_EXISTS {

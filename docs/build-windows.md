@@ -69,12 +69,15 @@ universal builder, `scripts/build-rust.ps1`. GitHub Actions uses the same builde
 ```
 
 The BAT launcher always requests Release host/worker using the locked dependencies.
-Output is `build/release/VoicePaste-2.0.0-windows-x86_64/`, plus a Windows-named
-ZIP and `.zip.sha256`. Compilation caches remain outside the package. Models,
-personal config and session data are never packaged. Existing outputs are refused:
-move the previous package/archive elsewhere before rebuilding. No application is
-started or stopped. `-WhatIf` checks inputs and describes the operation without
-building. Debug packages go to `build/debug/` with a `-debug` filename suffix.
+Output is the portable app directly in `build/release/`, plus a Windows-named
+ZIP and `.zip.sha256` in `build/packages/`. Compilation caches remain outside the package. Models,
+personal config and session data are never packaged and the existing `data/`
+folder is preserved. Rebuilding overwrites executables, runtime files, notices,
+docs and the manifest/archive; quit the app first because a running binary locks
+its files. No application is started or stopped by the builder. `-WhatIf` checks inputs and describes the operation without
+building. Debug portable apps go directly to `build/debug/`; their archives in
+`build/packages/` have a `-debug` filename suffix. ZIPs are always made from clean
+staging, never from a runnable folder containing personal data.
 Local builds with incomplete native notices are for evaluation only.
 
 ```powershell
@@ -86,14 +89,17 @@ Local builds with incomplete native notices are for evaluation only.
 ```
 
 After quitting the running Rust application, build without `-NoDeploy` to update
-`build/VoicePaste-Rust/`. The script neither stops nor launches applications.
+`build/debug/` (default) or `build/release/` (`-Release`). Development and packaging
+use the same portable-folder publisher and preserve all existing `data/` contents.
+Ordinary builds do not create ZIPs. `-NoDeploy` only updates the internal Cargo
+cache at `build/voicepaste-rust/target/`. The script neither stops nor launches applications.
 Keep generated tools, binaries, models and disposable diagnostics under ignored
 `build/`; do not commit them.
 
 ```powershell
-./build/VoicePaste-Rust/VoicePaste.exe --check    # config-only check
-./build/VoicePaste-Rust/VoicePaste.exe --settings # settings without model loading
-./build/VoicePaste-Rust/VoicePaste.exe            # tray application
+./build/debug/VoicePaste.exe --check    # config-only check
+./build/debug/VoicePaste.exe --settings # settings without model loading
+./build/debug/VoicePaste.exe            # tray application
 ```
 
 Do not launch a second tray instance or interrupt recording/open Settings drafts
@@ -118,7 +124,17 @@ remains distinct from automated tests.
 Windows is the current target. Linux/macOS boundaries are being prepared; neither
 port is implemented. Reproducible native source builds, redistribution closure,
 equivalent-state memory comparison and some device/model/interaction qualification
-remain open. Quit/shutdown retention is a known issue; cleanup did not fix it.
+remain open. A GPUI shutdown drop-order deadlock is fixed and has a bounded
+process regression; loaded-worker/busy shutdown qualification remains open.
+
+Quick shutdown regression (isolated disposable config, no model/network/microphone):
+
+```powershell
+./tests/quit-process.Tests.ps1 -Executable ./build/voicepaste-rust/target/release/voicepaste.exe
+```
+
+Startup is limited to 10 seconds, exit to 5 seconds; timeout fails and cleans up
+only the test's own process. It never stops a running user instance.
 
 - [Current host details](../apps/voicepaste/README.md)
 - [Native worker and build inputs](../apps/stt-worker/README.md)
@@ -136,15 +152,24 @@ produce a CI artifact only. Publishing remains a maintainer decision.
 
 Configure repository variables `VOICEPASTE_NATIVE_BUNDLE_URL` (HTTPS) and
 `VOICEPASTE_NATIVE_BUNDLE_SHA256` for a reviewed, immutable native-input ZIP.
+See [native input preparation and inventory schema](native-inputs.md) for the
+validation/bundle commands and hosting restrictions.
 Its root must contain the runtime files listed in `scripts/native-runtime.psd1`,
 `include/` from CT2 revision `226c95d94e660c48b11c62e108886b7ef76d589d`,
 and `notices/` containing third-party license texts and `inventory.json`
-(versions, origins, hashes and redistribution terms). Additional cuDNN component
-DLLs required by that native build must be explicitly added to the runtime list;
-the current local cache has not established complete dependency closure.
+(versions, origins, hashes and redistribution terms). The validated CT2 binary
+does not use cuDNN; its minimal runtime list includes the ONNX Runtime dependency
+`msvcp140_1.dll`. Dependency changes require requalification; these local checks
+do not establish complete clean-machine closure.
 Set `VOICEPASTE_REDISTRIBUTION_APPROVED=true` only after reviewing the native
 bundle and embedded artwork rights. The workflow fails closed without these
 inputs; it never takes native dependencies from a developer machine.
 
 The current native inventory, artwork rights and clean-machine qualification
 remain incomplete. Automation does not certify redistribution or feature parity.
+
+`Windows source checks` runs formatting and synthetic packaging/native-input
+tests on pushes to `master`/`Rust` and pull requests, including forks, without
+needing a native bundle. The separate release workflow verifies bundle contents,
+runs workspace tests/clippy, and packages Release binaries. Invalid or missing
+release inputs fail explicitly rather than producing misleading empty artifacts.

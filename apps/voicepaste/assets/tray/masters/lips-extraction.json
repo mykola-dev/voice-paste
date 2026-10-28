@@ -1,7 +1,7 @@
 {
   "source_sha256": "a9a126a30c191fa70affb2df6cea301b1298b2f76a6e79afcbad5402f916265a",
   "regions": {
-    "recording": {
+    "open": {
       "source_box": [
         50,
         25,
@@ -19,40 +19,18 @@
         479
       ]
     },
-    "idle": {
-      "source_box": [
-        665,
-        100,
-        1430,
-        550
-      ],
-      "crop_in_box": [
-        10,
-        43,
-        746,
-        422
+    "bitten": {
+      "source_file": "build/lips-source2.png",
+      "source_sha256": "e8010b251d587982754996cd50a28f273c40e25321541e639c5ae64caf0b3545",
+      "crop_in_source": [
+        130,
+        70,
+        1469,
+        890
       ],
       "master_size": [
-        736,
-        379
-      ]
-    },
-    "transcribing": {
-      "source_box": [
-        370,
-        550,
-        1050,
-        1030
-      ],
-      "crop_in_box": [
-        27,
-        25,
-        650,
-        451
-      ],
-      "master_size": [
-        623,
-        426
+        1339,
+        820
       ]
     }
   }
