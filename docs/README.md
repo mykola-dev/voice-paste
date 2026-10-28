@@ -2,7 +2,8 @@
 
 Current Rust application:
 
-- [Project/build/run guide](../README.md)
+- [Project and quick start](../README.md)
+- [Windows build, packaging and release automation](build-windows.md)
 - [Host implementation](../apps/voicepaste/README.md)
 - [Worker/native prerequisites](../apps/stt-worker/README.md)
 - [Behavior contract](behavior.md)

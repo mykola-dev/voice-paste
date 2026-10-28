@@ -1,6 +1,6 @@
 # Testing
 
-> Archived legacy tests/commands: these projects and scripts were removed. Use the [Rust checks](../README.md#build-and-checks-windows-x64).
+> Archived legacy tests/commands: these projects and scripts were removed. Use the [Rust checks](build-windows.md#build-and-checks-windows-x64).
 
 ## Automated .NET tests
 
