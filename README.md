@@ -14,7 +14,7 @@
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/Built_with-Rust-CE422B?logo=rust&logoColor=white" alt="Built with Rust"></a>
 </p>
 
-https://github.com/user-attachments/assets/68783c53-69fd-4d9c-a363-f89770ae0b15
+https://github.com/user-attachments/assets/fab84116-ae55-4019-8e6d-b59ed1ddcb68
 
 ## 🎙️ Your voice, wherever you type
 
