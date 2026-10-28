@@ -20,7 +20,7 @@ jobs:
       NATIVE_SHA256: ${{ vars.VOICEPASTE_NATIVE_BUNDLE_SHA256 }}
       REDISTRIBUTION_APPROVED: ${{ vars.VOICEPASTE_REDISTRIBUTION_APPROVED }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Validate release inputs
         shell: pwsh
         run: |
@@ -50,7 +50,7 @@ jobs:
       - name: Build portable Release
         shell: pwsh
         run: ./scripts/build-rust.ps1 -Action package -Release -Ct2Include "$pwd/build/native-runtime/include" -RequireNotices
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: VoicePaste-windows-x86_64
           path: |
@@ -67,7 +67,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: VoicePaste-windows-x86_64
           path: release-assets

@@ -11,6 +11,9 @@
 
 # Model caches and recordings (not source fixtures)
 models/
+# Production Rust provisioning modules are source, not downloaded model caches.
+!/apps/voicepaste/src/adapters/models/
+!/apps/voicepaste/src/adapters/models/*.rs
 .cache/
 *.pt
 *.wav

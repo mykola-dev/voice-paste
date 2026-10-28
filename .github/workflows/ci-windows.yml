@@ -17,7 +17,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install pinned formatter
         shell: pwsh
         run: rustup toolchain install 1.98.1 --profile minimal --component rustfmt
