@@ -14,9 +14,9 @@ load CPU INT8 and reports the actual device. Saved settings remain unchanged.
 
 Build through `scripts/build-rust.ps1`. Supply a flat native input folder via
 `-NativeRuntimeSource <directory>` (default: ignored `build/native-runtime/`).
-It must contain `ctranslate2.dll` (4.7.1), `libiomp5md.dll`, `cudnn64_9.dll`,
+It must contain `ctranslate2.dll` (4.7.1), `libiomp5md.dll`,
 `cublas64_12.dll`, `cublasLt64_12.dll`, `onnxruntime.dll`, `silero_vad_v6.onnx`,
-`msvcp140.dll`, `vcruntime140.dll` and `vcruntime140_1.dll`. These are native
+`msvcp140.dll`, `msvcp140_1.dll`, `vcruntime140.dll` and `vcruntime140_1.dll`. These are native
 dependencies of the Rust worker, not a Python runtime. The script does not search
 Python packages, use the old portable application, install SDKs or download files.
 The existing validated Rust runtime can supply these files; local cleanup preserved
@@ -24,6 +24,15 @@ their exact hashes in the separate input cache. Matching source headers are the 
 CT2 revision `226c95d94e660c48b11c62e108886b7ef76d589d`. No new SDK/model download
 occurs. A reproducible CUDA source-build and complete redistribution/license
 inventory are still packaging work, not claims made by this build.
+
+The validated Windows CT2 4.7.1 binary uses cuBLAS, not cuDNN; do not bundle the
+cuDNN dispatcher or its component libraries for this binary. CUDA-only and CPU
+model initialization/transcription passed in a separate no-cuDNN folder, with
+VAD on/off and app-local CRT/ORT modules verified. Synthetic audio without VAD
+exercised CUDA inference and loaded app-local cuBLAS. This is dependency evidence,
+not a transcription-quality or clean-machine qualification. Recheck dependencies
+if replacing CT2. `msvcp140_1.dll` is an actual ONNX Runtime import; a system-wide
+VC++ runtime must not silently supply it in a self-contained package.
 
 `-ModelSource <existing-large-v2-directory>` verifies against the frozen manifest
 and copies into `data/models/large-v2/<revision>/`. It never changes source cache

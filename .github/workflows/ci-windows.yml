@@ -1,0 +1,29 @@
+name: Windows source checks
+on:
+  push:
+    branches: [master, Rust]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: source-checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned formatter
+        shell: pwsh
+        run: rustup toolchain install 1.98.1 --profile minimal --component rustfmt
+      - name: Format and packaging contracts (no native bundle needed)
+        shell: pwsh
+        run: |
+          ./scripts/build-rust.ps1 -Action fmt
+          ./tests/native-inputs.Tests.ps1
+          ./tests/portable-package.Tests.ps1

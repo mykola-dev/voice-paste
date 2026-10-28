@@ -7,9 +7,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   package:
     runs-on: windows-2025
+    timeout-minutes: 90
     env:
       NATIVE_URL: ${{ vars.VOICEPASTE_NATIVE_BUNDLE_URL }}
       NATIVE_SHA256: ${{ vars.VOICEPASTE_NATIVE_BUNDLE_SHA256 }}
@@ -27,12 +32,7 @@ jobs:
       - name: Prepare verified native inputs
         shell: pwsh
         run: |
-          New-Item -ItemType Directory build -Force | Out-Null
-          Invoke-WebRequest $env:NATIVE_URL -OutFile build/native.zip
-          if ((Get-FileHash build/native.zip).Hash -ne $env:NATIVE_SHA256) { throw 'Native bundle hash mismatch' }
-          Expand-Archive build/native.zip build/native-runtime
-          if (!(Test-Path build/native-runtime/include/ctranslate2/models/whisper.h)) { throw 'Pinned CT2 headers missing' }
-          if (!(Test-Path build/native-runtime/notices/inventory.json)) { throw 'Native license inventory missing' }
+          ./scripts/get-native-inputs.ps1 -Url $env:NATIVE_URL -Sha256 $env:NATIVE_SHA256 -Destination build/native-runtime
       - name: Install pinned Rust
         shell: pwsh
         run: rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
@@ -43,6 +43,7 @@ jobs:
         shell: pwsh
         run: |
           ./tests/portable-package.Tests.ps1
+          ./tests/native-inputs.Tests.ps1
           ./scripts/build-rust.ps1 -Action fmt
           ./scripts/build-rust.ps1 -Action test -Release -NoDeploy -Ct2Include "$pwd/build/native-runtime/include"
           ./scripts/build-rust.ps1 -Action clippy -Release -NoDeploy -Ct2Include "$pwd/build/native-runtime/include"
@@ -57,10 +58,12 @@ jobs:
             build/release/*.zip.sha256
           if-no-files-found: error
           compression-level: 0
+          retention-days: 14
   release:
     if: github.ref_type == 'tag'
     needs: package
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -74,7 +77,13 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release create "$RELEASE_TAG" --draft --title "VoicePaste ${RELEASE_TAG#v}" --generate-notes
+          set -euo pipefail
+          (cd release-assets && sha256sum --check ./*.sha256)
+          existing=$(gh api "repos/$GH_REPO/releases?per_page=100" --jq ".[] | select(.tag_name == \"$RELEASE_TAG\") | .draft")
+          if [ -z "$existing" ]; then
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "VoicePaste ${RELEASE_TAG#v}" --generate-notes
+          elif [ "$existing" != "true" ]; then
+            echo "Refusing to replace assets on an already published release" >&2
+            exit 1
           fi
-          gh release upload "$RELEASE_TAG" release-assets/*.zip release-assets/*.sha256
+          gh release upload "$RELEASE_TAG" release-assets/*.zip release-assets/*.sha256 --clobber

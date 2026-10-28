@@ -32,8 +32,8 @@ function Invoke-PortablePackage {
         if (-not (Test-Path -LiteralPath (Join-Path $nativeSource $file) -PathType Leaf)) { throw "Missing native input: $file" }
     }
     $notices = Join-Path $nativeSource 'notices'
-    if ($RequireNotices -and -not (Test-Path (Join-Path $notices 'inventory.json') -PathType Leaf)) {
-        throw 'Public release requires native notices/inventory.json and reviewed redistribution rights.'
+    if ($RequireNotices) {
+        & (Join-Path $PSScriptRoot 'test-native-inputs.ps1') -NativeRuntimeSource $nativeSource
     }
     if (-not $PSCmdlet.ShouldProcess($destination, "Build $profile host/worker, stage and ZIP portable package")) { return }
     # Reuse this entry point's compilation/toolchain path, without dev deployment.
