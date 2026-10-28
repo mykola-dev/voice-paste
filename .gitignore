@@ -1,74 +1,18 @@
-# VoicePaste - .gitignore
-
-# C# / .NET
-bin/
-obj/
-*.user
-*.suo
-*.userosscache
-*.sln.docstates
-.vs/
-*.userprefs
-[Dd]ebug/
-[Rr]elease/
-x64/
-x86/
-[Ww][Ii][Nn]32/
-[Aa][Rr][Mm]/
-[Aa][Rr][Mm]64/
-bld/
-[Bb]in/
-[Oo]bj/
-[Ll]og/
-[Ll]ogs/
-
-# Build results
-[Dd]ebugPublic/
-[Rr]eleases/
-build/
+# Generated builds, downloaded tools and native runtime inputs
+/build/
+/target/
 *.dll
 *.exe
 *.pdb
-*.cache
-
-# NuGet
-*.nupkg
-*.snupkg
-**/packages/*
-!**/packages/build/
-*.nuget.props
-*.nuget.targets
-project.lock.json
-project.fragment.lock.json
-artifacts/
-
-# Python
-python/
-__pycache__/
-*.py[cod]
-*$py.class
 *.so
-.Python
-env/
-venv/
-.venv/
-ENV/
-env.bak/
-venv.bak/
-pip-log.txt
-pip-delete-this-directory.txt
-.pytest_cache/
-.coverage
-htmlcov/
-*.cover
+*.dylib
+*.cache
 *.log
 
-# Whisper models cache
+# Model caches and recordings (not source fixtures)
 models/
 .cache/
 *.pt
-
-# Audio files (temp recordings)
 *.wav
 *.mp3
 *.flac
@@ -79,7 +23,14 @@ models/
 *.pcm
 temp_audio/
 
-# IDE / Editors
+# Historical probes may generate these; no production Python dependency
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# IDE / editors
+.vs/
 .vscode/
 .idea/
 *.swp
@@ -87,7 +38,7 @@ temp_audio/
 *~
 .DS_Store
 
-# User config (exclude generated configs)
+# Local configuration
 **/VoicePaste/config.json
 %AppData%/VoicePaste/
 
@@ -110,7 +61,3 @@ service-account*.json
 *.dmp
 overlay-frames-*.jsonl*
 /nul
-
-# Test artifacts
-TestResults/
-*.trx

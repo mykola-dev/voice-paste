@@ -1,5 +1,7 @@
 # Project Overview
 
+> Historical C#/WPF/Python specification, not current Rust defaults or build guidance. See [current documentation](README.md).
+
 ## What is VoicePaste?
 
 A Windows resident tray application for voice dictation that:

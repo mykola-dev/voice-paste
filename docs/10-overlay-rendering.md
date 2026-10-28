@@ -1,5 +1,7 @@
 # Transparent overlay rendering
 
+> Historical WPF rendering notes. The current overlay is native Rust/Windows; see [current documentation](README.md).
+
 ## Decision
 
 Use WPF software rendering **only for the 224×100-DIP transparent overlay**. Set the window's

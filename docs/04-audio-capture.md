@@ -1,5 +1,7 @@
 # Audio Capture Specification
 
+> Historical legacy specification, not current Rust implementation guidance. See [current documentation](README.md).
+
 ## Requirements
 
 - **No silence detection** - Record until manual stop

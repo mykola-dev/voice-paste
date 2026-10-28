@@ -1,5 +1,7 @@
 # UX Specification
 
+> Historical legacy specification. The [Rust behavior contract](behavior.md) takes precedence; see [current documentation](README.md).
+
 ## User Flow
 
 ```

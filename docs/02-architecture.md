@@ -1,5 +1,7 @@
 # System Architecture
 
+> Historical C#/WPF/Python specification, not the current implementation. See [current documentation](README.md).
+
 ## Component Overview
 
 ```

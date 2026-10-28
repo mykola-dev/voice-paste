@@ -1,5 +1,7 @@
 # Testing
 
+> Archived legacy tests/commands: these projects and scripts were removed. Use the [Rust checks](../README.md#build-and-checks-windows-x64).
+
 ## Automated .NET tests
 
 Run on Windows with the .NET 8 SDK and bundled Python or a supported installed Python (3.10–3.12):

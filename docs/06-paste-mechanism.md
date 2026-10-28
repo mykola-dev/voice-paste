@@ -1,5 +1,7 @@
 # Paste Mechanism Specification
 
+> Historical legacy specification. The [Rust behavior contract](behavior.md) takes precedence; see [current documentation](README.md).
+
 ## Overview
 
 After transcription, paste text into the currently focused window using:

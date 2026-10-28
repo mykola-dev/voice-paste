@@ -1,0 +1,80 @@
+name: Windows portable release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-2025
+    env:
+      NATIVE_URL: ${{ vars.VOICEPASTE_NATIVE_BUNDLE_URL }}
+      NATIVE_SHA256: ${{ vars.VOICEPASTE_NATIVE_BUNDLE_SHA256 }}
+      REDISTRIBUTION_APPROVED: ${{ vars.VOICEPASTE_REDISTRIBUTION_APPROVED }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate release inputs
+        shell: pwsh
+        run: |
+          $version = [regex]::Match((Get-Content Cargo.toml -Raw), '(?m)^version = "([0-9]+\.[0-9]+\.[0-9]+)"').Groups[1].Value
+          if (!$version) { throw 'Workspace version missing' }
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") { throw 'Tag/workspace version mismatch' }
+          if ($env:REDISTRIBUTION_APPROVED -ne 'true') { throw 'Native/artwork redistribution review required' }
+          if ($env:NATIVE_URL -notmatch '^https://' -or $env:NATIVE_SHA256 -notmatch '^[0-9a-fA-F]{64}$') { throw 'Configure immutable native bundle URL and SHA-256 repository variables' }
+      - name: Prepare verified native inputs
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory build -Force | Out-Null
+          Invoke-WebRequest $env:NATIVE_URL -OutFile build/native.zip
+          if ((Get-FileHash build/native.zip).Hash -ne $env:NATIVE_SHA256) { throw 'Native bundle hash mismatch' }
+          Expand-Archive build/native.zip build/native-runtime
+          if (!(Test-Path build/native-runtime/include/ctranslate2/models/whisper.h)) { throw 'Pinned CT2 headers missing' }
+          if (!(Test-Path build/native-runtime/notices/inventory.json)) { throw 'Native license inventory missing' }
+      - name: Install pinned Rust
+        shell: pwsh
+        run: rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
+      - name: Fetch locked Cargo inputs
+        shell: pwsh
+        run: ./scripts/build-rust.ps1 -Action fetch
+      - name: Checks
+        shell: pwsh
+        run: |
+          ./tests/portable-package.Tests.ps1
+          ./scripts/build-rust.ps1 -Action fmt
+          ./scripts/build-rust.ps1 -Action test -Release -NoDeploy -Ct2Include "$pwd/build/native-runtime/include"
+          ./scripts/build-rust.ps1 -Action clippy -Release -NoDeploy -Ct2Include "$pwd/build/native-runtime/include"
+      - name: Build portable Release
+        shell: pwsh
+        run: ./scripts/build-rust.ps1 -Action package -Release -Ct2Include "$pwd/build/native-runtime/include" -RequireNotices
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VoicePaste-windows-x86_64
+          path: |
+            build/release/*.zip
+            build/release/*.zip.sha256
+          if-no-files-found: error
+          compression-level: 0
+  release:
+    if: github.ref_type == 'tag'
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: VoicePaste-windows-x86_64
+          path: release-assets
+      - name: Attach Windows package to draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --draft --title "VoicePaste ${RELEASE_TAG#v}" --generate-notes
+          fi
+          gh release upload "$RELEASE_TAG" release-assets/*.zip release-assets/*.sha256

@@ -1,5 +1,7 @@
 # VoicePaste Portable Build
 
+> Archived legacy build instructions: referenced build/setup scripts were removed. Do not run these commands; see the [Rust build guide](../README.md).
+
 VoicePaste portable builds are produced in `build\VoicePaste-Portable` and include:
 
 - Self-contained .NET app

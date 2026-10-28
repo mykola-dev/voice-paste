@@ -1,8 +1,0 @@
-{
-  "hotkey": "ScrollLock",
-  "pasteShortcut": "Ctrl+Shift+V",
-  "model": "large-v3-turbo",
-  "device": "cuda",
-  "keepInMemory": false,
-  "indicatorColor": "#FF8C00"
-}

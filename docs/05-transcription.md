@@ -1,5 +1,7 @@
 # Transcription Specification
 
+> Historical Python-worker specification. Production uses the [native Rust worker](../apps/stt-worker/README.md), not Python.
+
 ## STT Engine: faster-whisper
 
 ### Why faster-whisper?

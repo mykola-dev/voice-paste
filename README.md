@@ -1,157 +1,149 @@
-<div align="center">
+# <img src="apps/voicepaste/assets/icon.png" alt="VoicePaste lips" width="64" height="64"> VoicePaste 2.0
 
-# 🎙️ VoicePaste
+Windows tray voice dictation, implemented in **Rust** with a separate native
+GPU transcription worker. Portable Windows x64 release.
 
-### *Speak. Transcribe. Done.*
+Press the configured hotkey to record, speak with pauses, then press it again
+to transcribe and paste. Recording never auto-stops on silence; Escape cancels it.
+English, Ukrainian and bilingual modes are supported.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-FF8C00.svg)](LICENSE)
-[![.NET 8.0](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
-[![Windows](https://img.shields.io/badge/Windows-10%2F11-0078D6?logo=windows&logoColor=white)](https://www.microsoft.com/windows)
-[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://python.org)
-[![CUDA](https://img.shields.io/badge/NVIDIA-CUDA-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/cuda)
+## Application
 
-https://github.com/user-attachments/assets/68783c53-69fd-4d9c-a363-f89770ae0b15
+- GPUI Settings: Hotkeys, Transcription, Appearance and System; shared Save/Cancel.
+- Native nonactivating recording overlay with sharp timer/waveform, optional
+  frosted Acrylic-style background and one shared background-transparency slider.
+- CTranslate2 **4.7.1** CUDA inference, Silero v6 VAD and a resident Rust worker.
+- Unicode clipboard and configurable paste shortcut; configurable hotkey and
+  optional Windows sign-in startup.
+- App-local configuration, models and session data in `<exe-dir>/data/`.
+  Logs: `%TEMP%/VoicePaste/voicepaste.log`.
 
+Public default settings are defined by the retained
+[settings defaults](crates/core/assets/default-settings.json), not the old
+documentation. The public snapshot contains no personal prompt; existing local
+`customInitialPrompt` values are loaded unchanged, and the Settings field remains
+available. Fresh startup provisions `large-v2`; other models are only
+provisioned after explicit selection/save. Merely changing a dropdown does not
+save or download a model.
 
-**Windows voice dictation that doesn't stop on silence** 🚀
+## Run the portable release
 
-[📥 Download Latest](https://github.com/mykola-dev/voice-agent/releases) · [📖 Documentation](docs/) · [🐛 Report Bug](https://github.com/mykola-dev/voice-agent/issues)
+Download `VoicePaste-2.0.0-windows-x86_64.zip` from GitHub Releases and extract it
+to a writable folder. Run `VoicePaste.exe`; keep `runtime/` alongside it.
+The default CUDA-only configuration requires a compatible NVIDIA GPU/driver.
+Model weights are not included: first normal startup provisions the selected
+model and needs internet access and sufficient disk space. Use `--settings` to
+open Settings without loading a model. Defaults, including device/model options,
+are documented in the linked settings snapshot above.
 
-</div>
+To upgrade or move the application, quit it first and copy your existing `data/`
+folder into the new extracted folder. This preserves settings, custom prompts and
+downloaded models. Never overwrite an active recording or an open Settings draft.
 
----
+## Build and checks (Windows x64)
 
-## ✨ What is VoicePaste?
+Requires PowerShell **7 x64**, Rust **1.98.1**, MSVC C++/Windows SDK tools, matching CT2
+headers and native runtime inputs. The development script uses the local toolchain
+under `build/rust-migration-tools/` when available, otherwise installed Cargo.
 
-VoicePaste is a **resident system tray application** for Windows that lets you dictate text anywhere using your voice—without annoying auto-stop on silence.
+Native inputs default to `build/native-runtime/`; an explicit folder can be passed
+with `-NativeRuntimeSource`. See the [worker build prerequisites](apps/stt-worker/README.md).
+This script does not install prerequisites or download models.
 
-🔴 **Press ScrollLock** → 🎙️ **Speak naturally** → 🟢 **Press ScrollLock again** → 📋 **Text appears instantly**
-
-### 🌟 Key Features
-
-| Feature | Description |
-|---------|-------------|
-| 🎙️ **Manual Control** | Recording starts/stops only when YOU decide (no silence auto-stop) |
-| ⚡ **GPU-Powered** | NVIDIA CUDA acceleration with automatic CPU fallback |
-| 🌍 **Bilingual** | Auto-detects English + Ukrainian (no language switching needed) |
-| 📋 **Universal Paste** | Works with any app: terminals, editors, browsers, IDEs |
-| 🎯 **Always Available** | Runs in system tray—ready whenever you need it |
-| 📦 **Portable** | Self-contained build—no installation required |
-
----
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Windows 10 or 11
-- NVIDIA GPU with CUDA (optional, for GPU acceleration)
-
-### Installation
-
-#### Option 1: Download Pre-built Release ⭐ Recommended
-```bash
-# Download from releases page and extract
-VoicePaste.exe
+```powershell
+./build-portable-windows.bat
+# Or provide explicit native runtime and matching CT2 headers:
+./build-portable-windows.bat -NativeRuntimeSource D:/native-runtime -Ct2Include D:/CTranslate2/include
 ```
 
-#### Option 2: Build from Source
-```bash
-# Clone the repository
-git clone https://github.com/mykola-dev/voice-agent.git
-cd voice-agent
+Double-click `build-portable-windows.bat` to build a portable Release; its window
+stays open so you can read the result. It only forwards parameters to the single
+universal builder, `scripts/build-rust.ps1`. GitHub Actions uses the same builder.
 
-# Debug build + run
-./dev-debug.bat
-
-# Or update the portable build and launch it automatically
-./build-portable.bat
-# Output: build/VoicePaste-Portable/VoicePaste.exe
+```powershell
+./scripts/build-rust.ps1 -Action build -NoDeploy          # debug binaries only
+./scripts/build-rust.ps1 -Action build -Release -NoDeploy # Release binaries only
+./scripts/build-rust.ps1 -Action package                 # debug portable + ZIP
+./scripts/build-rust.ps1 -Action package -Release        # Release portable + ZIP
 ```
 
-`build-portable.bat` stops the VoicePaste instance running from the target output folder
-(including its worker processes), updates the portable files, then starts the new executable.
-This interrupts any active dictation. Other installations/debug instances are left alone.
-If publishing or dependency setup fails, the app is not started. Use `-NoLaunch` for a build
-without the final launch; this option still stops the target instance before updating it.
+The BAT launcher always requests Release host/worker using the locked dependencies.
+Output is `build/release/VoicePaste-2.0.0-windows-x86_64/`, plus a Windows-named
+ZIP and `.zip.sha256`. Compilation caches remain outside the package. Models,
+personal config and session data are never packaged. Existing outputs are refused:
+move the previous package/archive elsewhere before rebuilding. No application is
+started or stopped. `-WhatIf` checks inputs and describes the operation without
+building. Debug packages go to `build/debug/` with a `-debug` filename suffix.
+Local builds with incomplete native notices are for evaluation only.
 
----
+```powershell
+./scripts/build-rust.ps1 -Action fetch # explicit Cargo dependency fetch
+./scripts/build-rust.ps1 -NoDeploy    # build without changing the dev installation
+./scripts/build-rust.ps1 -Action fmt
+./scripts/build-rust.ps1 -Action clippy
+./scripts/build-rust.ps1 -Action test
+```
 
-## 🎮 How to Use
+After quitting the running Rust application, build without `-NoDeploy` to update
+`build/VoicePaste-Rust/`. The script neither stops nor launches applications.
+Keep generated tools, binaries, models and disposable diagnostics under ignored
+`build/`; do not commit them.
 
-1. **Launch** VoicePaste (minimizes to system tray) 📌
-2. **Press** <kbd>ScrollLock</kbd> to start recording 🔴
-3. **Speak naturally** with pauses—recording continues! 🎙️
-4. **Press** <kbd>ScrollLock</kbd> again to stop and transcribe ⏹️
-5. **Text auto-pastes** into your currently focused window 📋
+```powershell
+./build/VoicePaste-Rust/VoicePaste.exe --check    # config-only check
+./build/VoicePaste-Rust/VoicePaste.exe --settings # settings without model loading
+./build/VoicePaste-Rust/VoicePaste.exe            # tray application
+```
 
-Changed your mind while recording? Press **Esc** to discard the audio without transcription or
-pasting. That Esc press is consumed; outside recording, Esc works normally.
+Do not launch a second tray instance or interrupt recording/open Settings drafts
+while updating. User acceptance of physical hotkeys, focus, scrolling and 175% DPI
+remains distinct from automated tests.
 
-### ⚙️ Configuration
+## Source layout
 
-Right-click the tray icon → **Settings** to customize:
+| Directory | Purpose |
+| --- | --- |
+| `apps/voicepaste/` | Rust tray host, GPUI Settings and Windows adapters |
+| `apps/stt-worker/` | Rust transcription pipeline and narrow native C++ bridge |
+| `crates/core/` | Domain state, settings and shared policies |
+| `crates/application/` | Use cases and consumer-owned ports |
+| `crates/protocol/` | Bounded versioned host/worker IPC |
+| `scripts/` | Rust development build |
+| `RustMigration/` | One TODO file with unfinished work |
+| `docs/` | Current contracts/engineering guides and marked legacy specifications |
 
-| Setting | Default | Options |
-|---------|---------|---------|
-| **Hotkey** | `ScrollLock` | Any key |
-| **Paste Shortcut** | `Ctrl+Shift+V` | `Ctrl+V`, `Shift+Insert`, etc. |
-| **Model** | `large-v3-turbo` | `large-v3`, `medium`, `small` |
-| **Device** | `cuda` | `cuda` (GPU) / `cpu` (CPU) |
+## Status and documentation
 
----
+Windows is the current target. Linux/macOS boundaries are being prepared; neither
+port is implemented. Reproducible native source builds, redistribution closure,
+equivalent-state memory comparison and some device/model/interaction qualification
+remain open. Quit/shutdown retention is a known issue; cleanup did not fix it.
 
-## 🛠️ Tech Stack
+- [Current host details](apps/voicepaste/README.md)
+- [Native worker and build inputs](apps/stt-worker/README.md)
+- [Behavior contract](docs/behavior.md)
+- [Architecture](docs/architecture.md)
+- [Outstanding work and validation](RustMigration/TODO.md)
+- [Documentation index](docs/README.md)
 
-<div align="center">
+## GitHub release automation
 
-[![C#](https://img.shields.io/badge/C%23-239120?logo=c-sharp&logoColor=white)]()
-[![WPF](https://img.shields.io/badge/WPF-5C2D91?logo=windows&logoColor=white)]()
-[![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white)]()
-[![Whisper](https://img.shields.io/badge/Whisper-FF8C00?logo=openai&logoColor=white)]()
+Push a tag matching the workspace version, for example `v2.0.0`. The Windows
+workflow builds, runs fmt/tests/clippy, uploads a CI artifact and attaches the ZIP
+and SHA-256 file to a **draft** GitHub Release for review. Manual workflow runs
+produce a CI artifact only. Publishing remains a maintainer decision.
 
-</div>
+Configure repository variables `VOICEPASTE_NATIVE_BUNDLE_URL` (HTTPS) and
+`VOICEPASTE_NATIVE_BUNDLE_SHA256` for a reviewed, immutable native-input ZIP.
+Its root must contain the runtime files listed in `scripts/native-runtime.psd1`,
+`include/` from CT2 revision `226c95d94e660c48b11c62e108886b7ef76d589d`,
+and `notices/` containing third-party license texts and `inventory.json`
+(versions, origins, hashes and redistribution terms). Additional cuDNN component
+DLLs required by that native build must be explicitly added to the runtime list;
+the current local cache has not established complete dependency closure.
+Set `VOICEPASTE_REDISTRIBUTION_APPROVED=true` only after reviewing the native
+bundle and embedded artwork rights. The workflow fails closed without these
+inputs; it never takes native dependencies from a developer machine.
 
-- **Frontend**: C# / WPF (.NET 8.0)
-- **STT Engine**: OpenAI Whisper via [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
-- **Audio Capture**: WASAPI (NAudio)
-- **Platform**: Windows 10/11
-
----
-
-## 📚 Documentation
-
-| Document | Description |
-|----------|-------------|
-| [📖 Overview](docs/01-overview.md) | Project goals & requirements |
-| [🏗️ Architecture](docs/02-architecture.md) | System components & tech stack |
-| [🎨 UX Spec](docs/03-ux-spec.md) | UI behavior & user flows |
-| [🎙️ Audio Capture](docs/04-audio-capture.md) | WASAPI recording details |
-| [📝 Transcription](docs/05-transcription.md) | Whisper integration |
-| [📋 Paste Mechanism](docs/06-paste-mechanism.md) | Clipboard & SendInput |
-| [⚙️ Configuration](docs/07-configuration.md) | Settings & config file |
-| [🧪 Testing](docs/10-testing.md) | Automated and manual checks |
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Feel free to:
-- 🐛 [Report bugs](https://github.com/mykola-dev/voice-agent/issues)
-- 💡 [Suggest features](https://github.com/mykola-dev/voice-agent/issues)
-- 🔧 [Submit pull requests](https://github.com/mykola-dev/voice-agent/pulls)
-
----
-
-## 📄 License
-
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
-
----
-
-<div align="center">
-
-Made with ❤️ and 🔊
-
-**[⬆ Back to top](#-voicepaste)**
-
-</div>
+The current native inventory, artwork rights and clean-machine qualification
+remain incomplete. Automation does not certify redistribution or feature parity.

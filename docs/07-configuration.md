@@ -1,5 +1,7 @@
 # Configuration
 
+> Historical legacy settings, not current Rust defaults/storage. See [current documentation](README.md) and the [public defaults](../crates/core/assets/default-settings.json).
+
 Settings are saved to `%AppData%/VoicePaste/config.json`. Open **Settings** from the tray
 and press **Save** to apply changes. Cancel leaves the running configuration unchanged.
 

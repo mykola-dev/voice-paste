@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "hotkey": "ScrollLock",
+  "pasteShortcut": "shiftInsert",
+  "model": "large-v2",
+  "device": "cudaOnly",
+  "languageMode": "ua",
+  "enableVad": true,
+  "keepInMemory": true,
+  "indicatorColor": "#E9563D",
+  "debugLogging": true,
+  "beamSize": 3,
+  "settingsWindowWidth": 638,
+  "settingsWindowHeight": 1018.6666666666666,
+  "settingsWindowLeft": 587.3333333333333,
+  "settingsWindowTop": 213.33333333333331
+}

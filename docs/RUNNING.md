@@ -1,5 +1,7 @@
 # Running VoicePaste
 
+> Archived legacy run instructions: referenced launch scripts were removed. Use the [Rust guide](../README.md), not these commands.
+
 ## Development
 
 ```batch

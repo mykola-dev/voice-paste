@@ -1,0 +1,68 @@
+{
+  "capturedOn": "2026-10-27",
+  "method": "Read-only enumeration and SHA-256 of existing user HF cache files; no download or inference",
+  "status": "Reference runtime files, not a complete release/license manifest",
+  "models": [
+    {
+      "name": "large-v2",
+      "repository": "Systran/faster-whisper-large-v2",
+      "revision": "f0fe81560cb8b68660e564f55dd99207059c092e",
+      "melBins": 80,
+      "files": [
+        {
+          "path": "config.json",
+          "bytes": 2796,
+          "sha256": "D86B7A7664A12559D644AA210A32CE9A7E03913E794B7EA4FB7182DE69E273A7"
+        },
+        {
+          "path": "model.bin",
+          "bytes": 3086912962,
+          "sha256": "BF2A9746382E1AA7FFFF6B3A0D137ED9EDBD9670C3B87E5D35F5E85E70D0333A"
+        },
+        {
+          "path": "tokenizer.json",
+          "bytes": 2203239,
+          "sha256": "FB7B63191E9BB045082C79FD742A3106A12C99513AB30DF4A0D47FA6CB6FD0AB"
+        },
+        {
+          "path": "vocabulary.txt",
+          "bytes": 459861,
+          "sha256": "34CE3FE1C5041027B3F8D42912270993F986DBC4BB34CF27F951E34A1E453913"
+        }
+      ]
+    },
+    {
+      "name": "large-v3-turbo",
+      "repository": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+      "revision": "0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf",
+      "melBins": 128,
+      "files": [
+        {
+          "path": "config.json",
+          "bytes": 2263,
+          "sha256": "B0253EA6C0D3BEA6B1E19E91A02ACFD3B53F4467362EFCB5A3E6B16C9B3A9B7E"
+        },
+        {
+          "path": "model.bin",
+          "bytes": 1617884929,
+          "sha256": "E76620F83D5F5B69EFD3D87E3DC180C1BD21DF9FBEBACFD4335E5E1EFCC018DA"
+        },
+        {
+          "path": "preprocessor_config.json",
+          "bytes": 340,
+          "sha256": "7CCC62C6F2765AF1F3B46C00C9B5894426835A05021C8B9C01EECB6DFB542711"
+        },
+        {
+          "path": "tokenizer.json",
+          "bytes": 2710337,
+          "sha256": "297B13372AC43916285644FB9687ADD3CC62EE2A1ADB60DA3DC25CC94C1871FD"
+        },
+        {
+          "path": "vocabulary.json",
+          "bytes": 1068114,
+          "sha256": "C69260F2AB26D659B7C398F9A2B2B48ED0DF16C3B47D7326782FD9CBA71690C1"
+        }
+      ]
+    }
+  ]
+}
