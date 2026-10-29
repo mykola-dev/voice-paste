@@ -145,7 +145,7 @@ impl Material {
         let size = Vector2 {
             // The host includes the slide path; the material/clip stays panel-sized.
             X: (width as f32).min(super::super::super::state::WIDTH * scale as f32),
-            Y: height as f32,
+            Y: (height as f32).min(super::super::super::state::HEIGHT * scale as f32),
         };
         let radius = super::super::CORNER_RADIUS * scale as f32;
         self.geometry.SetSize(size)?;

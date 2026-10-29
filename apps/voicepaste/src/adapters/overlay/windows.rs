@@ -97,20 +97,7 @@ impl Shell {
     /// Position hidden foreground and material. Returns whether tint lives in the material.
     pub fn prepare(&mut self, appearance: OverlayAppearance) -> Result<bool, String> {
         let geometry = placement()?;
-        unsafe {
-            if SetWindowPos(
-                self.hwnd,
-                HWND_TOPMOST,
-                geometry.x,
-                geometry.y,
-                geometry.width as i32,
-                geometry.height as i32,
-                SWP_NOACTIVATE | SWP_FRAMECHANGED,
-            ) == 0
-            {
-                return Err(last_error("position overlay"));
-            }
-        }
+        position_foreground(self.hwnd, geometry)?;
         self.geometry = Some(geometry);
         self.opacity = None;
         self.backdrop.take();
@@ -137,8 +124,8 @@ impl Shell {
     /// Warm the hidden swapchain through GPUI's normal frame callback, then reveal.
     /// Synchronous dispatch is safe here: no application/entity guard is held.
     pub fn show(&mut self) -> Result<bool, String> {
+        self.warm()?;
         unsafe {
-            SendMessageW(self.hwnd, WM_PAINT, 0, 0);
             if SetWindowPos(
                 self.hwnd,
                 HWND_TOPMOST,
@@ -153,6 +140,9 @@ impl Shell {
             }
         }
         self.visible = true;
+        // First reveal may deliver startup geometry messages too. Reconcile
+        // before revealing the separate material, never stretch it to a host.
+        self.warm()?;
         if self
             .backdrop
             .as_ref()
@@ -161,6 +151,22 @@ impl Shell {
             self.backdrop.take();
         }
         Ok(self.backdrop.is_some())
+    }
+
+    fn warm(&mut self) -> Result<(), String> {
+        // No App/entity guards: GPUI's first paint can synchronously initialize
+        // the surface and deliver native geometry changes. Validate afterwards,
+        // not only before the first paint, and redraw any corrected viewport.
+        unsafe {
+            SendMessageW(self.hwnd, WM_PAINT, 0, 0);
+        }
+        let (resized, _) = self.synchronize_geometry()?;
+        if resized {
+            unsafe {
+                SendMessageW(self.hwnd, WM_PAINT, 0, 0);
+            }
+        }
+        Ok(())
     }
 
     pub fn hide(&mut self) {
@@ -201,24 +207,40 @@ impl Shell {
         if !self.visible {
             return Ok(false);
         }
-        let geometry = unsafe {
-            let mut rect: RECT = zeroed();
-            let mut origin = POINT { x: 0, y: 0 };
-            if GetClientRect(self.hwnd, &mut rect) == 0
-                || ClientToScreen(self.hwnd, &mut origin) == 0
-            {
-                return Err(last_error("read overlay geometry"));
+        self.synchronize_geometry()
+            .map(|(_, lost_material)| lost_material)
+    }
+
+    /// Returns (viewport resized, material lost). Host pixels are observed, not
+    /// accepted as the panel's logical size: this is a fixed-size popup.
+    fn synchronize_geometry(&mut self) -> Result<(bool, bool), String> {
+        let mut geometry = read_geometry(self.hwnd)?;
+        let expected = viewport_pixels(geometry.dpi);
+        let resized = (geometry.width, geometry.height) != expected;
+        if resized {
+            // SAFETY: UI thread, no App/entity guards; normal WM_SIZE updates
+            // GPUI's viewport and renderer. No fake layout/scale-factor update.
+            unsafe {
+                if SetWindowPos(
+                    self.hwnd,
+                    null_mut(),
+                    0,
+                    0,
+                    expected.0 as i32,
+                    expected.1 as i32,
+                    SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
+                ) == 0
+                {
+                    return Err(last_error("restore canonical overlay viewport"));
+                }
             }
-            Geometry {
-                x: origin.x,
-                y: origin.y,
-                width: (rect.right - rect.left).max(0) as usize,
-                height: (rect.bottom - rect.top).max(0) as usize,
-                dpi: GetDpiForWindow(self.hwnd),
+            geometry = read_geometry(self.hwnd)?;
+            if (geometry.width, geometry.height) != viewport_pixels(geometry.dpi) {
+                return Err("Overlay viewport did not settle at its current DPI".into());
             }
-        };
+        }
         if self.geometry == Some(geometry) {
-            return Ok(false);
+            return Ok((resized, false));
         }
         self.geometry = Some(geometry);
         self.opacity = None;
@@ -228,9 +250,9 @@ impl Shell {
             .is_some_and(|backdrop| !place_backdrop(backdrop, geometry))
         {
             self.backdrop.take();
-            return Ok(true);
+            return Ok((resized, true));
         }
-        Ok(false)
+        Ok((resized, false))
     }
 }
 
@@ -262,11 +284,76 @@ fn place_backdrop(backdrop: &Backdrop, geometry: Geometry) -> bool {
     )
 }
 
+fn viewport_pixels(dpi: u32) -> (usize, usize) {
+    let scale = f64::from(dpi) / 96.;
+    (
+        (f64::from(VIEWPORT_WIDTH) * scale).round() as usize,
+        (f64::from(HEIGHT) * scale).round() as usize,
+    )
+}
+
+fn read_geometry(hwnd: HWND) -> Result<Geometry, String> {
+    // SAFETY: caller owns the live foreground on this UI thread.
+    unsafe {
+        let mut rect: RECT = zeroed();
+        let mut origin = POINT { x: 0, y: 0 };
+        if GetClientRect(hwnd, &mut rect) == 0 || ClientToScreen(hwnd, &mut origin) == 0 {
+            return Err(last_error("read overlay geometry"));
+        }
+        Ok(Geometry {
+            x: origin.x,
+            y: origin.y,
+            width: (rect.right - rect.left).max(0) as usize,
+            height: (rect.bottom - rect.top).max(0) as usize,
+            dpi: GetDpiForWindow(hwnd),
+        })
+    }
+}
+
+fn position_foreground(hwnd: HWND, geometry: Geometry) -> Result<(), String> {
+    // SAFETY: hidden UI-thread-owned foreground, outside App/entity borrows.
+    // Moving monitors synchronously delivers WM_DPICHANGED. GPUI applies the
+    // suggested RECT in a nested SetWindowPos, so combining the move and final
+    // size lets that RECT overwrite/double-scale our already target-DPI size.
+    // Finish the DPI transition first, then apply the canonical viewport once.
+    unsafe {
+        if SetWindowPos(
+            hwnd,
+            null_mut(),
+            geometry.x,
+            geometry.y,
+            0,
+            0,
+            SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER,
+        ) == 0
+        {
+            return Err(last_error("move overlay to target monitor"));
+        }
+        if SetWindowPos(
+            hwnd,
+            HWND_TOPMOST,
+            geometry.x,
+            geometry.y,
+            geometry.width as i32,
+            geometry.height as i32,
+            SWP_NOACTIVATE | SWP_FRAMECHANGED,
+        ) == 0
+        {
+            return Err(last_error("size overlay after DPI transition"));
+        }
+    }
+    Ok(())
+}
+
 fn placement() -> Result<Geometry, String> {
     // GPUI establishes PerMonitorV2 before opening any windows. Do not override
     // thread awareness while dispatching framework callbacks.
+    let monitor = unsafe { MonitorFromWindow(GetForegroundWindow(), MONITOR_DEFAULTTOPRIMARY) };
+    monitor_placement(monitor)
+}
+
+fn monitor_placement(monitor: HMONITOR) -> Result<Geometry, String> {
     unsafe {
-        let monitor = MonitorFromWindow(GetForegroundWindow(), MONITOR_DEFAULTTOPRIMARY);
         let mut info: MONITORINFO = zeroed();
         info.cbSize = size_of::<MONITORINFO>() as u32;
         if GetMonitorInfoW(monitor, &mut info) == 0 {
@@ -279,8 +366,7 @@ fn placement() -> Result<Geometry, String> {
         }
         let scale = f64::from(dpi) / 96.;
         let panel_width = (f64::from(WIDTH) * scale).round() as i32;
-        let width = (f64::from(VIEWPORT_WIDTH) * scale).round() as usize;
-        let height = (f64::from(HEIGHT) * scale).round() as usize;
+        let (width, height) = viewport_pixels(dpi);
         let margin = (f64::from(MARGIN) * scale).round() as i32;
         Ok(Geometry {
             x: info.rcWork.right - margin - panel_width,
@@ -413,7 +499,169 @@ unsafe extern "system" fn nonactivating(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ptr::null;
+    use std::{cell::Cell, ptr::null};
+
+    struct Awareness(DPI_AWARENESS_CONTEXT);
+    impl Drop for Awareness {
+        fn drop(&mut self) {
+            unsafe {
+                SetThreadDpiAwarenessContext(self.0);
+            }
+        }
+    }
+
+    struct HiddenWindow(HWND);
+    impl Drop for HiddenWindow {
+        fn drop(&mut self) {
+            unsafe {
+                DestroyWindow(self.0);
+            }
+        }
+    }
+
+    #[derive(Default)]
+    struct DpiFixture {
+        changes: Cell<u32>,
+        size: Cell<(u32, i32, i32)>,
+        failed: Cell<bool>,
+    }
+
+    unsafe extern "system" fn dpi_fixture(
+        hwnd: HWND,
+        message: u32,
+        w: WPARAM,
+        l: LPARAM,
+        _: usize,
+        data: usize,
+    ) -> LRESULT {
+        // Mirrors pinned GPUI's real WM_DPICHANGED -> suggested RECT -> nested
+        // WM_SIZE path. Cells are snapshots, never guards across SetWindowPos.
+        unsafe {
+            let state = &*(data as *const DpiFixture);
+            if message == WM_DPICHANGED {
+                state.changes.set(state.changes.get() + 1);
+                let rect = *(l as *const RECT);
+                let placed = SetWindowPos(
+                    hwnd,
+                    null_mut(),
+                    rect.left,
+                    rect.top,
+                    rect.right - rect.left,
+                    rect.bottom - rect.top,
+                    SWP_NOZORDER | SWP_NOACTIVATE,
+                );
+                state.failed.set(placed == 0);
+                return 0;
+            }
+            if message == WM_SIZE {
+                let mut rect: RECT = zeroed();
+                GetClientRect(hwnd, &mut rect);
+                state
+                    .size
+                    .set((GetDpiForWindow(hwnd), rect.right, rect.bottom));
+            }
+            DefSubclassProc(hwnd, message, w, l)
+        }
+    }
+
+    unsafe extern "system" fn collect_monitors(
+        monitor: HMONITOR,
+        _: HDC,
+        _: *mut RECT,
+        data: LPARAM,
+    ) -> i32 {
+        unsafe {
+            (*(data as *mut Vec<HMONITOR>)).push(monitor);
+        }
+        1
+    }
+
+    #[test]
+    fn first_hidden_placement_across_real_mixed_dpi_monitors_keeps_canonical_viewport() {
+        unsafe {
+            let previous = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+            assert!(!previous.is_null());
+            let _awareness = Awareness(previous);
+            let mut monitors = Vec::new();
+            assert_ne!(
+                EnumDisplayMonitors(
+                    null_mut(),
+                    null(),
+                    Some(collect_monitors),
+                    (&mut monitors as *mut Vec<HMONITOR>) as LPARAM
+                ),
+                0
+            );
+            let placements: Vec<_> = monitors
+                .into_iter()
+                .map(|monitor| monitor_placement(monitor).unwrap())
+                .collect();
+            let Some((first, second)) = placements.iter().find_map(|first| {
+                placements
+                    .iter()
+                    .find(|second| second.dpi != first.dpi)
+                    .map(|second| (*first, *second))
+            }) else {
+                eprintln!("Mixed-DPI native regression requires two monitors with different DPI");
+                return;
+            };
+            let state = DpiFixture::default();
+            let hwnd = CreateWindowExW(
+                WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+                windows_sys::w!("STATIC"),
+                windows_sys::w!(""),
+                WS_POPUP,
+                first.x,
+                first.y,
+                first.width as i32,
+                first.height as i32,
+                null_mut(),
+                null_mut(),
+                null_mut(),
+                null(),
+            );
+            assert!(!hwnd.is_null());
+            // Destroy the subclass/window before its stack-owned callback data.
+            let _window = HiddenWindow(hwnd);
+            assert_ne!(
+                SetWindowSubclass(
+                    hwnd,
+                    Some(dpi_fixture),
+                    SUBCLASS + 1,
+                    (&state as *const DpiFixture) as usize
+                ),
+                0
+            );
+            let foreground = GetForegroundWindow();
+            for target in [second, first, second, first] {
+                let changes = state.changes.get();
+                position_foreground(hwnd, target).unwrap();
+                assert!(!state.failed.get());
+                assert!(
+                    state.changes.get() > changes,
+                    "must exercise real WM_DPICHANGED"
+                );
+                let mut client: RECT = zeroed();
+                let mut origin = POINT { x: 0, y: 0 };
+                assert_ne!(GetClientRect(hwnd, &mut client), 0);
+                assert_ne!(ClientToScreen(hwnd, &mut origin), 0);
+                assert_eq!(GetDpiForWindow(hwnd), target.dpi);
+                assert_eq!((origin.x, origin.y), (target.x, target.y));
+                assert_eq!(
+                    (client.right, client.bottom),
+                    (target.width as i32, target.height as i32),
+                    "the first show must not need a second placement to repair its size"
+                );
+                assert_eq!(
+                    state.size.get(),
+                    (target.dpi, target.width as i32, target.height as i32),
+                    "renderer resize must receive canonical pixels at the new DPI"
+                );
+                assert_eq!(IsWindowVisible(hwnd), 0);
+                assert_eq!(GetForegroundWindow(), foreground);
+            }
+        }
+    }
 
     #[test]
     fn shell_configures_hidden_window_and_blocks_mouse_activation() {

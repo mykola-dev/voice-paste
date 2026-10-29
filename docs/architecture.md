@@ -66,6 +66,17 @@ creation style with frameless `WS_POPUP` and refreshes non-client metrics before
 show. Disabling DWM decoration alone leaves caption-side/bottom client insets;
 the native client and outer viewport must coincide so the GPUI panel and rounded
 material have the same height and origin.
+Before each show, cross-monitor placement is two synchronous native operations
+while hidden: move without resizing so GPUI can finish `WM_DPICHANGED` and its
+nested suggested-RECT resize, then apply the canonical target-DPI viewport. A
+single move+resize can have its final size overwritten by that DPI handler, so
+neither material creation nor swapchain warming/show may precede the second step.
+The native regression uses hidden windows on real mixed-DPI monitors and mirrors
+the pinned GPUI suggested-RECT handler; it is not live GPUI visual acceptance.
+Cold-start show additionally warms the hidden surface, then enforces the
+canonical fixed-popup viewport for the current DPI through the normal `WM_SIZE`
+path before revealing the material. The Composition material/clip stay
+panel-sized in both dimensions, so an oversized host cannot stretch the blur.
 The effect is not an exact recreation of system Acrylic noise, nor replaced with
 GPUI's visually different accent blur.
 Unsupported effects use the same-alpha shared translucent body without an extra

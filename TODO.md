@@ -7,6 +7,16 @@
 
 ## Надійність: підтверджені залишкові ризики
 
+- [ ] **Overlay cold-start double height (user report, still open).** Перший
+  показ після запуску застосунку виглядає зависоким, як на скріншоті з подвоєною
+  висотою; повторний показ нормальний. Перехід між моніторами після останнього
+  виправлення нормальний. Підозра: стартова геометрія/перший paint дає viewport
+  вище канонічних 100 DIP, а blur брав висоту з HWND без обмеження панеллю.
+  Виправлення-кандидат: blur/material обмежено 100 DIP висоти, `show()` гріє
+  прихований swapchain, звіряє viewport з канонічними пикселями поточного DPI і
+  відновлює його через звичайний `WM_SIZE` до показу material. Hidden/native
+  тести цього не доводять; потрібне живе visual acceptance першого показу.
+
 - [ ] **Overlay refresh-rate acceptance.** Slide/fade більше не семплюється
   20-мс host polling: foreground семплює monotonic timeline на GPUI frame,
   coalesced wake доставляє той самий sample native material поза App borrow.
