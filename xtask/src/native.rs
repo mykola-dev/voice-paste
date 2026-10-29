@@ -181,6 +181,103 @@ fn record(
     Ok(())
 }
 
+fn crt_number(name: &str) -> u64 {
+    name.strip_prefix("Microsoft.VC")
+        .and_then(|rest| rest.strip_suffix(".CRT"))
+        .and_then(|digits| digits.parse().ok())
+        .unwrap_or(0)
+}
+
+fn parse_msvc_version(version: &str) -> Vec<u64> {
+    version
+        .split('.')
+        .map(|part| part.parse().unwrap_or(0))
+        .collect()
+}
+
+fn complete_crt_dir(directory: &Path) -> bool {
+    const REQUIRED: [&str; 4] = [
+        "msvcp140.dll",
+        "msvcp140_1.dll",
+        "vcruntime140.dll",
+        "vcruntime140_1.dll",
+    ];
+    REQUIRED.iter().all(|name| directory.join(name).is_file())
+}
+
+/// Locate the CRT redistributable inside the installed Visual Studio.
+///
+/// The default redist version file and the on-disk `VC/Redist/MSVC` layout can
+/// drift apart on fresh CI images, so prefer the default version's VC143 set
+/// but fall back to the newest complete VC143 (then newest complete VC*) set.
+fn find_crt(vs: &Path) -> Result<(PathBuf, String)> {
+    let redist = vs.join("VC").join("Redist").join("MSVC");
+    let default_version = fs::read_to_string(
+        vs.join("VC")
+            .join("Auxiliary")
+            .join("Build")
+            .join("Microsoft.VCRedistVersion.default.txt"),
+    )
+    .map(|version| version.trim().to_string())
+    .ok()
+    .filter(|version| !version.is_empty());
+    let mut candidates = vec![];
+    let entries = fs::read_dir(&redist).with_context(|| {
+        format!(
+            "Missing MSVC redistributables at {}; install Visual Studio C++ Build Tools",
+            redist.display()
+        )
+    })?;
+    for version_entry in entries {
+        let version_entry = version_entry?;
+        let version = version_entry.file_name().to_string_lossy().into_owned();
+        let arch = version_entry.path().join("x64");
+        let crt_entries = match fs::read_dir(&arch) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        for crt_entry in crt_entries {
+            let crt_entry = crt_entry?;
+            let name = crt_entry.file_name().to_string_lossy().into_owned();
+            if crt_entry.file_type()?.is_dir()
+                && name.starts_with("Microsoft.VC")
+                && name.ends_with(".CRT")
+                && complete_crt_dir(&crt_entry.path())
+            {
+                candidates.push((crt_entry.path(), version.clone(), name));
+            }
+        }
+    }
+    ensure!(
+        !candidates.is_empty(),
+        "No complete Microsoft.VC*.CRT set with msvcp140/vcruntime140 DLLs under {}; install Visual Studio C++ Build Tools",
+        redist.display()
+    );
+    if let Some(default) = default_version.as_deref()
+        && let Some(found) = candidates
+            .iter()
+            .find(|(_, version, name)| version == default && name == "Microsoft.VC143.CRT")
+    {
+        return Ok((found.0.clone(), found.1.clone()));
+    }
+    let newest_vc143 = candidates
+        .iter()
+        .filter(|(_, _, name)| name == "Microsoft.VC143.CRT")
+        .max_by(|a, b| parse_msvc_version(&a.1).cmp(&parse_msvc_version(&b.1)));
+    if let Some(found) = newest_vc143 {
+        return Ok((found.0.clone(), found.1.clone()));
+    }
+    let newest = candidates
+        .iter()
+        .max_by(|a, b| {
+            crt_number(&a.2)
+                .cmp(&crt_number(&b.2))
+                .then(parse_msvc_version(&a.1).cmp(&parse_msvc_version(&b.1)))
+        })
+        .context("No complete CRT set")?;
+    Ok((newest.0.clone(), newest.1.clone()))
+}
+
 pub fn prepare(runner: &Runner, source: &Path, vs: &Path, offline: bool) -> Result<()> {
     let lock = inputs()?;
     files::no_links(source)?;
@@ -283,12 +380,7 @@ pub fn prepare(runner: &Runner, source: &Path, vs: &Path, offline: bool) -> Resu
             &mut records,
         )?;
     }
-    let version =
-        fs::read_to_string(vs.join("VC/Auxiliary/Build/Microsoft.VCRedistVersion.default.txt"))?;
-    let crt = vs.join(format!(
-        "VC/Redist/MSVC/{}/x64/Microsoft.VC143.CRT",
-        version.trim()
-    ));
+    let (crt, crt_version) = find_crt(vs)?;
     for name in [
         "msvcp140.dll",
         "msvcp140_1.dll",
@@ -306,7 +398,7 @@ pub fn prepare(runner: &Runner, source: &Path, vs: &Path, offline: bool) -> Resu
         record(
             stage.path(),
             name,
-            version.trim(),
+            &crt_version,
             "https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution",
             "notices/Microsoft-CRT-LICENSE.docx",
             &mut records,
@@ -479,6 +571,78 @@ mod tests {
         for name in inputs.host_files.iter().chain(&inputs.runtime_files) {
             files::safe_path(name).unwrap();
         }
+    }
+
+    fn fake_crt_layout(default: Option<&str>, sets: &[(&str, &str, bool)]) -> tempfile::TempDir {
+        let temp = tempfile::tempdir().unwrap();
+        if let Some(version) = default {
+            let dir = temp.path().join("VC").join("Auxiliary").join("Build");
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("Microsoft.VCRedistVersion.default.txt"), version).unwrap();
+        }
+        for (version, crt, complete) in sets {
+            let dir = temp
+                .path()
+                .join("VC")
+                .join("Redist")
+                .join("MSVC")
+                .join(version)
+                .join("x64")
+                .join(crt);
+            fs::create_dir_all(&dir).unwrap();
+            let names: &[&str] = if *complete {
+                &[
+                    "msvcp140.dll",
+                    "msvcp140_1.dll",
+                    "vcruntime140.dll",
+                    "vcruntime140_1.dll",
+                ]
+            } else {
+                &["msvcp140.dll"]
+            };
+            for name in names {
+                fs::write(dir.join(name), "fixture").unwrap();
+            }
+        }
+        temp
+    }
+
+    #[test]
+    fn crt_prefers_default_vc143_over_newer_complete_set() {
+        let vs = fake_crt_layout(
+            Some("14.51.36231"),
+            &[
+                ("14.51.36231", "Microsoft.VC143.CRT", true),
+                ("14.52.00000", "Microsoft.VC143.CRT", true),
+            ],
+        );
+        let (dir, version) = find_crt(vs.path()).unwrap();
+        assert_eq!(version, "14.51.36231");
+        assert!(dir.ends_with(Path::new("14.51.36231/x64/Microsoft.VC143.CRT")));
+    }
+
+    #[test]
+    fn crt_falls_back_to_newest_complete_vc143() {
+        let vs = fake_crt_layout(
+            Some("14.51.36231"),
+            &[
+                ("14.51.36231", "Microsoft.VC143.CRT", false),
+                ("14.50.00000", "Microsoft.VC143.CRT", true),
+                ("14.52.00000", "Microsoft.VC143.CRT", true),
+            ],
+        );
+        let (dir, version) = find_crt(vs.path()).unwrap();
+        assert_eq!(version, "14.52.00000");
+        assert!(dir.ends_with(Path::new("14.52.00000/x64/Microsoft.VC143.CRT")));
+    }
+
+    #[test]
+    fn crt_rejects_incomplete_sets() {
+        let vs = fake_crt_layout(
+            Some("14.51.36231"),
+            &[("14.51.36231", "Microsoft.VC143.CRT", false)],
+        );
+        assert!(find_crt(vs.path()).is_err());
     }
 
     #[test]

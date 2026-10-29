@@ -162,6 +162,10 @@ release. Manual workflow runs produce a CI artifact only.
 No private native bundle or repository approval variables are required. The
 builder acquires pinned official archives and installed MSVC redistributable files,
 validates notices/inventory, checks app-local DLL imports, then verifies the ZIP.
+The CRT set comes from the installed Visual Studio: the builder prefers the
+default redist version's complete `Microsoft.VC143.CRT` set but falls back to
+the newest complete VC143 (then newest complete VC*) set under `VC/Redist/MSVC`,
+so a drifted default-version file on a fresh runner image no longer breaks the build.
 The tag must exactly match the workspace version. The release is staged as a
 draft until checksum verification and all asset uploads succeed, then published.
 If uploading fails, the draft remains unpublished; rerun the failed job to retry.
