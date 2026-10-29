@@ -10,6 +10,9 @@ pub(super) const WIDTH: f32 = 224.;
 pub(super) const HEIGHT: f32 = 100.;
 pub(super) const CORNER_RADIUS: f32 = 16.;
 pub(super) const MARGIN: f32 = 20.;
+pub(super) const TRAVEL: f32 = WIDTH + MARGIN;
+// Stop the native surface at the work-area edge, not on an adjacent monitor.
+pub(super) const VIEWPORT_WIDTH: f32 = WIDTH + MARGIN;
 
 pub(super) struct Presentation {
     pub state: State,
@@ -48,21 +51,28 @@ impl Presentation {
 
     pub fn update(&mut self, state: State, downloading: bool, now: Duration) {
         let active = state != State::Idle || downloading;
-        if state != self.state || active != self.active {
+        // Keep the last foreground during exit; runtime ownership is unchanged.
+        if active && (state != self.state || active != self.active) {
             self.wave.reset(now);
             self.started = now;
         }
         if active && !self.active {
             self.appearance = self.next_appearance;
         }
-        self.state = state;
+        if active {
+            self.state = state;
+        }
         self.active = active;
     }
 
     pub fn measurement(&mut self, value: Measurement, now: Duration) {
-        if self.state == State::Recording(value.session) {
+        if self.active && self.state == State::Recording(value.session) {
             self.wave.advance(now);
-            self.wave.add(value.timestamp, value.level);
+            self.wave.add(
+                value.timestamp,
+                value.level,
+                self.appearance.waveform_amplification,
+            );
         }
     }
 
@@ -97,6 +107,7 @@ mod tests {
         let changed = OverlayAppearance {
             acrylic: false,
             transparency: 100,
+            waveform_amplification: 30,
         };
         let mut view = Presentation::new("#E9563D", original, Duration::ZERO);
         view.update(

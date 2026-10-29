@@ -7,6 +7,35 @@
 
 ## Надійність: підтверджені залишкові ризики
 
+- [ ] **Overlay refresh-rate acceptance.** Slide/fade більше не семплюється
+  20-мс host polling: foreground семплює monotonic timeline на GPUI frame,
+  coalesced wake доставляє той самий sample native material поза App borrow.
+  Next-frame callbacks читають refresh_interval поточного дисплея; тривалості
+  220/160 мс і швидкість waveform/pulse/bars не залежать від кількості кадрів.
+  Потрібне вимірювання фактичного render/present cadence на 120 Гц та mixed
+  120/60 Гц: pinned Windows backend має DWM-wide vsync; unit tests цього не доводять.
+  Tray artwork не змінювали; гарантований FPS Explorer не заявляємо.
+
+- [ ] **Overlay нижні кути / зайвий напівпрозорий контур.** Користувач повторно
+  відкрив visual acceptance після slide/fade. Read-only діагностика живого Debug:
+  outer `(3379,30)-(3745,180)`, client origin `(3390,30)`, size `344×139`, DPI 144;
+  blur follows client `344×139`, а GPUI панель має висоту 100 DIP = 150 px.
+  Backend створює PopUp зі style 0; Windows додає WS_CAPTION, GPUI прибирає
+  лише верхній non-client inset. DWMNCRP_DISABLED не прибирає бокові/нижній inset.
+  Hidden regression зі style 0 відтворила помилку до виправлення. Windows adapter
+  тепер задає справжній frameless WS_POPUP до показу. Потрібне візуальне
+  підтвердження; не зупиняти запис і не замінювати запущений Debug для оновлення.
+
+- [ ] **Overlay slide/fade regression (user report).** Після появи панель їде
+  назад і стає невидимою, хоча запис триває. Попередні unit/adapter checks не
+  доводять коректність живої анімації; visual acceptance повторно відкрито.
+  Користувач підтвердив збій у Debug, після якого повернувся на старий Release.
+  Виправлення: нерухомий viewport до краю work area, GPUI translate/opacity і
+  відповідний Composition offset/opacity замість покадрового руху HWND та
+  перерахунку anchor з анімованих координат. Потрібне повторне visual acceptance;
+  hidden/native tests не доводять відсутність live-збою.
+  Не зупиняти активний запис для відтворення або оновлення.
+
 - [ ] **Worker IO/shutdown deadline.** GPUI dispatcher teardown і full-command-
   queue shutdown уже виправлені; це інші дефекти. У
   `apps/voicepaste/src/adapters/worker/windows.rs` 500 ms починаються лише після

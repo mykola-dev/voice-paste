@@ -229,8 +229,7 @@ where
                 if !data.is_empty() {
                     // Display handoff may drop a measurement when full; unlike
                     // PCM, it never aborts capture or blocks the audio callback.
-                    let level =
-                        ((squares / (data.len() / channels) as f64).sqrt() * 5.0).min(1.0) as f32;
+                    let level = (squares / (data.len() / channels) as f64).sqrt().min(1.0) as f32;
                     let _ = meter.sender.try_send(Measurement {
                         session: meter.session,
                         timestamp,

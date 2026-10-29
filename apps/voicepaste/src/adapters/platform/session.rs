@@ -109,9 +109,27 @@ async fn ui_session(
         // One GPUI-owned message loop, no competing GetMessage loop. Each poll
         // has bounded work. Native modal calls below run OUTSIDE cx.update and
         // outside any application/entity/RefCell borrow.
-        cx.background_executor()
-            .timer(Duration::from_millis(20))
+        // Runtime polling keeps its own deadline. Rendered overlay frames wake
+        // only the native lifecycle, without waiting for (or restarting) it.
+        let mut poll_timer =
+            std::pin::pin!(cx.background_executor().timer(Duration::from_millis(20)));
+        loop {
+            let runtime_due = std::future::poll_fn(|task| {
+                use std::{future::Future, task::Poll};
+                if poll_timer.as_mut().poll(task).is_ready() {
+                    Poll::Ready(true)
+                } else {
+                    overlay.poll_frame(task).map(|()| false)
+                }
+            })
             .await;
+            if runtime_due {
+                break;
+            }
+            if let Err(error) = overlay_lifecycle.sync(&overlay, cx) {
+                window.notify(&format!("Recording indicator failed: {error}"), true);
+            }
+        }
         let native = window.drain();
         if native.quit {
             break;

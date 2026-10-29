@@ -258,6 +258,7 @@ struct SettingsView {
     language: Choice,
     beam: Entity<SliderState>,
     transparency: Entity<SliderState>,
+    amplification: Entity<SliderState>,
     prompt: Entity<TextareaState>,
     color: Entity<InputState>,
     picker: Entity<ColorPickerState>,
@@ -370,6 +371,13 @@ impl SettingsView {
                 .step(1.)
                 .default_value(draft.overlay_appearance().transparency as f32)
         });
+        let amplification = cx.new(|_| {
+            SliderState::new()
+                .min(1.)
+                .max(50.)
+                .step(1.)
+                .default_value(draft.overlay_appearance().waveform_amplification as f32)
+        });
         let prompt = cx.new(|cx| {
             TextareaState::new(window, cx).default_value(draft.custom_initial_prompt.clone())
         });
@@ -421,6 +429,7 @@ impl SettingsView {
         }));
         subscriptions.push(cx.observe(&beam, |_, _, cx| cx.notify()));
         subscriptions.push(cx.observe(&transparency, |_, _, cx| cx.notify()));
+        subscriptions.push(cx.observe(&amplification, |_, _, cx| cx.notify()));
         let prompt_height = px(draft.initial_prompt_height.unwrap_or(140.) as f32);
         let status_model = draft.model.clone();
         Self {
@@ -432,6 +441,7 @@ impl SettingsView {
             language,
             beam,
             transparency,
+            amplification,
             prompt,
             color,
             picker,
@@ -526,6 +536,12 @@ impl SettingsView {
         draft.beam_size = self.beam.read(cx).value().start() as u8;
         draft.custom_initial_prompt = self.prompt.read(cx).value().to_string();
         draft.indicator_color = self.color.read(cx).value().to_string();
+        let amplification = self.amplification.read(cx).value().start().round() as u8;
+        if draft.waveform_amplification.is_some()
+            || amplification != draft.overlay_appearance().waveform_amplification
+        {
+            draft.waveform_amplification = Some(amplification);
+        }
         let transparency = self.transparency.read(cx).value().start().round() as u8;
         if draft.overlay_transparency.is_some()
             || transparency != draft.overlay_appearance().transparency
@@ -951,6 +967,17 @@ impl Render for SettingsView {
                                         .disabled(self.busy).flex_1())
                                     .child(format!("{}%", self.transparency.read(cx).value().start().round() as u8)))
                                 .child(hint("0%: opaque tint · 100%: no background. Acrylic keeps blur between the endpoints. Applies to both modes; timer and waveform stay sharp.", cx)),
+                            narrow,
+                        ).into_any_element(),
+                        row(
+                            "Waveform amplification",
+                            div().id("waveform-amplification").test_support().flex().flex_col().gap_2()
+                                .child(div().flex().items_center().gap_3()
+                                    .child(Slider::new(&self.amplification)
+                                        .accessibility_label("Waveform amplification")
+                                        .disabled(self.busy).flex_1())
+                                    .child(format!("×{}", self.amplification.read(cx).value().start().round() as u8)))
+                                .child(hint("Visual amplification only; does not change recorded audio. Applies on the next overlay show.", cx)),
                             narrow,
                         ).into_any_element(),
                         row(

@@ -289,6 +289,9 @@ fn appearance_uses_one_slider_across_modes_and_preserves_draft_until_save(cx: &m
                 view.page = SettingsPage::Appearance;
                 view.transparency
                     .update(cx, |slider, cx| slider.set_value(73., window, cx));
+                assert_eq!(view.amplification.read(cx).value().start(), 30.);
+                view.amplification
+                    .update(cx, |slider, cx| slider.set_value(50., window, cx));
             });
             window.render_frame(cx);
             window.click("acrylic", cx);
@@ -308,6 +311,16 @@ fn appearance_uses_one_slider_across_modes_and_preserves_draft_until_save(cx: &m
                     window.render_frame(cx);
                     assert_eq!(settings.view.read(cx).transparency.entity_id(), slider_id);
                     assert_eq!(
+                        settings
+                            .view
+                            .read(cx)
+                            .amplification
+                            .read(cx)
+                            .value()
+                            .start(),
+                        50.
+                    );
+                    assert_eq!(
                         settings.view.read(cx).transparency.read(cx).value().start(),
                         73.
                     );
@@ -323,10 +336,21 @@ fn appearance_uses_one_slider_across_modes_and_preserves_draft_until_save(cx: &m
         .unwrap();
     assert_eq!(saved.overlay_acrylic, Some(true));
     assert_eq!(saved.overlay_transparency, Some(73));
+    assert_eq!(saved.waveform_amplification, Some(50));
     let saved = Settings::from_json(&serde_json::to_string(&saved).unwrap()).unwrap();
     cx.update(|cx| {
         let reopened = SettingsWindow::open(saved, 42, "log", cx).unwrap();
         assert!(reopened.view.read(cx).draft.overlay_appearance().acrylic);
+        assert_eq!(
+            reopened
+                .view
+                .read(cx)
+                .amplification
+                .read(cx)
+                .value()
+                .start(),
+            50.
+        );
         assert_eq!(
             reopened.view.read(cx).transparency.read(cx).value().start(),
             73.
@@ -476,6 +500,8 @@ fn cancel_does_not_submit_unsaved_edits(cx: &mut TestAppContext) {
             view.draft.overlay_acrylic = Some(false);
             view.transparency
                 .update(cx, |slider, cx| slider.set_value(90., window, cx));
+            view.amplification
+                .update(cx, |slider, cx| slider.set_value(1., window, cx));
         });
         window.render_frame(cx);
         window.click("cancel", cx);

@@ -28,7 +28,7 @@ use windows::{
     },
     core::{Error, GUID, HSTRING, Interface, PCWSTR, Result, implement},
 };
-use windows_numerics::Vector2;
+use windows_numerics::{Vector2, Vector3};
 
 const BLUR_STANDARD_DEVIATION: f32 = 24.0;
 
@@ -90,6 +90,14 @@ pub(super) struct Material {
     geometry: CompositionRoundedRectangleGeometry,
 }
 impl Material {
+    pub(super) fn transition(&self, opacity: f32, offset: f32) -> Result<()> {
+        self.root.SetOffset(Vector3 {
+            X: offset,
+            Y: 0.,
+            Z: 0.,
+        })?;
+        self.root.SetOpacity(opacity)
+    }
     pub(super) fn new(
         context: &Context,
         hwnd: windows_sys::Win32::Foundation::HWND,
@@ -135,7 +143,8 @@ impl Material {
     }
     pub(super) fn resize(&self, width: usize, height: usize, scale: f64) -> Result<()> {
         let size = Vector2 {
-            X: width as f32,
+            // The host includes the slide path; the material/clip stays panel-sized.
+            X: (width as f32).min(super::super::super::state::WIDTH * scale as f32),
             Y: height as f32,
         };
         let radius = super::super::CORNER_RADIUS * scale as f32;
@@ -247,11 +256,23 @@ mod tests {
                 }
             );
             assert_eq!(host.1.root.Children().unwrap().Count().unwrap(), 2);
+            host.1.transition(0.4, 30.).unwrap();
+            assert_eq!(host.1.root.Opacity().unwrap(), 0.4);
+            assert_eq!(host.1.root.Offset().unwrap().X, 30.);
         }
         assert_eq!(
             unsafe { windows_sys::Win32::UI::WindowsAndMessaging::IsWindowVisible(host.0) },
             0
         );
+        // The slide viewport is wider than the material; clipping must remain
+        // 224 DIP wide even when geometry is synchronized repeatedly.
+        assert!(host.place(
+            windows_sys::Win32::Foundation::POINT { x: 0, y: 0 },
+            (244. * 1.75) as usize,
+            175,
+            1.75,
+        ));
+        assert_eq!(host.1.root.Size().unwrap().X, 224. * 1.75);
     }
 
     #[test]

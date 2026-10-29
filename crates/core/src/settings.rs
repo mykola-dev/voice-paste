@@ -21,6 +21,8 @@ pub struct Settings {
     pub overlay_acrylic: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub overlay_transparency: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub waveform_amplification: Option<u8>,
     pub debug_logging: bool,
     #[serde(default)]
     pub custom_initial_prompt: String,
@@ -42,14 +44,15 @@ fn is_false(value: &bool) -> bool {
 pub struct OverlayAppearance {
     pub acrylic: bool,
     pub transparency: u8,
+    pub waveform_amplification: u8,
 }
 impl Default for OverlayAppearance {
     fn default() -> Self {
-        // Approximate the current combined white tint (96 + 20-over) without
-        // modifying the frozen snapshot. One common value for both modes.
+        // One common transparency value for both material modes.
         Self {
             acrylic: true,
-            transparency: 57,
+            transparency: 40,
+            waveform_amplification: 30,
         }
     }
 }
@@ -121,6 +124,9 @@ impl Settings {
         OverlayAppearance {
             acrylic: self.overlay_acrylic.unwrap_or(defaults.acrylic),
             transparency: self.overlay_transparency.unwrap_or(defaults.transparency),
+            waveform_amplification: self
+                .waveform_amplification
+                .unwrap_or(defaults.waveform_amplification),
         }
     }
     pub fn initial() -> Result<Self, String> {
@@ -143,6 +149,12 @@ impl Settings {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        if self
+            .waveform_amplification
+            .is_some_and(|value| !(1..=50).contains(&value))
+        {
+            return Err("Waveform amplification must be 1..50".into());
+        }
         if self.overlay_transparency.is_some_and(|value| value > 100) {
             return Err("Overlay transparency must be 0..100 percent".into());
         }
@@ -343,9 +355,9 @@ mod tests {
         let old = Settings::from_json("{}").unwrap();
         assert_eq!(old.overlay_appearance(), OverlayAppearance::default());
         assert!(old.overlay_appearance().acrylic);
-        assert_eq!(old.overlay_appearance().transparency, 57);
+        assert_eq!(old.overlay_appearance().transparency, 40);
         for acrylic in [false, true] {
-            for transparency in [0, 57, 100] {
+            for transparency in [0, 40, 57, 100] {
                 let text = format!(
                     r#"{{"overlayAcrylic":{acrylic},"overlayTransparency":{transparency}}}"#
                 );
@@ -355,7 +367,8 @@ mod tests {
                     appearance,
                     OverlayAppearance {
                         acrylic,
-                        transparency
+                        transparency,
+                        ..OverlayAppearance::default()
                     }
                 );
                 assert_eq!(
@@ -363,6 +376,7 @@ mod tests {
                     match transparency {
                         0 => 255,
                         100 => 0,
+                        40 => 153,
                         _ => 110,
                     }
                 );
@@ -383,6 +397,33 @@ mod tests {
             r#"{"overlayAcrylic":"true"}"#,
         ] {
             assert!(Settings::from_json(invalid).is_err(), "{invalid}");
+        }
+    }
+
+    #[test]
+    fn waveform_amplification_defaults_validates_and_preserves_saved_settings() {
+        let old = Settings::from_json("{}").unwrap();
+        assert_eq!(old.overlay_appearance().waveform_amplification, 30);
+        for gain in [1, 20, 30, 50] {
+            let saved = Settings::from_json(&format!(
+                r#"{{"waveformAmplification":{gain},"overlayTransparency":57}}"#
+            ))
+            .unwrap();
+            assert_eq!(saved.overlay_appearance().waveform_amplification, gain);
+            assert_eq!(saved.overlay_appearance().transparency, 57);
+            assert_eq!(
+                Settings::from_json(&serde_json::to_string(&saved).unwrap()).unwrap(),
+                saved
+            );
+            assert_eq!(
+                TranscriptionOptions::from(&saved),
+                TranscriptionOptions::from(&old)
+            );
+        }
+        for invalid in ["0", "51", "-1", "1.5", "\"20\""] {
+            assert!(
+                Settings::from_json(&format!(r#"{{"waveformAmplification":{invalid}}}"#)).is_err()
+            );
         }
     }
 }

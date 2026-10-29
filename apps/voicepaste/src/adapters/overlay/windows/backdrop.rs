@@ -106,6 +106,9 @@ impl Backdrop {
             ShowWindow(self.0, SW_HIDE);
         }
     }
+    pub(super) fn transition(&self, opacity: f32, offset: f32) -> bool {
+        self.1.transition(opacity, offset).is_ok()
+    }
 }
 impl Drop for Backdrop {
     fn drop(&mut self) {

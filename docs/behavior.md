@@ -72,7 +72,19 @@
   16 DIP corners, one-pixel border, default indicator `#E9563D`. Keep the sharp
   timer, pulsing red dot, timestamped 3.24-second waveform (capacity 512), 140 ms
   release and selected-color five-bar busy layer independent of the background.
-- Acrylic defaults on; one shared transparency defaults to 57%. 0% is opaque white
+- Overlay entry slides from the right with a 220 ms cubic ease-out and fade-in;
+  exit slides right with a 160 ms cubic ease-in and fade-out. Background and sharp
+  foreground share the transition; interrupted transitions reverse without a position
+  jump. Exit retains the last content and does not delay recording, paste or cancel.
+  The transition opacity multiplies the configured background alpha, not its setting.
+- Waveform amplification in Appearance is 1–50 in integer steps, default 30.
+  The audio meter supplies raw RMS. Display gain is raw RMS times the slider
+  multiplier at every level, with no gain ramp or extra x2 amplification.
+  The result is clamped before the existing 140 ms release; recorded PCM and
+  transcription are unchanged. Baseline thickness remains 1 DIP.
+  Saved gain applies on the next overlay show, not during an active recording.
+- Acrylic defaults on; one shared transparency defaults to 40%. Existing saved
+  transparency values are preserved. 0% is opaque white
   tint, intermediate Acrylic retains blur, 100% removes the whole background.
   Unsupported blur uses ordinary translucency at the same alpha. Save applies
   on next overlay show; Cancel has no effect. No live preview is required.

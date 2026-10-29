@@ -8,7 +8,7 @@ pub const VISIBLE_SECONDS: f64 = 3.24;
 pub struct Measurement {
     pub session: crate::SessionId,
     pub timestamp: Duration,
-    /// The audio meter's RMS x5, independently of the recorded PCM.
+    /// The audio meter's unamplified RMS, independently of the recorded PCM.
     pub level: f32,
 }
 
@@ -58,7 +58,7 @@ impl Waveform {
             self.samples.pop_front();
         }
     }
-    pub fn add(&mut self, timestamp: Duration, input: f32) {
+    pub fn add(&mut self, timestamp: Duration, input: f32, amplification: u8) {
         let time = timestamp.as_secs_f64();
         if time > self.frame
             || self.frame - time >= VISIBLE_SECONDS
@@ -66,11 +66,7 @@ impl Waveform {
         {
             return;
         }
-        let input = if input.is_finite() {
-            (input as f64 * 5.0).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
+        let input = display_level(f64::from(input), amplification);
         self.smoothed = release(
             self.smoothed,
             input,
@@ -103,12 +99,12 @@ impl Waveform {
         let count = self.samples.len();
         for (index, &(time, level)) in self.samples.iter().enumerate() {
             ages[index] = self.frame - time;
-            levels[index] = display_level(level);
+            levels[index] = level;
         }
         build_tangents(&ages[..count], &levels[..count], &mut tangents[..count]);
-        let live = display_level(self.last.map_or(0.0, |(time, input)| {
+        let live = self.last.map_or(0.0, |(time, input)| {
             release(self.smoothed, input, self.frame - time)
-        }));
+        });
         let mut next = 1;
         (0..width)
             .map(|x| {
@@ -145,9 +141,11 @@ fn release(previous: f64, input: f64, elapsed: f64) -> f64 {
         input + (previous - input) * (-elapsed.max(0.0) / 0.14).exp()
     }
 }
-fn display_level(level: f64) -> f64 {
-    let t = (level / 0.1).clamp(0.0, 1.0);
-    (level * (1.0 + t * t * (3.0 - 2.0 * t))).clamp(0.0, 1.0)
+fn display_level(level: f64, amplification: u8) -> f64 {
+    if !level.is_finite() {
+        return 0.0;
+    }
+    (level * f64::from(amplification)).clamp(0.0, 1.0)
 }
 fn build_tangents(ages: &[f64], levels: &[f64], tangents: &mut [f64]) {
     let count = levels.len();
@@ -183,12 +181,63 @@ fn interpolate(from: f64, to: f64, a: f64, b: f64, seconds: f64, t: f64) -> f64 
 mod tests {
     use super::*;
     #[test]
+    fn selected_amplification_is_applied_once_before_release_and_rendering() {
+        for amplification in [1, 20, 30, 50] {
+            let mut wave = Waveform::new(Duration::ZERO);
+            wave.add(Duration::ZERO, 0.001, amplification);
+            let expected = f64::from(0.001f32) * f64::from(amplification);
+            assert!((wave.smoothed - expected).abs() < 1e-12);
+            // Sample a constant segment, not the interpolated rise from the
+            // seeded silent history at the first pixel-center timestamp.
+            wave.advance(Duration::from_secs(1));
+            wave.add(Duration::from_secs(1), 0.001, amplification);
+            let actual = wave.profile(224).last().unwrap().level;
+            assert!((f64::from(actual) - expected).abs() < 1e-8);
+            wave.reset(Duration::ZERO);
+            wave.add(Duration::ZERO, 0., amplification);
+            assert!(wave.profile(224).iter().all(|column| column.level == 0.));
+            wave.add(Duration::ZERO, 1., amplification);
+            assert_eq!(wave.smoothed, 1.);
+        }
+    }
+    #[test]
+    fn raw_rms_uses_full_slider_gain_at_every_level() {
+        for gain in [1, 10, 20, 30, 50] {
+            for raw in [0., 1e-8, 0.001, 0.0025, 0.004, 0.005, 0.2, 1., 2.] {
+                let expected = (raw * f64::from(gain)).min(1.);
+                assert!((display_level(raw, gain) - expected).abs() < 1e-12);
+            }
+            for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -0.1] {
+                assert_eq!(display_level(invalid, gain), 0.);
+            }
+            let mut previous = 0.;
+            for step in 0..=10000 {
+                let level = display_level(f64::from(step) / 10000., gain);
+                assert!(level.is_finite() && (0. ..=1.).contains(&level));
+                assert!(level + 1e-12 >= previous);
+                previous = level;
+            }
+        }
+    }
+    #[test]
+    fn quiet_samples_are_never_attenuated_and_gain_one_is_identity() {
+        for raw in [1e-8, 0.0001, 0.001, 0.0025, 0.005, 0.02, 0.5, 1.] {
+            assert_eq!(display_level(raw, 1), raw);
+            for gain in [10, 20, 30] {
+                let level = display_level(raw, gain);
+                assert!(level >= raw);
+                assert!(level <= (raw * f64::from(gain)).min(1.));
+            }
+        }
+        assert!((display_level(1e-8, 30) / 1e-8 - 30.).abs() < 1e-12);
+    }
+    #[test]
     fn profile_is_finite_bounded_and_preserves_live_release_at_fractional_scales() {
         let mut wave = Waveform::new(Duration::ZERO);
         for (millis, input) in [(0, 0.2), (20, f32::NAN), (40, 0.01), (80, 0.2)] {
             let now = Duration::from_millis(millis);
             wave.advance(now);
-            wave.add(now, input);
+            wave.add(now, input, 20);
         }
         wave.advance(Duration::from_millis(220));
         for columns in [224, 280, 336, 392, 448] {
@@ -210,13 +259,13 @@ mod tests {
         for index in 1..=1000 {
             let now = Duration::from_millis(index);
             wave.advance(now);
-            wave.add(now, 0.1);
+            wave.add(now, 0.1, 20);
         }
         assert_eq!(wave.samples.len(), CAPACITY);
         let count = wave.samples.len();
         wave.advance(Duration::from_millis(1100));
         assert_eq!(wave.samples.len(), count);
-        wave.add(Duration::from_millis(999), 1.0);
+        wave.add(Duration::from_millis(999), 1.0, 20);
         assert_eq!(wave.samples.len(), count);
         wave.advance(Duration::from_secs(5));
         assert_eq!(wave.samples.len(), 3);

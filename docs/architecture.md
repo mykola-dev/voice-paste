@@ -30,6 +30,22 @@ and `adapters/overlay/state.rs`; core supplies a renderer-independent waveform
 envelope, not premultiplied platform pixels. GPUI schedules frames, including in
 native nested menu loops; inactive-window throttling is disabled for the overlay.
 There is no independent Win32 frame timer, DIB/GDI foreground or render thread.
+The slide/fade uses a fixed transparent viewport extending from the panel's resting
+left edge to the work-area right edge. GPUI translates/fades the 224-DIP panel
+inside it; Composition applies the same offset/opacity to its panel-sized material
+and rounded clip. Neither HWND moves per animation sample, so observed animated
+coordinates cannot feed back into the resting position or cross monitor DPI boundaries.
+Slide/fade is sampled once in the GPUI render alongside the waveform, pulse and
+busy bars, all from monotonic elapsed time. Next-frame callbacks use the current
+window display's `refresh_interval` to gate compositor callbacks (including after
+a display/rate change), not a hardcoded FPS or the application's 20-ms poll.
+A UI-thread latest-frame notification wakes native lifecycle synchronization
+after framework borrows unwind; it coalesces frames without an unbounded queue.
+Runtime polling retains its independent deadline. The material consumes the last
+rendered sample, never advances its own timeline, and final exit frames trigger
+native hide. Callback pacing is not proof of actual presented FPS: the pinned
+Windows backend uses DWM-wide vsync, so physical 120/60-Hz mixed-monitor cadence
+still requires measurement/visual acceptance.
 
 `adapters/overlay/windows.rs` owns only native nonactivation, placement and the
 backdrop lifetime. HWND snapshots are taken in GPUI; mutating OS calls happen
@@ -45,6 +61,11 @@ accent and non-client rendering on both surfaces; the shared GPUI border and
 rounded Composition clip are the sole visible frame, without a second native
 outline/shadow. Native frame settings are covered by hidden adapter tests, not
 by a claim of screenshot/pixel acceptance.
+The Windows adapter also explicitly replaces the pinned backend's zero/overlapped
+creation style with frameless `WS_POPUP` and refreshes non-client metrics before
+show. Disabling DWM decoration alone leaves caption-side/bottom client insets;
+the native client and outer viewport must coincide so the GPUI panel and rounded
+material have the same height and origin.
 The effect is not an exact recreation of system Acrylic noise, nor replaced with
 GPUI's visually different accent blur.
 Unsupported effects use the same-alpha shared translucent body without an extra

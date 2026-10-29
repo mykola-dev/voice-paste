@@ -1,6 +1,6 @@
 //! Windows window policy + backdrop only; GPUI owns foreground pixels and frames.
 //! All mutating native calls run outside App/entity/RefCell borrows.
-use super::state::{CORNER_RADIUS, HEIGHT, MARGIN, WIDTH};
+use super::state::{CORNER_RADIUS, HEIGHT, MARGIN, TRAVEL, VIEWPORT_WIDTH, WIDTH};
 use gpui_kit::{AnyWindowHandle, App};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::{
@@ -40,6 +40,7 @@ pub struct Shell {
     backdrop: Option<Backdrop>,
     context: Option<Context>,
     geometry: Option<Geometry>,
+    opacity: Option<f32>,
 }
 
 impl Shell {
@@ -72,6 +73,7 @@ impl Shell {
             if previous == 0 && GetLastError() != 0 {
                 return Err(last_error("configure overlay"));
             }
+            make_frameless_popup(hwnd)?;
             suppress_native_frame(hwnd)?;
             disable_foreground_accent(hwnd)?;
             if SetWindowSubclass(hwnd, Some(nonactivating), SUBCLASS, 0) == 0 {
@@ -84,6 +86,7 @@ impl Shell {
             backdrop: None,
             context: None,
             geometry: None,
+            opacity: None,
         })
     }
 
@@ -109,6 +112,7 @@ impl Shell {
             }
         }
         self.geometry = Some(geometry);
+        self.opacity = None;
         self.backdrop.take();
         let alpha = appearance.background_alpha();
         if appearance.acrylic && alpha > 0 {
@@ -169,6 +173,28 @@ impl Shell {
         self.visible = false;
     }
 
+    /// Apply the shared timeline to the material inside its fixed host. Never
+    /// move either HWND during animation: client geometry is not an animation anchor.
+    pub fn animate(&mut self, opacity: f32) -> bool {
+        let Some(geometry) = self.geometry else {
+            return false;
+        };
+        if self.opacity == Some(opacity) {
+            return false;
+        }
+        self.opacity = Some(opacity);
+        let offset = TRAVEL * geometry.dpi as f32 / 96. * (1. - opacity);
+        if self
+            .backdrop
+            .as_ref()
+            .is_some_and(|backdrop| !backdrop.transition(opacity, offset))
+        {
+            self.backdrop.take();
+            return true;
+        }
+        false
+    }
+
     /// Follow GPUI's actual client geometry/DPI after native DPI changes. No frame timer.
     /// Returns true when an unavailable material needs the shared translucent fallback.
     pub fn sync_geometry(&mut self) -> Result<bool, String> {
@@ -195,6 +221,7 @@ impl Shell {
             return Ok(false);
         }
         self.geometry = Some(geometry);
+        self.opacity = None;
         if self
             .backdrop
             .as_ref()
@@ -251,11 +278,12 @@ fn placement() -> Result<Geometry, String> {
             return Err(format!("Cannot read overlay monitor DPI: {result}"));
         }
         let scale = f64::from(dpi) / 96.;
-        let width = (f64::from(WIDTH) * scale).round() as usize;
+        let panel_width = (f64::from(WIDTH) * scale).round() as i32;
+        let width = (f64::from(VIEWPORT_WIDTH) * scale).round() as usize;
         let height = (f64::from(HEIGHT) * scale).round() as usize;
         let margin = (f64::from(MARGIN) * scale).round() as i32;
         Ok(Geometry {
-            x: info.rcWork.right - margin - width as i32,
+            x: info.rcWork.right - margin - panel_width,
             y: info.rcWork.top + margin,
             width,
             height,
@@ -266,6 +294,37 @@ fn placement() -> Result<Geometry, String> {
 
 fn last_error(action: &str) -> String {
     format!("Cannot {action}: {}", std::io::Error::last_os_error())
+}
+
+/// GPUI's pinned PopUp backend passes style 0 to CreateWindowEx. Windows adds
+/// WS_CAPTION to an overlapped window; hiding its DWM decoration does NOT remove
+/// the non-client insets. GPUI removes only the top inset in WM_NCCALCSIZE, leaving
+/// sides/bottom. Native outer placement would then truncate the GPUI panel while
+/// the material follows the shorter client area. Both surfaces must be popups
+/// whose client rect exactly matches the requested viewport, before first show.
+fn make_frameless_popup(hwnd: HWND) -> Result<(), String> {
+    // SAFETY: live, hidden UI-thread HWND, called outside all App/entity borrows.
+    unsafe {
+        let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
+        let style = (style & !(WS_CAPTION | WS_THICKFRAME | WS_BORDER | WS_DLGFRAME)) | WS_POPUP;
+        SetLastError(0);
+        if SetWindowLongPtrW(hwnd, GWL_STYLE, style as isize) == 0 && GetLastError() != 0 {
+            return Err(last_error("remove overlay non-client insets"));
+        }
+        if SetWindowPos(
+            hwnd,
+            null_mut(),
+            0,
+            0,
+            0,
+            0,
+            SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOMOVE | SWP_NOSIZE,
+        ) == 0
+        {
+            return Err(last_error("refresh frameless overlay viewport"));
+        }
+    }
+    Ok(())
 }
 
 /// Only the shared rounded GPUI border is visible, never a second rectangular
@@ -363,7 +422,9 @@ mod tests {
                 WS_EX_TOOLWINDOW,
                 windows_sys::w!("STATIC"),
                 windows_sys::w!(""),
-                WS_POPUP,
+                // Match the pinned GPUI PopUp backend's zero creation style.
+                // Windows supplies an overlapped non-client frame for it.
+                WS_OVERLAPPED,
                 0,
                 0,
                 0,
@@ -376,6 +437,12 @@ mod tests {
             assert!(!hwnd.is_null());
             let foreground = GetForegroundWindow();
             let mut shell = Shell::new(hwnd).unwrap();
+            assert_eq!(
+                GetWindowLongPtrW(hwnd, GWL_STYLE) as u32
+                    & (WS_CAPTION | WS_THICKFRAME | WS_BORDER | WS_DLGFRAME),
+                0,
+                "disabling DWM decoration alone must not leave invisible client insets"
+            );
             let mut nc_enabled: i32 = 1;
             assert!(
                 DwmGetWindowAttribute(
@@ -406,12 +473,38 @@ mod tests {
                     !shell
                         .prepare(OverlayAppearance {
                             acrylic,
-                            transparency
+                            transparency,
+                            ..OverlayAppearance::default()
                         })
                         .unwrap()
                 );
                 assert!(shell.context.is_none());
                 assert_eq!(IsWindowVisible(hwnd), 0);
+                let anchor = shell.geometry.unwrap();
+                // Exercise animation + geometry feedback without revealing a window.
+                shell.visible = true;
+                for opacity in [0., 0.4, 0.8, 1., 1., 1., 0.8, 0.4, 0.] {
+                    assert!(!shell.animate(opacity));
+                    assert!(!shell.sync_geometry().unwrap());
+                    let mut rect: RECT = zeroed();
+                    assert_ne!(GetWindowRect(hwnd, &mut rect), 0);
+                    assert_eq!(rect.left, anchor.x);
+                    assert_eq!(rect.top, anchor.y);
+                    let mut client: RECT = zeroed();
+                    let mut origin = POINT { x: 0, y: 0 };
+                    assert_ne!(GetClientRect(hwnd, &mut client), 0);
+                    assert_ne!(ClientToScreen(hwnd, &mut origin), 0);
+                    assert_eq!((origin.x, origin.y), (rect.left, rect.top));
+                    assert_eq!(client.right - client.left, rect.right - rect.left);
+                    assert_eq!(client.bottom - client.top, rect.bottom - rect.top);
+                    assert_eq!(
+                        anchor.height,
+                        (HEIGHT * anchor.dpi as f32 / 96.).round() as usize
+                    );
+                    assert_eq!(IsWindowVisible(hwnd), 0);
+                    assert!(shell.geometry == Some(anchor));
+                }
+                shell.visible = false;
             }
             assert_eq!(GetForegroundWindow(), foreground);
             drop(shell);

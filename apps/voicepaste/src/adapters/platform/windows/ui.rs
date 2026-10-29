@@ -92,6 +92,7 @@ impl OverlayLifecycle {
     }
 
     fn sync_enabled(&mut self, overlay: &OverlayWindow, cx: &mut AsyncApp) -> Result<(), String> {
+        let opacity = cx.update(|cx| overlay.animation(cx));
         let active = cx.update(|cx| overlay.active(cx));
         let pending = cx.update(|cx| overlay.show_pending(cx));
         match action(active, pending, self.shell.visible()) {
@@ -102,14 +103,23 @@ impl OverlayLifecycle {
                 let appearance = cx.update(|cx| overlay.current_appearance(cx));
                 let material = self.shell.prepare(appearance)?;
                 cx.update(|cx| overlay.material(material, cx));
+                if self.shell.animate(opacity) {
+                    cx.update(|cx| overlay.material(false, cx));
+                }
                 let shown_material = self.shell.show()?;
-                if material != shown_material {
-                    cx.update(|cx| overlay.material(shown_material, cx));
+                // Warming the foreground may have rendered a newer sample.
+                let opacity = cx.update(|cx| overlay.animation(cx));
+                let lost_material = self.shell.animate(opacity);
+                if material != shown_material || lost_material {
+                    cx.update(|cx| overlay.material(shown_material && !lost_material, cx));
                 }
             }
             Action::Hide => self.shell.hide(),
             Action::Sync => {
                 if self.shell.sync_geometry()? {
+                    cx.update(|cx| overlay.material(false, cx));
+                }
+                if self.shell.animate(opacity) {
                     cx.update(|cx| overlay.material(false, cx));
                 }
             }
