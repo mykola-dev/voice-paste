@@ -1,5 +1,5 @@
 //! GPU backdrop blur with compositor-level rounded clipping, not a window accent.
-//! Native foreground rendering and the GPUI-owned message loop remain unchanged.
+//! Shared GPUI foreground stays sharp above this platform-only material.
 use windows::{
     Foundation::{IPropertyValue, PropertyValue},
     Graphics::Effects::{
@@ -138,7 +138,7 @@ impl Material {
             X: width as f32,
             Y: height as f32,
         };
-        let radius = (super::super::CORNER_RADIUS * scale) as f32;
+        let radius = super::super::CORNER_RADIUS * scale as f32;
         self.geometry.SetSize(size)?;
         self.geometry.SetCornerRadius(Vector2 {
             X: radius,

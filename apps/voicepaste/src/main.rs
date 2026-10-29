@@ -33,7 +33,7 @@ fn run() -> Result<(), String> {
     Hotkey::parse(&storage.settings.hotkey)?;
     if args == ["--check"] {
         println!(
-            "Portable settings valid; native settings, recording overlay, model provisioning, STT and paste are connected. This check uses no network, microphone, GPU or clipboard."
+            "Portable settings valid; GPUI settings/recording overlay, model provisioning, STT and paste are connected. This check uses no network, microphone, GPU or clipboard."
         );
         return Ok(());
     }

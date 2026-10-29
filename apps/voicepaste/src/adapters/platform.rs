@@ -1,7 +1,6 @@
 //! Win32 ownership/callbacks. Commands are queued; frame callbacks do bounded UI work.
 use super::hotkey::Binding;
-use super::overlay::{FRAME_TIMER, Overlay};
-use super::overlay_frames::Frames;
+use super::overlay::{OverlayWindow, windows::Shell as OverlayShell};
 use super::settings_window::SettingsWindow;
 use super::tray_icons::{self, Lips};
 use crate::runtime::{Command, Event, Runtime};
@@ -291,12 +290,6 @@ unsafe extern "system" fn window_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
             PostMessageW(hwnd, TRAY_ACTION, w, l);
             return 0;
         }
-        if message == WM_TIMER && w == FRAME_TIMER {
-            // TrackPopupMenu dispatches here too; never depend on the outer
-            // GetMessage loop for animation or the bounded audio-level handoff.
-            Frames::dispatch(hwnd);
-            return 0;
-        }
         if message == WM_CLOSE {
             PENDING.with(|p| p.borrow_mut().quit = true);
             return 0;
@@ -440,13 +433,18 @@ async fn ui_session(
         let runtime = runtime.borrow();
         (runtime.levels.clone(), runtime.clock)
     };
-    let frames = Frames::new(
-        window.hwnd,
-        Overlay::new(window.hwnd, &initial.indicator_color, clock.elapsed())?,
-        levels,
-        clock,
-    );
-    frames.appearance(&initial.indicator_color, initial.overlay_appearance());
+    let overlay = cx.update(|cx| {
+        OverlayWindow::open(
+            &initial.indicator_color,
+            initial.overlay_appearance(),
+            levels,
+            clock,
+            cx,
+        )
+    })?;
+    let overlay_hwnd = cx.update(|cx| OverlayShell::window_handle(overlay.handle(), cx))?;
+    let mut overlay_shell = OverlayShell::new(overlay_hwnd)?;
+    let mut overlay_enabled = true;
     let mut state = State::Idle;
     let mut saved = initial;
     let mut generation = 1u64;
@@ -580,14 +578,20 @@ async fn ui_session(
                         state = next;
                         window.state(state);
                         window.model_status(&model_message, model_preparing, state);
-                        frames.update(state, model_downloading, clock.elapsed());
+                        if overlay_enabled {
+                            overlay.update(state, model_downloading, cx);
+                        }
                     }
                     Event::SettingsSaved { id, result } if pending_save == Some(id) => {
                         pending_save = None;
                         window.finish_hotkey(result.is_ok());
                         if let Ok(value) = &result {
                             saved = value.clone();
-                            frames.appearance(&value.indicator_color, value.overlay_appearance());
+                            overlay.appearance(
+                                &value.indicator_color,
+                                value.overlay_appearance(),
+                                cx,
+                            );
                         }
                         if let Some(settings) = &settings
                             && settings.id == id
@@ -612,7 +616,9 @@ async fn ui_session(
                         model_preparing = preparing;
                         model_downloading = downloading;
                         window.model_status(&model_message, model_preparing, state);
-                        frames.update(state, model_downloading, clock.elapsed());
+                        if overlay_enabled {
+                            overlay.update(state, model_downloading, cx);
+                        }
                         if let Some(settings) = &settings {
                             // Recheck downloaded files, without replacing a draft's status
                             // with progress belonging to the saved/active model.
@@ -716,8 +722,37 @@ async fn ui_session(
         {
             window.notify(&error, true);
         }
-        if let Some(error) = frames.take_error() {
-            window.notify(&format!("Recording indicator failed: {error}"), true);
+        // Native show/position/material operations can reenter GPUI. Snapshot
+        // intent above, then perform them only after releasing every App borrow.
+        if overlay_enabled {
+            let sync = (|| -> Result<(), String> {
+                let active = cx.update(|cx| overlay.active(cx));
+                let show_pending = cx.update(|cx| overlay.show_pending(cx));
+                if active && (show_pending || !overlay_shell.visible()) {
+                    if overlay_shell.visible() {
+                        overlay_shell.hide();
+                    }
+                    let appearance = cx.update(|cx| overlay.current_appearance(cx));
+                    let material = overlay_shell.prepare(appearance)?;
+                    cx.update(|cx| overlay.material(material, cx));
+                    let shown_material = overlay_shell.show()?;
+                    if material != shown_material {
+                        cx.update(|cx| overlay.material(shown_material, cx));
+                    }
+                } else if !active && overlay_shell.visible() {
+                    overlay_shell.hide();
+                } else if overlay_shell.sync_geometry()? {
+                    cx.update(|cx| overlay.material(false, cx));
+                }
+                Ok(())
+            })();
+            if let Err(error) = sync {
+                // Losing the indicator must not stop/discard an active dictation.
+                overlay_enabled = false;
+                overlay_shell.hide();
+                cx.update(|cx| overlay.update(State::Idle, false, cx));
+                window.notify(&format!("Recording indicator failed: {error}"), true);
+            }
         }
     }
     cx.update(|cx| {
@@ -725,7 +760,9 @@ async fn ui_session(
             settings.close(cx);
         }
     });
-    drop(frames);
+    overlay_shell.hide();
+    drop(overlay_shell);
+    cx.update(|cx| overlay.close(cx));
     window.state(State::Idle);
     Ok(())
 }
@@ -777,7 +814,7 @@ fn reveal_settings(hwnd: HWND) -> Result<(), String> {
 
 fn tray_menu(window: &Window, state: State) -> (u32, usize) {
     // SAFETY: menu is owned and destroyed on the UI thread. No GPUI/App borrow
-    // crosses TrackPopupMenu's reentrant message loop. Overlay timer stays live.
+    // crosses TrackPopupMenu's reentrant message loop. GPUI frame delivery stays live.
     unsafe {
         let target = GetForegroundWindow() as usize;
         let menu = CreatePopupMenu();
@@ -916,99 +953,13 @@ mod tests {
                 null(),
             );
             assert!(!hwnd.is_null());
-            let (_sender, receiver) = crossbeam_channel::bounded(1);
-            let frames = Frames::new(
-                hwnd,
-                Overlay::new(hwnd, "#E9563D", Duration::ZERO).unwrap(),
-                receiver,
-                Instant::now(),
-            );
-            // A synchronously dispatched frame must not need platform::run's
-            // outer loop. This is the same callback route used by native menus.
-            SendMessageW(hwnd, WM_TIMER, FRAME_TIMER, 0);
-            assert_eq!(frames.ticks(), 1);
             let mut result: MSG = zeroed();
             SendMessageW(hwnd, TRAY, 1, WM_RBUTTONUP as isize);
             let received = PeekMessageW(&mut result, hwnd, TRAY_ACTION, TRAY_ACTION, PM_REMOVE);
-            drop(frames);
-            assert_eq!(GetWindowLongPtrW(hwnd, GWLP_USERDATA), 0);
             DestroyWindow(hwnd);
             UnregisterClassW(name, instance);
             assert_ne!(received, 0);
             assert_eq!(result.lParam, WM_RBUTTONUP as isize);
-        }
-    }
-
-    #[test]
-    #[ignore = "Interactive: briefly shows an owned native popup and busy overlay, no microphone/model/paste"]
-    fn native_modal_menu_keeps_dispatching_overlay_frames() {
-        unsafe extern "system" fn procedure(
-            hwnd: HWND,
-            message: u32,
-            w: WPARAM,
-            l: LPARAM,
-        ) -> LRESULT {
-            unsafe {
-                if message == WM_TIMER && w == 99 {
-                    EndMenu();
-                    return 0;
-                }
-                window_proc(hwnd, message, w, l)
-            }
-        }
-        // SAFETY: this test owns all native UI resources on this thread. The
-        // dismissal timer is dispatched by the same modal loop, not a renderer thread.
-        unsafe {
-            let instance = GetModuleHandleW(null());
-            let name = windows_sys::w!("VoicePasteRustModalFramesTest");
-            let mut class: WNDCLASSW = zeroed();
-            class.hInstance = instance;
-            class.lpszClassName = name;
-            class.lpfnWndProc = Some(procedure);
-            assert_ne!(RegisterClassW(&class), 0);
-            let hwnd = CreateWindowExW(
-                WS_EX_TOOLWINDOW,
-                name,
-                name,
-                0,
-                0,
-                0,
-                0,
-                0,
-                null_mut(),
-                null_mut(),
-                instance,
-                null(),
-            );
-            assert!(!hwnd.is_null());
-            let (_sender, receiver) = crossbeam_channel::bounded(1);
-            let frames = Frames::new(
-                hwnd,
-                Overlay::new(hwnd, "#E9563D", Duration::ZERO).unwrap(),
-                receiver,
-                Instant::now(),
-            );
-            frames.update(State::Idle, true, Duration::ZERO);
-            let menu = CreatePopupMenu();
-            AppendMenuW(menu, MF_STRING, 1, windows_sys::w!("Animation test"));
-            SetForegroundWindow(hwnd);
-            SetTimer(hwnd, 99, 750, None);
-            let started = Instant::now();
-            TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY, 40, 40, 0, hwnd, null());
-            let ticks = frames.ticks();
-            let error = frames.take_error();
-            KillTimer(hwnd, 99);
-            DestroyMenu(menu);
-            drop(frames);
-            DestroyWindow(hwnd);
-            UnregisterClassW(name, instance);
-            assert!(
-                started.elapsed() >= Duration::from_millis(500),
-                "Menu closed too early to qualify animation"
-            );
-            assert!(ticks >= 5, "No modal frame delivery: {ticks}");
-            assert!(error.is_none(), "{error:?}");
-            eprintln!("Native modal menu: {ticks} rendered timer frames while open");
         }
     }
 }

@@ -24,11 +24,33 @@ loop/layout/input/rendering. One Dark and IBM Plex Sans assets are embedded;
 their provenance/licenses live with the assets. Settings reveal/restore/foreground
 requests happen outside framework borrows; avoid synthetic-Alt activation.
 
-The recording overlay remains a separate native nonactivating renderer. Its
-Windows backdrop uses GPU Gaussian blur plus white tint, clipped together by a
-Composition rounded geometry, behind the sharp native foreground. It is not an
-exact recreation of system Acrylic noise. Unsupported effects use translucency.
-The compositor/dispatcher and visuals are owned by the host UI thread.
+The recording overlay is a separate nonactivating GPUI window. Shared presentation
+state, layout, text, waveform quads and animation live in `adapters/overlay.rs`
+and `adapters/overlay/state.rs`; core supplies a renderer-independent waveform
+envelope, not premultiplied platform pixels. GPUI schedules frames, including in
+native nested menu loops; inactive-window throttling is disabled for the overlay.
+There is no independent Win32 frame timer, DIB/GDI foreground or render thread.
+
+`adapters/overlay/windows.rs` owns only native nonactivation, placement and the
+backdrop lifetime. HWND snapshots are taken in GPUI; mutating OS calls happen
+after App/entity borrows are released. The existing Windows backdrop uses GPU
+Gaussian blur plus white tint, clipped together at 16 DIP by Composition geometry,
+behind the transparent, sharp GPUI foreground.
+The backdrop must remain below the foreground even after geometry/DPI sync;
+placement uses `SWP_NOZORDER`, with explicit stacking only during show. Otherwise
+the backdrop samples and blurs the GPUI content itself.
+The foreground uses only DirectComposition alpha, not the rectangular native
+accent that the pinned GPUI Transparent mode installs by default. Disable that
+accent and non-client rendering on both surfaces; the shared GPUI border and
+rounded Composition clip are the sole visible frame, without a second native
+outline/shadow. Native frame settings are covered by hidden adapter tests, not
+by a claim of screenshot/pixel acceptance.
+The effect is not an exact recreation of system Acrylic noise, nor replaced with
+GPUI's visually different accent blur.
+Unsupported effects use the same-alpha shared translucent body without an extra
+tint over supported material. Composition visuals/dispatcher belong to the host
+UI thread and outlive neither the shell nor its window. Windows is the only
+implemented/qualified target; shared rendering is not a claim of working ports.
 
 Keep shared UI state/layout and domain/application free of native handles. Isolate
 OS behavior in compile-time-selected modules with target-scoped dependencies and

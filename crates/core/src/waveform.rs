@@ -12,6 +12,12 @@ pub struct Measurement {
     pub level: f32,
 }
 
+/// Renderer-independent waveform envelope at one horizontal position.
+pub struct Column {
+    pub level: f32,
+    pub opacity: f32,
+}
+
 pub struct Waveform {
     samples: VecDeque<(f64, f64)>,
     last: Option<(f64, f64)>,
@@ -86,19 +92,10 @@ impl Waveform {
         self.samples.push_back((time, self.smoothed));
         self.last = Some((time, input));
     }
-    /// Premultiplied ARGB, with analytic vertical coverage and 4x horizontal sampling.
-    pub fn rasterize(
-        &self,
-        width: usize,
-        height: usize,
-        height_dips: f64,
-        rgb: u32,
-        pixels: &mut [u32],
-    ) {
-        assert_eq!(pixels.len(), width * height);
-        pixels.fill(0);
-        if width == 0 || height == 0 || self.samples.len() < 2 {
-            return;
+    /// Sample the display envelope; GPU/bitmap layout and colors belong to the UI.
+    pub fn profile(&self, width: usize) -> Vec<Column> {
+        if width == 0 || self.samples.len() < 2 {
+            return Vec::new();
         }
         let mut ages = [0.0; CAPACITY];
         let mut levels = [0.0; CAPACITY];
@@ -112,16 +109,10 @@ impl Waveform {
         let live = display_level(self.last.map_or(0.0, |(time, input)| {
             release(self.smoothed, input, self.frame - time)
         }));
-        let center = height as f64 / 2.0;
-        let baseline = (height as f64 / height_dips / 2.0).min(center);
         let mut next = 1;
-        for x in 0..width {
-            let mut tops = [0.0; 4];
-            let mut bottoms = [0.0; 4];
-            let mut opacities = [0.0; 4];
-            for sub in 0..4 {
-                let age =
-                    VISIBLE_SECONDS * (1.0 - (x as f64 + (sub as f64 + 0.5) / 4.0) / width as f64);
+        (0..width)
+            .map(|x| {
+                let age = VISIBLE_SECONDS * (1.0 - (x as f64 + 0.5) / width as f64);
                 while next < count - 1 && age < ages[next] {
                     next += 1;
                 }
@@ -138,33 +129,12 @@ impl Waveform {
                         (ages[next - 1] - age) / seconds,
                     )
                 };
-                let half = baseline + level * (center - baseline);
-                tops[sub] = center - half;
-                bottoms[sub] = center + half;
-                opacities[sub] = 0.5 + 0.5 * (level / 0.9).clamp(0.0, 1.0);
-            }
-            let first = tops
-                .iter()
-                .copied()
-                .fold(height as f64, f64::min)
-                .floor()
-                .max(0.0) as usize;
-            let end = bottoms
-                .iter()
-                .copied()
-                .fold(0.0, f64::max)
-                .ceil()
-                .min(height as f64) as usize;
-            for y in first..end {
-                let mut alpha = 0.0;
-                for sub in 0..4 {
-                    alpha += (((y + 1) as f64).min(bottoms[sub]) - (y as f64).max(tops[sub]))
-                        .clamp(0.0, 1.0)
-                        * opacities[sub];
+                Column {
+                    level: level as f32,
+                    opacity: (0.5 + 0.5 * (level / 0.9).clamp(0.0, 1.0)) as f32,
                 }
-                pixels[y * width + x] = premultiply(rgb, (alpha * 255.0 / 4.0).round() as u8);
-            }
-        }
+            })
+            .collect()
     }
 }
 
@@ -208,15 +178,32 @@ fn interpolate(from: f64, to: f64, a: f64, b: f64, seconds: f64, t: f64) -> f64 
         + (t3 - t2) * seconds * b)
         .clamp(from.min(to), from.max(to))
 }
-pub fn premultiply(rgb: u32, alpha: u8) -> u32 {
-    let a = u32::from(alpha);
-    let channel = |shift: u32| (((rgb >> shift) & 255u32) * a + 127) / 255;
-    (a << 24) | (channel(16) << 16) | (channel(8) << 8) | channel(0)
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn profile_is_finite_bounded_and_preserves_live_release_at_fractional_scales() {
+        let mut wave = Waveform::new(Duration::ZERO);
+        for (millis, input) in [(0, 0.2), (20, f32::NAN), (40, 0.01), (80, 0.2)] {
+            let now = Duration::from_millis(millis);
+            wave.advance(now);
+            wave.add(now, input);
+        }
+        wave.advance(Duration::from_millis(220));
+        for columns in [224, 280, 336, 392, 448] {
+            let profile = wave.profile(columns);
+            assert_eq!(profile.len(), columns);
+            assert!(profile.iter().all(|c| c.level.is_finite()
+                && (0.0..=1.0).contains(&c.level)
+                && (0.5..=1.0).contains(&c.opacity)));
+            assert!(profile.last().unwrap().level > 0.);
+            assert_eq!(profile[0].level, 0.);
+        }
+        assert!(wave.profile(0).is_empty());
+        wave.advance(Duration::from_secs(5));
+        assert!(wave.profile(392).iter().all(|c| c.level == 0.));
+    }
     #[test]
     fn actual_measurements_are_bounded_and_frames_do_not_repeat_input() {
         let mut wave = Waveform::new(Duration::ZERO);
@@ -238,11 +225,11 @@ mod tests {
     #[test]
     fn silence_baseline_is_full_width_and_history_owns_its_opacity() {
         let wave = Waveform::new(Duration::ZERO);
-        let mut pixels = vec![0; 224 * 30];
-        wave.rasterize(224, 30, 30.0, 0xe9563d, &mut pixels);
-        for x in 0..224 {
-            assert_eq!(pixels[14 * 224 + x] >> 24, 64);
-            assert_eq!(pixels[15 * 224 + x] >> 24, 64);
+        let profile = wave.profile(224);
+        assert_eq!(profile.len(), 224);
+        for column in profile {
+            assert_eq!(column.level, 0.);
+            assert_eq!(column.opacity, 0.5);
         }
         assert_eq!(release(1.0, 0.0, 0.14), (-1.0f64).exp());
         for t in 0..=100 {

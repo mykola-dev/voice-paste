@@ -1,4 +1,4 @@
-//! Compositor-clipped frosted backdrop behind the existing native foreground.
+//! Compositor-clipped frosted backdrop behind the shared GPUI foreground.
 use std::{
     mem::{size_of, zeroed},
     ptr::{null, null_mut},
@@ -53,6 +53,10 @@ impl Backdrop {
             if hwnd.is_null() {
                 return None;
             }
+            if super::suppress_native_frame(hwnd).is_err() {
+                DestroyWindow(hwnd);
+                return None;
+            }
             match composition::Material::new(context, hwnd, alpha) {
                 Ok(material) => Some(Self(hwnd, material)),
                 Err(_) => {
@@ -72,12 +76,15 @@ impl Backdrop {
             }
             SetWindowPos(
                 self.0,
-                HWND_TOPMOST,
+                null_mut(),
                 position.x,
                 position.y,
                 width as i32,
                 height as i32,
-                SWP_NOACTIVATE,
+                // Geometry updates must NEVER raise the blur above GPUI. In
+                // particular, the first client/DPI sync follows show_behind.
+                // Raising here makes the backdrop sample/blur the foreground.
+                SWP_NOACTIVATE | SWP_NOZORDER,
             ) != 0
         }
     }
@@ -156,6 +163,73 @@ mod tests {
     use super::*;
 
     #[test]
+    fn geometry_updates_keep_material_below_foreground() {
+        // Hidden native windows only: exercise actual Z-order without focus,
+        // screenshots, microphone or an interactive overlay harness.
+        let context = Context::new().unwrap();
+        let Some(host) = Backdrop::new(null_mut(), &context, 110) else {
+            return;
+        };
+        unsafe {
+            let foreground = CreateWindowExW(
+                WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
+                windows_sys::w!("STATIC"),
+                windows_sys::w!(""),
+                WS_POPUP,
+                0,
+                0,
+                0,
+                0,
+                null_mut(),
+                null_mut(),
+                GetModuleHandleW(null()),
+                null(),
+            );
+            assert!(!foreground.is_null());
+            assert_ne!(
+                SetWindowPos(
+                    host.0,
+                    foreground,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
+                ),
+                0
+            );
+            for scale in [1., 1.75, 2.] {
+                assert!(host.place(
+                    POINT { x: 20, y: 20 },
+                    (224. * scale) as usize,
+                    (100. * scale) as usize,
+                    scale
+                ));
+                // Other tests/user windows may insert siblings between us.
+                // Assert relative order, not global adjacency.
+                let mut below = GetWindow(foreground, GW_HWNDNEXT);
+                let mut found = false;
+                for _ in 0..4096 {
+                    if below.is_null() {
+                        break;
+                    }
+                    if below == host.0 {
+                        found = true;
+                        break;
+                    }
+                    below = GetWindow(below, GW_HWNDNEXT);
+                }
+                assert!(
+                    found,
+                    "resizing the material must not promote it above foreground"
+                );
+                assert_eq!(IsWindowVisible(host.0), 0);
+            }
+            DestroyWindow(foreground);
+        }
+    }
+
+    #[test]
     fn enabled_windows_10_material_does_not_silently_skip_composition() {
         let version = windows_version::OsVersion::current();
         if version.major != 10
@@ -184,6 +258,16 @@ mod tests {
             assert_eq!(style & WS_EX_LAYERED, 0);
             assert_eq!(IsWindowVisible(hwnd), 0);
             assert_ne!(style & WS_EX_NOREDIRECTIONBITMAP, 0);
+            let mut nc_enabled: i32 = 1;
+            assert!(
+                DwmGetWindowAttribute(
+                    hwnd,
+                    DWMWA_NCRENDERING_ENABLED as u32,
+                    (&mut nc_enabled as *mut i32).cast(),
+                    size_of::<i32>() as u32
+                ) >= 0
+            );
+            assert_eq!(nc_enabled, 0, "material has no independent native frame");
             for scale in [1.0, 1.5, 1.75, 2.0] {
                 assert!(host.place(
                     POINT { x: 0, y: 0 },

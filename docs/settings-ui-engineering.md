@@ -48,7 +48,9 @@
 шлях із перевіреного сумісного snapshot. Не продовжувати нарощувати стару форму
 глобальними invalidation/clipping hacks і не називати її темним перефарбуванням Zed.
 Win32 залишається вузьким platform adapter там, де потрібен, а не другим renderer.
-Не переносити overlay на інший backend і не відкривати його дослідження знову.
+Погоджений виняток 2026-10-29: foreground/state/animation overlay переносимо на
+спільний GPUI, зберігаючи Windows Composition blur + tint та rounded clipping як
+вузький native adapter. Без портів macOS/Linux або розширення interactive harness.
 Самі Win32 controls не приречені на ці баги; проблема — наша реалізація та невідповідність
 обраному target. Rust як мова не забезпечує layout/DPI/кадри автоматично. [S6, S9–S12]
 

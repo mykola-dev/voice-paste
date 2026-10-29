@@ -6,6 +6,22 @@ clipboard/focus, реальним завантаженням моделей чи
 
 ## Виправлення й оптимізація
 
+- [ ] **GPUI overlay acceptance (Windows):** foreground/state/animation переведено
+  на спільний GPUI; Gaussian blur + tint та 16-DIP Composition clipping збережено
+  у Windows adapter. Перевірити реальну картинку на 175%, прозорість 0/57/100%,
+  Acrylic on/off та fallback, nonactivation при show/click, repeated show/hide,
+  recording/cancel/busy/download, mixed-DPI і анімацію під час tray-меню. Новий
+  GPUI text/quad rasterization не обіцяє pixel identity зі старими GDI/CPU pixels.
+  Unit/hidden adapter tests не доводять відсутність flicker або focus theft.
+  Linux/macOS не реалізуються й не вважаються підтриманими в межах цієї задачі.
+  User-reported regression: перший geometry sync піднімав backdrop вище GPUI,
+  розмиваючи індикатор разом із фоном. `place` тепер зберігає Z-order; додано hidden
+  native regression на порядок шарів. Потрібне повторне візуальне прийняття.
+  Наступний screenshot виявив прямокутне обрамлення за rounded content. Вимкнено
+  foreground accent, який додавав GPUI Transparent, та native non-client frame
+  обох surfaces; власна GPUI рамка й Composition clipping залишені. Повторно
+  перевірити кути на 175%; hidden tests не доводять чистий фінальний контур.
+
 - [ ] **Quit/shutdown qualification:** deadlock при drop GPUI Kit text cleanup
   локалізовано native stack: async-channel/EventListener повторно брав mutex після
   знищення dispatcher. Platform тепер живе довше Application/globals; звичайний

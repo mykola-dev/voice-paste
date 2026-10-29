@@ -21,8 +21,8 @@ not link native ML libraries. See [worker details](../stt-worker/README.md).
 has been replaced, not recolored. The pinned Kit/component 0.8.1 + GPUI-pre 0.3.10
 pipeline owns rendering, input, a clipped shared scroll offset and adaptive flex
 layout. Official pinned One Dark colors, IBM Plex Sans and vector component icons
-are embedded locally with licenses. The tray, hotkeys, native overlay and worker
-remain in place; GPUI owns the single host message loop.
+are embedded locally with licenses. Tray, hotkeys and worker remain native
+adapters; GPUI owns the single host message loop and the overlay foreground.
 
 Save/Cancel, all settings, prompt resize, color editing/picker, status/memory and
 logical saved geometry are retained. Narrow windows stack labels above controls;
@@ -99,13 +99,32 @@ tampering that also restores timestamps. Verified handles deny writes/deletion
 until receipt publication. Local checks/loading do not show a download overlay;
 only actual network provisioning does. Debug SHA-256 is optimized independently.
 
-**Recording overlay is connected:** native, nonactivating 224 x 100 DIP top-right
-layered window, rounded translucent body, red pulsing dot, timer, timestamped
-3.24 s waveform and independent five-bar busy spinner. Bounded, session-tagged
-real RMS measurements never modify saved PCM. History, release, Hermite contour
-and local alpha are pure Rust; Win32 owns DPI, pixels and window resources.
-Idle stops animation. No new overlay research/probes. Exact visual/mixed-DPI
-parity and full behavioral parity are not claimed.
+**Recording overlay:** shared GPUI foreground, presentation state and animation
+in a nonactivating 224 x 100 DIP top-right window. Rounded translucent body,
+pulsing red dot, GPUI timer text, timestamped 3.24 s waveform quads and independent
+five-bar busy spinner. Bounded session-tagged RMS measurements never modify saved
+PCM. History/release/Hermite envelope remain pure Rust, without pixel rasterization
+in core. Windows owns only native nonactivation, placement and the existing GPU
+Gaussian blur + white tint, clipped at the same 16-DIP radius behind the foreground.
+Unsupported blur retains the same-alpha translucent body. No extra foreground
+wash is applied over the material. GPUI owns frames; idle stops requesting them.
+The old foreground DIB/GDI rasterizer and Win32 frame timer are removed. Text/edge
+rasterization now comes from GPUI, not the old GDI timer mask/CPU waveform sampler;
+pixel-identical output is not claimed. Windows visual/focus/mixed-DPI/menu-animation
+acceptance remains necessary. macOS/Linux ports are not part of this change.
+
+2026-10-29 migration checks: xtask fmt/test/clippy passed (96 workspace tests,
+one interactive paste test ignored). A complete portable Debug build was deployed
+to `build/debug/` and its config-only `--check` passed. No interactive recording,
+focus/menu/DPI visual acceptance was performed; the running Release was not updated.
+The existing copied xtask runner under `build/cache/xtask-runner/` was used to
+avoid the separately tracked Windows xtask self-rebuild lock.
+
+Follow-up blur regression: geometry/DPI synchronization used to raise the backdrop
+above the GPUI foreground, blurring the indicator itself. Backdrop placement now
+preserves Z-order (`SWP_NOZORDER`); a hidden native relative-order regression was
+added. Follow-up fmt/test/clippy passed (97 tests, one interactive test ignored).
+Visual acceptance must be repeated; previous migration checks did not catch this.
 
 ```powershell
 cargo xtask fetch                 # pinned Cargo.lock dependencies
@@ -134,8 +153,8 @@ launch fails clearly rather than taking over; quit legacy yourself or change
 does not reserve the old hotkey or start model work; Save checks the chosen key
 and exits after applying settings. No automatic rebind or legacy termination.
 
-Latest validation: build/fmt/clippy, **39 tests** plus ignored opt-in native-menu animation and
-interactive paste tests,
+Historical validation before the GPUI overlay migration: build/fmt/clippy,
+**39 tests** plus the then-existing opt-in native-menu animation and interactive paste tests,
 `--check`, and earlier successive JFK
 requests through the actual host/worker using untouched saved defaults (including
 VAD=true, UA, custom prompt, CUDA-only). Reference words matched both times;

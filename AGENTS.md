@@ -44,7 +44,10 @@ layout, scrolling, rendering, DPI or UI event/lifetime handling.
 
 - Use the coherent pinned GPUI Kit/component pipeline (0.8.1 / GPUI-pre 0.3.10),
   not per-control HWND layout/rendering or generic dark Win32 controls. Preserve
-  Zed One Dark; the native overlay remains separate.
+  Zed One Dark. Overlay foreground/state/animation use the shared GPUI pipeline;
+  native nonactivation/placement/backdrop stay in the Windows adapter. Preserve
+  Gaussian blur + white tint and matching 16-DIP rounded clipping; unsupported
+  effects retain translucency. macOS/Linux overlay adapters are out of scope.
 - Actual Windows scale **175%** is the primary target. Check EXE/live-window DPI
   awareness, separate logical units/device pixels and handle DPI changes. No OS
   bitmap upscaling for text/icons.

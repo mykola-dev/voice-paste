@@ -4,7 +4,6 @@ mod hotkey;
 mod memory;
 pub mod models;
 pub mod overlay;
-mod overlay_frames;
 pub mod paste;
 pub mod platform;
 mod settings_theme;
