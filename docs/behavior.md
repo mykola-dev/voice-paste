@@ -22,7 +22,7 @@
 - Default microphone; transcription input is 16 kHz mono PCM16 WAV. Display gain
   never changes saved PCM. Stream capture to owned temporary files and clean up
   after success, failure or cancel; no fixed recording-duration/silence timeout.
-- Models: `large-v2` and `large-v3-turbo`, pinned by the core model catalog.
+- Models: `large-v2`, `large-v3` and `large-v3-turbo`, pinned by the core model catalog.
   The Settings dropdown shows them with a Whisper prefix; saved configs and
   on-disk folders keep the short ids.
   Fresh startup provisions only large-v2; alternatives require explicit save or
@@ -56,8 +56,12 @@
 - Tray artwork: lips-source2 artwork at idle; open mouth during recording, transcription
   and model preparation. Outside the tray the open-mouth application icon is
   stable. Preserve artwork proportions/corners with no extra inset in square assets.
-- System contains residency, readable host/worker/combined memory with shared-page
-  caveat, separate/unavailable GPU memory, logging and optional sign-in startup.
+- System orders sections as sign-in startup, residency with readable host/worker
+  memory (no combined total), debug logging, then transcription statistics.
+  Memory and transcription reports share smaller muted labels and larger values.
+  System includes selected model.bin file size from the catalog (not RAM/VRAM usage), logging
+  and optional sign-in startup. Model size follows the draft selection without
+  downloading files or saving settings; GPU memory is not displayed.
   Startup defaults off, uses the current-user Run value `VoicePasteRust`, applies
   on Save and rolls back on failed config replacement.
 - Defaults are [core assets](../crates/core/assets/default-settings.json), not
@@ -75,3 +79,52 @@
 - App-local data only; logs at `%TEMP%/VoicePaste/voicepaste.log`. No automatic
   legacy-config import, AppData fallback, system dependency installation or model
   download as a side effect of build/check/UI editing.
+
+## Transcription performance statistics
+
+- Each matching successful, non-empty worker transcription adds a local SQLite
+  measurement to `<exe-dir>/data/transcription-stats.sqlite`. Store model/revision,
+  beam size, VAD, language mode, actual CPU/CUDA device, timestamp, inference
+  microseconds, original 16 kHz audio sample count, word and Unicode character
+  counts. Never store transcript, prompt or audio in this database. Failed,
+  empty and mismatched results do not contribute; paste failure does not erase a
+  successful transcription measurement. Database errors are logged without
+  blocking delivery of the transcription.
+- Measure with a monotonic worker clock after WAV reading, VAD, feature and
+  initial-prompt preparation, immediately before the model's window loop, until
+  final text is ready. Include every window, language detection, decoding fallback
+  and text cleanup; exclude model loading, transport, clipboard/paste and database IO.
+- Also measure VAD filtering and audio-to-log-mel preparation separately on the
+  same successful non-empty transcriptions. Disabled VAD is absent, never a zero
+  duration. Model loading measures only the successful native STT engine open,
+  not worker launch, tokenizer/VAD initialization or downloads; persist once per
+  validated worker Ready, including preloads without a transcription. Its count
+  and mean are independent of the transcription count and use the same filters.
+  Resident reuse never adds zero loading samples. Failed opens do not contribute.
+- Upgrade the local SQLite schema transactionally without clearing history.
+  Historical VAD/preparation timings stay NULL and do not dilute their averages;
+  each new phase has its own measurement count. Show `No measurements yet` until
+  a phase has data, and `Off` for VAD disabled. Hide model loading time and count
+  whenever draft Keep in memory is enabled; continue collecting real loads.
+- System displays lifetime count, arithmetic mean transcription milliseconds,
+  mean words and input audio seconds, and total inference milliseconds divided by
+  total original audio seconds. A word is a whitespace-delimited item containing
+  a Unicode letter or digit; characters include spaces and are not UTF-8 bytes.
+  Display mean milliseconds, words and audio seconds rounded to integers; keep
+  processing milliseconds per audio second at one decimal. The configuration
+  line uses the value font; device count rows read `CUDA Transcriptions: 2`
+  (or CPU) with the same label/value styling as the memory report.
+  VAD, preparation and loading means use integer milliseconds and the same row
+  styling. The statistics explanatory paragraph is omitted.
+- Queries follow draft model/revision, beam size, VAD, language and device without
+  applying settings or provisioning models. Auto shows CPU and CUDA separately;
+  CPU/CUDA-only show only their actual device. Configuration changes do not reset
+  history. Ignore stale query results and refresh while Settings is open. No-data
+  and database-error states are explicit; statistics updates preserve draft inputs.
+- The final `Reset Stats` button immediately clears all transcription/phase and
+  model-load samples across every model/revision/device/beam/VAD/language, not
+  just the current filter. Both tables are deleted in one transaction; failure
+  preserves history and displays an error with retry available. Disable duplicate
+  reset requests and ignore statistics query completions while reset is pending;
+  refresh after success. Reset is independent of Apply/Cancel, never changes
+  settings, models or the resident worker, and new completions accumulate normally.

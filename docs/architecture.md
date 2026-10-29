@@ -43,6 +43,17 @@ diagnostics are `%TEMP%/VoicePaste/voicepaste.log`. Existing config is never res
 on upgrade. Public defaults and the pinned model catalog live in
 `crates/core/assets/`; private prompts belong only in app-local configuration.
 
+Transcription measurements are pure core types. The resident worker separately
+measures engine loading, VAD filtering, log-mel preparation and the prepared-input-
+to-final-text interval, returning numeric metrics over versioned IPC. The host
+worker adapter validates request identities and exports numeric metadata; the
+dictation runtime persists validated Ready loads and only current-session transcription samples
+through the SQLite adapter to `data/transcription-stats.sqlite`. Its connection
+belongs to the dictation thread; Settings requests read-only filtered
+summaries through runtime commands, never performs database IO on the UI thread,
+and rejects summaries for a stale draft. The bundled SQLite library requires no
+installed runtime. Statistics failure does not fail transcription or paste.
+
 `cargo xtask` owns native preparation, checks and packaging; the root BAT only
 launches the same Rust task used on CI. Its native lock is `xtask/native-inputs.json`.
 Complete runnable profiles live only in `build/debug/` and `build/release/`;

@@ -19,6 +19,7 @@ use std::{cell::Cell, rc::Rc};
 use voicepaste_core::settings::{
     Device, HOTKEY_CHOICES, Hotkey, Language, PasteShortcut, Settings,
 };
+use voicepaste_core::statistics::{Filter as StatisticsFilter, Summary as StatisticsSummary};
 
 type Choice = Entity<SelectState<SearchableVec<String>>>;
 
@@ -145,6 +146,53 @@ impl SettingsWindow {
             }
         });
     }
+    pub fn statistics_query(&self, refresh: bool, cx: &App) -> Option<StatisticsFilter> {
+        let view = self.view.read(cx);
+        if view.statistics_reset_pending {
+            return None;
+        }
+        let filter = view.statistics_filter(cx)?;
+        (refresh || view.statistics_requested.as_ref() != Some(&filter)).then_some(filter)
+    }
+    pub fn statistics_queried(&self, filter: StatisticsFilter, cx: &mut App) {
+        self.view
+            .update(cx, |view, _| view.statistics_requested = Some(filter));
+    }
+    pub fn statistics(
+        &self,
+        filter: StatisticsFilter,
+        result: Result<Vec<StatisticsSummary>, String>,
+        cx: &mut App,
+    ) {
+        self.view.update(cx, |view, cx| {
+            if !view.statistics_reset_pending
+                && view.statistics_filter(cx).as_ref() == Some(&filter)
+            {
+                let next = Some((filter, result));
+                if view.statistics_result != next {
+                    view.statistics_result = next;
+                    cx.notify();
+                }
+            }
+        });
+    }
+    pub fn take_statistics_reset(&self, cx: &mut App) -> bool {
+        self.view.update(cx, |view, _| {
+            std::mem::take(&mut view.statistics_reset_requested)
+        })
+    }
+    pub fn statistics_reset(&self, result: &Result<(), String>, cx: &mut App) {
+        self.view.update(cx, |view, cx| {
+            view.statistics_reset_pending = false;
+            view.statistics_reset_requested = false;
+            view.statistics_reset_error = result.as_ref().err().cloned().unwrap_or_default();
+            if result.is_ok() {
+                view.statistics_result = None;
+                view.statistics_requested = None;
+            }
+            cx.notify();
+        });
+    }
 }
 
 fn initial_bounds(base: &Settings, cx: &App) -> Bounds<Pixels> {
@@ -231,6 +279,11 @@ struct SettingsView {
     status_model: String,
     model_query: Option<String>,
     memory: String,
+    statistics_requested: Option<StatisticsFilter>,
+    statistics_reset_requested: bool,
+    statistics_reset_pending: bool,
+    statistics_reset_error: String,
+    statistics_result: Option<(StatisticsFilter, Result<Vec<StatisticsSummary>, String>)>,
     error: String,
     log_path: String,
     request: Option<Settings>,
@@ -400,6 +453,11 @@ impl SettingsView {
             model_query: Some(status_model.clone()),
             status_model,
             memory: "RAM: measuring host and worker…".into(),
+            statistics_requested: None,
+            statistics_reset_requested: false,
+            statistics_reset_pending: false,
+            statistics_reset_error: String::new(),
+            statistics_result: None,
             error: String::new(),
             log_path,
             request: None,
@@ -409,6 +467,16 @@ impl SettingsView {
             _subscriptions: subscriptions,
         }
     }
+    fn reset_statistics(&mut self, cx: &mut Context<Self>) {
+        if self.statistics_reset_pending {
+            return;
+        }
+        self.statistics_reset_requested = true;
+        self.statistics_reset_pending = true;
+        self.statistics_reset_error.clear();
+        cx.notify();
+    }
+
     fn save(&mut self, close_after_save: bool, window: &mut Window, cx: &mut Context<Self>) {
         if self.busy {
             return;
@@ -495,6 +563,20 @@ fn hint(value: impl Into<gpui_kit::SharedString>, cx: &App) -> impl IntoElement 
         .text_color(cx.theme().muted_foreground)
         .child(value.into())
 }
+
+// Both System reports share typography, spacing and label/value alignment.
+fn report_line(line: &str, cx: &App) -> impl IntoElement {
+    match line.split_once(':') {
+        Some((label, value)) => div()
+            .flex()
+            .flex_wrap()
+            .justify_between()
+            .gap(px(8.))
+            .child(hint(label.to_owned(), cx))
+            .child(value.trim().to_owned()),
+        None => div().child(line.to_owned()),
+    }
+}
 fn settings_group(children: Vec<AnyElement>) -> impl IntoElement {
     div()
         .flex()
@@ -502,6 +584,12 @@ fn settings_group(children: Vec<AnyElement>) -> impl IntoElement {
         .gap(px(12.))
         .py(px(16.))
         .children(children)
+}
+fn system_section(children: Vec<AnyElement>, cx: &App) -> impl IntoElement {
+    div()
+        .border_b_1()
+        .border_color(cx.theme().border)
+        .child(settings_group(children))
 }
 fn row(label: &'static str, control: impl IntoElement, narrow: bool) -> impl IntoElement {
     div()
@@ -535,8 +623,120 @@ impl Render for PromptResize {
     }
 }
 
+fn model_size_label(selected: &str) -> String {
+    match voicepaste_core::models::find(selected)
+        .ok()
+        .and_then(|model| {
+            model
+                .files
+                .into_iter()
+                .find(|file| file.path == "model.bin")
+        }) {
+        Some(file) => format!("Model size: {:.2} GiB", file.bytes as f64 / 1073741824.),
+        None => "Model size: unavailable".into(),
+    }
+}
+
+impl SettingsView {
+    fn statistics_filter(&self, cx: &App) -> Option<StatisticsFilter> {
+        let model = voicepaste_core::models::id_from_display(self.model.read(cx).selected_value()?);
+        let device = match self.device.read(cx).selected_index(cx)?.row {
+            0 => Device::CudaAuto,
+            1 => Device::CudaOnly,
+            _ => Device::Cpu,
+        };
+        let language = match self.language.read(cx).selected_index(cx)?.row {
+            0 => Language::Auto,
+            1 => Language::En,
+            2 => Language::Ua,
+            _ => Language::Bilingual,
+        };
+        Some(StatisticsFilter {
+            revision: voicepaste_core::models::find(&model).ok()?.revision,
+            model,
+            device,
+            language,
+            beam_size: self.beam.read(cx).value().start() as u8,
+            vad: self.draft.enable_vad,
+        })
+    }
+
+    fn statistics_report(&self, cx: &App) -> String {
+        let Some(filter) = self.statistics_filter(cx) else {
+            return "Select a transcription configuration.".into();
+        };
+        let language = match filter.language {
+            Language::Auto => "Auto",
+            Language::En => "English",
+            Language::Ua => "Ukrainian",
+            Language::Bilingual => "English + Ukrainian",
+        };
+        let device = match filter.device {
+            Device::Cpu => "CPU",
+            Device::CudaOnly => "CUDA",
+            Device::CudaAuto => "Auto (CPU / CUDA)",
+        };
+        let mut report = format!(
+            "{} · Beam {} · VAD {} · {} · {}",
+            voicepaste_core::models::display_name(&filter.model),
+            filter.beam_size,
+            if filter.vad { "On" } else { "Off" },
+            language,
+            device
+        );
+        match &self.statistics_result {
+            Some((received, result)) if received == &filter => match result {
+                Ok(rows) if rows.is_empty() => {
+                    report.push_str("\nNo statistics for this configuration yet.")
+                }
+                Ok(rows) => {
+                    for row in rows {
+                        report.push_str(&format!(
+                            "\n{} Transcriptions: {}",
+                            row.device.to_uppercase(),
+                            row.count
+                        ));
+                        if !self.draft.keep_in_memory {
+                            report.push_str(&format!(
+                                "\nModel load measurements: {}\nAverage model loading: {}",
+                                row.model_load_count,
+                                phase_time(row.average_model_loading_ms)
+                            ));
+                        }
+                        report.push_str(&format!(
+                            "\nAverage VAD: {}\nAverage audio preparation: {}",
+                            if filter.vad {
+                                phase_time(row.average_vad_ms)
+                            } else {
+                                "Off".into()
+                            },
+                            phase_time(row.average_preparation_ms)
+                        ));
+                        if row.count > 0 {
+                            report.push_str(&format!("\nAverage transcription: {:.0} ms\nAverage phrase: {:.0} words\nAverage input audio: {:.0} s\nProcessing per audio second: {:.1} ms/s",
+                                row.average_ms, row.average_words, row.average_audio_seconds, row.ms_per_audio_second));
+                        }
+                    }
+                }
+                Err(error) => report.push_str(&format!("\nStatistics unavailable: {error}")),
+            },
+            _ => report.push_str("\nLoading statistics…"),
+        }
+        report
+    }
+}
+
+fn phase_time(average_ms: Option<f64>) -> String {
+    average_ms.map_or_else(
+        || "No measurements yet".into(),
+        |value| format!("{value:.0} ms"),
+    )
+}
+
 impl Render for SettingsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let model_size = model_size_label(&self.status_model);
+        let statistics_report = self.statistics_report(cx);
         let sidebar_width = if window.viewport_size().width < px(700.) {
             px(144.)
         } else {
@@ -812,7 +1012,7 @@ impl Render for SettingsView {
                 .into_any_element(),
             ],
             SettingsPage::System => vec![
-                settings_group(
+                system_section(
                     vec![
                         Checkbox::new("start-at-login")
                             .label("Start VoicePaste when I sign in")
@@ -826,9 +1026,10 @@ impl Render for SettingsView {
                         hint("Current Windows user only. Applied with OK or Apply.", cx)
                             .into_any_element(),
                     ],
+                    cx,
                 )
                 .into_any_element(),
-                settings_group(
+                system_section(
                     vec![
                         Checkbox::new("resident")
                             .label("Keep in memory")
@@ -845,21 +1046,13 @@ impl Render for SettingsView {
                             .flex()
                             .flex_col()
                             .gap(px(8.))
-                            .children(self.memory.lines().map(|line| {
-                                let (label, value) = line.split_once(':').unwrap_or((line, ""));
-                                div()
-                                    .flex()
-                                    .flex_wrap()
-                                    .justify_between()
-                                    .gap(px(8.))
-                                    .child(hint(label.to_owned(), cx))
-                                    .child(value.trim().to_owned())
-                            }))
+                            .children(self.memory.lines().chain(std::iter::once(model_size.as_str())).map(|line| report_line(line, cx)))
                             .into_any_element(),
-                        hint("Resident RAM is memory currently held in physical RAM. The combined value may count shared pages twice; it is not GPU memory.", cx).into_any_element(),
+                        hint("Resident RAM is memory currently held in physical RAM. Model size is the selected model.bin file size, not RAM or VRAM usage; it is shown even before download.", cx).into_any_element(),
                     ],
+                    cx,
                 ).into_any_element(),
-                settings_group(
+                system_section(
                     vec![
                         Checkbox::new("logging")
                             .label("Enable debug logging")
@@ -872,8 +1065,27 @@ impl Render for SettingsView {
                             .into_any_element(),
                         hint(self.log_path.clone(), cx).into_any_element(),
                     ],
+                    cx,
                 )
                 .into_any_element(),
+                settings_group(vec![
+                    div().font_weight(FontWeight::SEMIBOLD).child("Transcription statistics").into_any_element(),
+                    div().id("transcription-statistics").test_support().flex().flex_col().gap(px(8.))
+                        .children(statistics_report.lines().map(|line| report_line(line, cx)))
+                        .into_any_element(),
+                    div().flex().child(
+                        Button::new("reset-statistics")
+                            .label("Reset Stats")
+                            .disabled(self.statistics_reset_pending)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.reset_statistics(cx);
+                            }))
+                    ).into_any_element(),
+                    div().when(!self.statistics_reset_error.is_empty(), |d| d
+                        .text_color(cx.theme().danger)
+                        .child(format!("Could not reset statistics: {}", self.statistics_reset_error)))
+                        .into_any_element(),
+                ]).into_any_element(),
             ],
         };
         div()

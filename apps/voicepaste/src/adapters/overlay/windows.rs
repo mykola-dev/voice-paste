@@ -767,16 +767,15 @@ mod tests {
                 0x00ff00,
             );
             assert_eq!(surface.timer_mask, cached);
-            surface.render(
-                State::Transcribing(SessionId(1)),
-                Duration::from_millis(500),
-                &wave,
-                0x00ff00,
-            );
-            let x = (95.0 * surface.scale) as usize;
-            let y = (50.0 * surface.scale) as usize;
-            let index = y * surface.image.width + x;
-            assert_eq!(surface.image.pixels()[index], 0xff00ff00);
+            // Model preparation renders the busy bars while the app is Idle;
+            // it must use the same indicator color as transcription.
+            for state in [State::Idle, State::Transcribing(SessionId(1))] {
+                surface.render(state, Duration::from_millis(500), &wave, 0x00ff00);
+                let x = (95.0 * surface.scale) as usize;
+                let y = (50.0 * surface.scale) as usize;
+                let index = y * surface.image.width + x;
+                assert_eq!(surface.image.pixels()[index], 0xff00ff00);
+            }
         }
     }
 }

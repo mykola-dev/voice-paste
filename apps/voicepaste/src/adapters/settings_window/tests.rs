@@ -1,6 +1,110 @@
 use super::*;
 use gpui_kit::{ScrollDelta, TestAppContext, test::TestWindowExt};
 
+#[gpui_kit::test]
+fn statistics_follow_draft_and_ignore_stale_results_without_saving(cx: &mut TestAppContext) {
+    let settings = open(cx);
+    cx.update_window(settings.handle, |_, window, cx| {
+        let original = settings.statistics_query(false, cx).unwrap();
+        settings.statistics_queried(original.clone(), cx);
+        assert!(settings.statistics_query(false, cx).is_none());
+        settings.statistics(original.clone(), Ok(vec![]), cx);
+        assert!(
+            settings
+                .view
+                .read(cx)
+                .statistics_report(cx)
+                .contains("No statistics")
+        );
+        let prompt_id = settings.view.read(cx).prompt.entity_id();
+        settings.view.update(cx, |view, cx| {
+            view.model.update(cx, |select, cx| {
+                select.set_selected_index(Some(IndexPath::new(1)), window, cx)
+            });
+            view.beam
+                .update(cx, |slider, cx| slider.set_value(7., window, cx));
+            view.device.update(cx, |select, cx| {
+                select.set_selected_index(Some(IndexPath::new(2)), window, cx)
+            });
+            view.language.update(cx, |select, cx| {
+                select.set_selected_index(Some(IndexPath::new(2)), window, cx)
+            });
+            view.draft.enable_vad = !original.vad;
+        });
+        let changed = settings.statistics_query(false, cx).unwrap();
+        assert_ne!(changed.model, original.model);
+        assert_eq!(changed.beam_size, 7);
+        assert_eq!(changed.device, Device::Cpu);
+        assert_eq!(changed.language, Language::Ua);
+        assert_ne!(changed.vad, original.vad);
+        settings.statistics(original, Err("stale error".into()), cx);
+        assert!(
+            settings
+                .view
+                .read(cx)
+                .statistics_report(cx)
+                .contains("Loading statistics")
+        );
+        settings.statistics(
+            changed.clone(),
+            Ok(vec![StatisticsSummary {
+                device: "cpu".into(),
+                count: 3,
+                average_ms: 123.4,
+                average_words: 12.6,
+                average_audio_seconds: 2.7,
+                ms_per_audio_second: 61.7,
+                average_vad_ms: Some(4.6),
+                vad_count: 3,
+                average_preparation_ms: Some(15.4),
+                preparation_count: 3,
+                model_load_count: 1,
+                average_model_loading_ms: Some(1000.2),
+            }]),
+            cx,
+        );
+        let report = settings.view.read(cx).statistics_report(cx);
+        assert!(report.contains("CPU Transcriptions: 3"));
+        assert!(report.contains("Average transcription: 123 ms"));
+        assert!(report.contains("Average phrase: 13 words"));
+        assert!(report.contains("Average input audio: 3 s"));
+        assert!(report.contains("Processing per audio second: 61.7 ms/s"));
+        assert!(report.contains("Average audio preparation: 15 ms"));
+        assert!(report.contains(if changed.vad {
+            "Average VAD: 5 ms"
+        } else {
+            "Average VAD: Off"
+        }));
+        settings
+            .view
+            .update(cx, |view, _| view.draft.keep_in_memory = true);
+        assert!(
+            !settings
+                .view
+                .read(cx)
+                .statistics_report(cx)
+                .contains("Average model loading")
+        );
+        assert!(
+            !settings
+                .view
+                .read(cx)
+                .statistics_report(cx)
+                .contains("Model load measurements")
+        );
+        settings
+            .view
+            .update(cx, |view, _| view.draft.keep_in_memory = false);
+        let report = settings.view.read(cx).statistics_report(cx);
+        assert!(report.contains("Model load measurements: 1"));
+        assert!(report.contains("Average model loading: 1000 ms"));
+        assert_eq!(settings.statistics_query(true, cx), Some(changed));
+        assert!(settings.take_save(cx).is_none());
+        assert_eq!(settings.view.read(cx).prompt.entity_id(), prompt_id);
+    })
+    .unwrap();
+}
+
 fn open(cx: &mut TestAppContext) -> SettingsWindow {
     cx.update(|cx| {
         gpui_kit::init(cx);
@@ -13,6 +117,88 @@ fn open(cx: &mut TestAppContext) -> SettingsWindow {
         )
         .unwrap()
     })
+}
+
+#[test]
+fn model_size_uses_only_selected_model_bin_without_loading() {
+    assert_eq!(model_size_label("large-v2"), "Model size: 2.87 GiB");
+    assert_eq!(model_size_label("large-v3"), "Model size: 2.88 GiB");
+    assert_eq!(model_size_label("large-v3-turbo"), "Model size: 1.51 GiB");
+    assert_eq!(model_size_label("unknown"), "Model size: unavailable");
+}
+
+#[test]
+fn phase_times_distinguish_no_history_from_a_real_zero_measurement() {
+    assert_eq!(phase_time(None), "No measurements yet");
+    assert_eq!(phase_time(Some(0.0)), "0 ms");
+    assert_eq!(phase_time(Some(123.6)), "124 ms");
+}
+
+#[gpui_kit::test]
+fn statistics_reset_waits_for_completion_and_preserves_settings_draft(cx: &mut TestAppContext) {
+    let settings = open(cx);
+    cx.update_window(settings.handle, |_, _, cx| {
+        let filter = settings.statistics_query(false, cx).unwrap();
+        settings.statistics_queried(filter.clone(), cx);
+        settings.statistics(
+            filter.clone(),
+            Ok(vec![StatisticsSummary {
+                device: "cpu".into(),
+                count: 2,
+                average_ms: 42.0,
+                ..StatisticsSummary::default()
+            }]),
+            cx,
+        );
+        let draft = settings.view.read(cx).draft.clone();
+        let prompt_id = settings.view.read(cx).prompt.entity_id();
+        settings
+            .view
+            .update(cx, |view, cx| view.reset_statistics(cx));
+        assert!(settings.take_statistics_reset(cx));
+        assert!(!settings.take_statistics_reset(cx));
+        assert!(settings.statistics_query(true, cx).is_none());
+        settings.statistics(filter.clone(), Err("stale query".into()), cx);
+        assert!(
+            settings
+                .view
+                .read(cx)
+                .statistics_report(cx)
+                .contains("42 ms")
+        );
+        settings.statistics_reset(&Err("database locked".into()), cx);
+        assert!(!settings.view.read(cx).statistics_reset_pending);
+        assert_eq!(
+            settings.view.read(cx).statistics_reset_error,
+            "database locked"
+        );
+        assert!(
+            settings
+                .view
+                .read(cx)
+                .statistics_report(cx)
+                .contains("42 ms")
+        );
+        settings
+            .view
+            .update(cx, |view, cx| view.reset_statistics(cx));
+        assert!(settings.take_statistics_reset(cx));
+        settings.statistics_reset(&Ok(()), cx);
+        assert!(settings.view.read(cx).statistics_reset_error.is_empty());
+        assert_eq!(settings.statistics_query(false, cx), Some(filter.clone()));
+        settings.statistics(filter, Ok(vec![]), cx);
+        assert!(
+            settings
+                .view
+                .read(cx)
+                .statistics_report(cx)
+                .contains("No statistics")
+        );
+        assert_eq!(settings.view.read(cx).draft, draft);
+        assert_eq!(settings.view.read(cx).prompt.entity_id(), prompt_id);
+        assert!(settings.take_save(cx).is_none());
+    })
+    .unwrap();
 }
 
 #[gpui_kit::test]
@@ -425,6 +611,11 @@ fn model_selection_queries_draft_and_ignores_other_models(cx: &mut TestAppContex
             .expect("selection queues a read-only check");
         let original = Settings::initial().unwrap().model;
         assert_ne!(selected, original);
+        assert_eq!(settings.view.read(cx).status_model, selected);
+        assert_eq!(
+            model_size_label(&settings.view.read(cx).status_model),
+            model_size_label(&selected)
+        );
         assert_eq!(settings.view.read(cx).status, "Checking model…");
         settings.availability(&original, true, cx);
         assert_eq!(settings.view.read(cx).status, "Checking model…");

@@ -48,6 +48,7 @@ fn run() -> Result<(), String> {
             generation,
             device: pipeline.engine.device.into(),
             mels: pipeline.engine.mels,
+            model_loading_us: pipeline.model_loading_us,
         },
     )?;
     while let Some(request) = read(&mut input)? {
@@ -72,11 +73,12 @@ fn run() -> Result<(), String> {
                         pipeline.transcribe(&audio)
                     });
                 let response = match result {
-                    Ok(text) => Response::Result {
+                    Ok(result) => Response::Result {
                         generation,
                         id,
                         session,
-                        text,
+                        text: result.text,
+                        measurement: result.measurement,
                     },
                     Err(message) => Response::Error {
                         generation,

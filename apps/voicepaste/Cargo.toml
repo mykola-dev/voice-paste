@@ -15,6 +15,7 @@ cpal = "=0.16.0"
 hound = "=3.5.1"
 rubato = "=0.16.2"
 crossbeam-channel = "=0.5.15"
+rusqlite = { version = "=0.37.0", features = ["bundled"] }
 gpui-kit = { version = "=0.8.1", default-features = false, features = ["component", "assets"] }
 # Keep the component family on the same reviewed snapshot as the facade.
 gpui-base = "=0.8.1"

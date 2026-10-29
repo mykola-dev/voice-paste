@@ -10,6 +10,7 @@ pub mod platform;
 mod settings_theme;
 pub mod settings_window;
 mod startup;
+pub mod statistics;
 pub mod storage;
 pub mod tray_icons;
 pub mod worker;

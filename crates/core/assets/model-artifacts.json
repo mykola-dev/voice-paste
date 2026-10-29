@@ -1,6 +1,6 @@
 {
-  "capturedOn": "2026-10-27",
-  "method": "Read-only enumeration and SHA-256 of existing user HF cache files; no download or inference",
+  "capturedOn": "2026-10-29",
+  "method": "large-v2 and large-v3-turbo: SHA-256 of existing user HF cache files. large-v3: pinned Hugging Face API LFS SHA-256/size for model.bin, SHA-256 of fetched non-weight files. No weight download or inference.",
   "status": "Reference runtime files, not a complete release/license manifest",
   "models": [
     {
@@ -28,6 +28,39 @@
           "path": "vocabulary.txt",
           "bytes": 459861,
           "sha256": "34CE3FE1C5041027B3F8D42912270993F986DBC4BB34CF27F951E34A1E453913"
+        }
+      ]
+    },
+    {
+      "name": "large-v3",
+      "repository": "Systran/faster-whisper-large-v3",
+      "revision": "edaa852ec7e145841d8ffdb056a99866b5f0a478",
+      "melBins": 128,
+      "files": [
+        {
+          "path": "config.json",
+          "bytes": 2394,
+          "sha256": "A9306624F5EC14270A014B647E5C316B6E03A662C369758D1B90697A7B0655B9"
+        },
+        {
+          "path": "model.bin",
+          "bytes": 3087284237,
+          "sha256": "69F74147E3334731BC3A76048724833325D2EC74642FB52620EDA87352E3D4F1"
+        },
+        {
+          "path": "preprocessor_config.json",
+          "bytes": 340,
+          "sha256": "7CCC62C6F2765AF1F3B46C00C9B5894426835A05021C8B9C01EECB6DFB542711"
+        },
+        {
+          "path": "tokenizer.json",
+          "bytes": 2480617,
+          "sha256": "6D8CBD7CD0D8D5815E478DAC67B85A26BBE77C1F5E0C6D76D1CE2ABC0E5F21CA"
+        },
+        {
+          "path": "vocabulary.json",
+          "bytes": 1068114,
+          "sha256": "C69260F2AB26D659B7C398F9A2B2B48ED0DF16C3B47D7326782FD9CBA71690C1"
         }
       ]
     },

@@ -61,6 +61,28 @@ mod tests {
     }
 
     #[test]
+    fn large_v3_is_available_separately_from_turbo() {
+        let model = find("large-v3").unwrap();
+        assert_eq!(display_name(&model.name), "Whisper large-v3");
+        assert_eq!(model.repository, "Systran/faster-whisper-large-v3");
+        assert_ne!(model.repository, find("large-v3-turbo").unwrap().repository);
+        assert_eq!(model.revision.len(), 40);
+        for path in [
+            "config.json",
+            "model.bin",
+            "preprocessor_config.json",
+            "tokenizer.json",
+            "vocabulary.json",
+        ] {
+            let artifact = model.files.iter().find(|file| file.path == path).unwrap();
+            assert!(artifact.bytes > 0);
+            assert_eq!(artifact.sha256.len(), 64);
+            assert!(artifact.sha256.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        }
+        assert_eq!(model.files.len(), 5);
+    }
+
+    #[test]
     fn unknown_labels_pass_through_unchanged() {
         assert_eq!(id_from_display("large-v2"), "large-v2");
         assert_eq!(id_from_display("custom-model"), "custom-model");

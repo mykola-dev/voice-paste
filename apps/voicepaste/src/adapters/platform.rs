@@ -555,6 +555,20 @@ async fn ui_session(
                     }
                 };
                 match event {
+                    Event::StatisticsReset { id, result } => {
+                        if let Some(settings) = &settings
+                            && settings.id == id
+                        {
+                            settings.statistics_reset(&result, cx);
+                        }
+                    }
+                    Event::Statistics { id, filter, result } => {
+                        if let Some(settings) = &settings
+                            && settings.id == id
+                        {
+                            settings.statistics(filter, result, cx);
+                        }
+                    }
                     Event::ModelAvailability { id, model, ready } => {
                         if let Some(settings) = &settings
                             && settings.id == id
@@ -654,6 +668,27 @@ async fn ui_session(
                 } else {
                     pending_save = Some(settings.id);
                 }
+            }
+            if let Some(settings) = &settings
+                && settings.take_statistics_reset(cx)
+                && let Err(error) = runtime
+                    .borrow()
+                    .send(Command::ResetStatistics { id: settings.id })
+            {
+                settings.statistics_reset(&Err(error), cx);
+            }
+            if let Some(settings) = &settings
+                && let Some(filter) =
+                    settings.statistics_query(last_memory.elapsed() >= Duration::from_secs(2), cx)
+                && runtime
+                    .borrow()
+                    .send(Command::Statistics {
+                        id: settings.id,
+                        filter: filter.clone(),
+                    })
+                    .is_ok()
+            {
+                settings.statistics_queried(filter, cx);
             }
             if let Some(settings) = &settings
                 && last_memory.elapsed() >= Duration::from_secs(2)

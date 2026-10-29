@@ -181,6 +181,8 @@ pub struct Worker {
     generation: Generation,
     next_request: u64,
     ready: bool,
+    actual_device: String,
+    statistics_filter: Option<voicepaste_core::statistics::Filter>,
     options: Option<TranscriptionOptions>,
     model: String,
     pending: Option<(RequestId, Submission<AudioFile>)>,
@@ -196,6 +198,8 @@ impl Worker {
             generation: Generation(0),
             next_request: 0,
             ready: false,
+            actual_device: String::new(),
+            statistics_filter: None,
             options: None,
             model: String::new(),
             pending: None,
@@ -213,6 +217,7 @@ impl Worker {
         }
         self.release();
         let model = super::models::local_path(&self.storage.root, &settings.model)?;
+        let statistics_filter = voicepaste_core::statistics::Filter::from_settings(settings)?;
         self.generation.0 = self
             .generation
             .0
@@ -229,6 +234,7 @@ impl Worker {
         self.process = Some(process);
         self.options = Some(options);
         self.model = settings.model.clone();
+        self.statistics_filter = Some(statistics_filter);
         self.deadline = Some(Instant::now() + Duration::from_secs(180));
         Ok(())
     }
@@ -348,6 +354,7 @@ impl Transcription<AudioFile> for Worker {
                 generation,
                 device,
                 mels,
+                model_loading_us,
             } => {
                 if version != VERSION
                     || generation != self.generation
@@ -366,17 +373,26 @@ impl Transcription<AudioFile> for Worker {
                     return Some(self.failed("Native worker violated device policy".into()));
                 }
                 self.ready = true;
+                self.actual_device = device.clone();
                 self.deadline = None;
                 if let Err(error) = self.send_pending() {
                     return Some(self.failed(error));
                 }
-                Some(TranscriptionEvent::Ready { device })
+                let statistics = self.statistics_filter.clone().map(|filter| {
+                    voicepaste_core::statistics::ModelLoad {
+                        filter,
+                        device: device.clone(),
+                        loading_us: model_loading_us,
+                    }
+                });
+                Some(TranscriptionEvent::Ready { device, statistics })
             }
             Response::Result {
                 generation,
                 id,
                 session,
                 text,
+                measurement,
             } => {
                 if generation != self.generation
                     || !self.sent
@@ -390,11 +406,33 @@ impl Transcription<AudioFile> for Worker {
                 let (_, submission) = self.pending.take()?;
                 self.sent = false;
                 self.deadline = None;
+                // Export numeric metadata only. The session owner decides whether
+                // this completion is still current before persisting a sample.
+                let statistics = voicepaste_core::statistics::Filter::from_settings(
+                    &submission.settings,
+                )
+                .map(|filter| {
+                    voicepaste_core::statistics::Sample::new(
+                        filter,
+                        &self.actual_device,
+                        measurement,
+                        &text,
+                    )
+                });
+                let statistics = match statistics {
+                    Ok(sample) => sample,
+                    Err(error) => {
+                        self.storage
+                            .log(&format!("Transcription statistics unavailable: {error}"));
+                        None
+                    }
+                };
                 Some(TranscriptionEvent::Completed {
                     session,
                     text,
                     target: submission.target,
                     shortcut: submission.settings.paste_shortcut,
+                    statistics,
                 })
             }
             Response::Error {
@@ -420,6 +458,8 @@ impl Transcription<AudioFile> for Worker {
         drop(self.process.take());
         drop(self.pending.take());
         self.ready = false;
+        self.actual_device.clear();
+        self.statistics_filter = None;
         self.sent = false;
         self.deadline = None;
     }

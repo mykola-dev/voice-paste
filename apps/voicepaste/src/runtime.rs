@@ -16,14 +16,41 @@ use voicepaste_core::settings::{Settings, TranscriptionOptions};
 use voicepaste_core::{SessionId, State};
 
 pub enum Command {
-    Toggle { now: Duration, target: usize },
+    Toggle {
+        now: Duration,
+        target: usize,
+    },
     Cancel(SessionId),
-    SaveSettings { id: u64, settings: Settings },
-    Memory { id: u64 },
-    ModelAvailability { id: u64, model: String },
+    SaveSettings {
+        id: u64,
+        settings: Settings,
+    },
+    Memory {
+        id: u64,
+    },
+    ModelAvailability {
+        id: u64,
+        model: String,
+    },
+    Statistics {
+        id: u64,
+        filter: voicepaste_core::statistics::Filter,
+    },
+    ResetStatistics {
+        id: u64,
+    },
     Quit,
 }
 pub enum Event {
+    StatisticsReset {
+        id: u64,
+        result: Result<(), String>,
+    },
+    Statistics {
+        id: u64,
+        filter: voicepaste_core::statistics::Filter,
+        result: Result<Vec<voicepaste_core::statistics::Summary>, String>,
+    },
     ModelAvailability {
         id: u64,
         model: String,
@@ -71,6 +98,8 @@ impl Runtime {
                 let microphone = Microphone::new(storage.temp.clone(), meter, clock);
                 let mut app = Dictation::new(microphone);
                 let mut worker = Worker::new(storage.clone());
+                let mut statistics = crate::adapters::statistics::Statistics::open(&storage.root.join("data/transcription-stats.sqlite"));
+                if let Err(error) = &statistics { storage.log(&format!("Transcription statistics unavailable: {error}")); }
                 let mut paste = ClipboardPaste {
                     shutdown: thread_shutdown.clone(),
                 };
@@ -107,6 +136,15 @@ impl Runtime {
                             if !reliable(&sender, Event::SettingsSaved { id, result }, &thread_shutdown) { break; }
                         }
                         Ok(Command::Memory { id }) => { let _ = sender.try_send(Event::Memory { id, message: worker.memory_status() }); }
+                        Ok(Command::Statistics { id, filter }) => {
+                            let result = statistics.as_ref().map_err(Clone::clone).and_then(|db| db.query(&filter));
+                            if !reliable(&sender, Event::Statistics { id, filter, result }, &thread_shutdown) { break; }
+                        }
+                        Ok(Command::ResetStatistics { id }) => {
+                            let result = statistics.as_mut().map_err(|error| error.clone()).and_then(|db| db.reset());
+                            if let Err(error) = &result { storage.log(&format!("Statistics reset failed: {error}")); }
+                            if !reliable(&sender, Event::StatisticsReset { id, result }, &thread_shutdown) { break; }
+                        }
                         Ok(Command::ModelAvailability { id, model }) => {
                             // Read-only inventory; never provisions or loads a draft selection.
                             let ready = crate::adapters::models::local_path(&storage.root, &model).is_ok();
@@ -179,7 +217,12 @@ impl Runtime {
                     }
                     while let Some(event) = worker.poll() {
                         match event {
-                            TranscriptionEvent::Ready { device } => {
+                            TranscriptionEvent::Ready { device, statistics: sample } => {
+                                if let Some(sample) = sample
+                                    && let Err(error) = statistics.as_ref().map_err(Clone::clone).and_then(|db| db.record_load(&sample))
+                                {
+                                    storage.log(&format!("Model loading statistics not recorded: {error}"));
+                                }
                                 storage.log(&format!("Native worker ready on {device}"));
                                 if preferences.current().device
                                     == voicepaste_core::settings::Device::CudaAuto
@@ -195,11 +238,18 @@ impl Runtime {
                                 text,
                                 target,
                                 shortcut,
+                                statistics: sample,
                             } => {
+                                let accepted = app.state() == State::Transcribing(session);
                                 if let Err(error) =
                                     app.deliver(session, &text, target, shortcut, &mut paste)
                                 {
                                     report(&storage, &sender, error);
+                                }
+                                if accepted && let Some(sample) = sample
+                                    && let Err(error) = statistics.as_ref().map_err(Clone::clone).and_then(|db| db.record(&sample))
+                                {
+                                    storage.log(&format!("Transcription statistics not recorded: {error}"));
                                 }
                                 let _ = sender.try_send(Event::State(app.state()));
                             }

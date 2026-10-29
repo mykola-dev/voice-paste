@@ -7,9 +7,16 @@ use flate2::{Compression, write::ZlibEncoder};
 use std::{collections::BTreeSet, io::Write, path::Path};
 use tokenizers::Tokenizer;
 use voicepaste_core::settings::{Language, TranscriptionOptions};
+use voicepaste_core::statistics::Measurement;
+
+pub struct Transcribed {
+    pub text: String,
+    pub measurement: Measurement,
+}
 
 pub struct Pipeline {
     pub engine: Engine,
+    pub model_loading_us: u64,
     tokenizer: Tokens,
     vad: Option<Vad>,
     options: TranscriptionOptions,
@@ -33,27 +40,52 @@ impl Pipeline {
         } else {
             None
         };
+        let loading_started = std::time::Instant::now();
         let engine = Engine::open(model, options.device)?;
+        let model_loading_us = elapsed_us(loading_started)?;
         Ok(Self {
             engine,
+            model_loading_us,
             tokenizer,
             vad,
             options,
         })
     }
 
-    pub fn transcribe(&mut self, path: &Path) -> Result<String, String> {
+    pub fn transcribe(&mut self, path: &Path) -> Result<Transcribed, String> {
         let mut audio = frontend::read_wav(path)?;
+        let audio_samples = audio.len() as u64;
         if audio.len() < 2 {
-            return Ok(String::new());
+            return Ok(Transcribed {
+                text: String::new(),
+                measurement: Measurement {
+                    audio_samples,
+                    inference_us: 0,
+                    ..Measurement::default()
+                },
+            });
         }
-        if let Some(vad) = &mut self.vad {
+        let vad_us = if let Some(vad) = &mut self.vad {
+            let started = std::time::Instant::now();
             audio = vad.filter(&audio)?;
-        }
+            Some(elapsed_us(started)?)
+        } else {
+            None
+        };
         if audio.len() < 2 {
-            return Ok(String::new());
+            return Ok(Transcribed {
+                text: String::new(),
+                measurement: Measurement {
+                    audio_samples,
+                    inference_us: 0,
+                    vad_us,
+                    preparation_us: None,
+                },
+            });
         }
+        let preparation_started = std::time::Instant::now();
         let features = frontend::features(&audio, self.engine.mels)?;
+        let preparation_us = Some(elapsed_us(preparation_started)?);
         drop(audio);
         let mut seek = 0;
         let mut language = match self.options.language_mode {
@@ -63,6 +95,9 @@ impl Pipeline {
         };
         let mut history = self.tokenizer.encode(&initial_prompt(&self.options))?;
         let mut segments = Vec::new();
+        // Model/tokenizer/VAD are already resident and audio features are ready.
+        // Include all windows, decoder retries and final text formation, not IO/IPC.
+        let started = std::time::Instant::now();
         while seek < features.content_frames() {
             let size = frontend::WINDOW.min(features.content_frames() - seek);
             let encoded = self.engine.encode(&features.window(seek, size))?;
@@ -103,16 +138,24 @@ impl Pipeline {
             }
         }
         let text = segments.join(" ");
-        Ok(
-            if matches!(
-                self.options.language_mode,
-                Language::Ua | Language::Bilingual
-            ) {
-                ukrainian_cleanup(&text)
-            } else {
-                text
+        let text = if matches!(
+            self.options.language_mode,
+            Language::Ua | Language::Bilingual
+        ) {
+            ukrainian_cleanup(&text)
+        } else {
+            text
+        };
+        let inference_us = elapsed_us(started)?;
+        Ok(Transcribed {
+            text,
+            measurement: Measurement {
+                inference_us,
+                audio_samples,
+                vad_us,
+                preparation_us,
             },
-        )
+        })
     }
 
     fn generate(
@@ -160,6 +203,10 @@ impl Pipeline {
         let (result, average, _) = best_below_compression.or(best).ok_or("No decoder result")?;
         Ok((result, average, 1.0))
     }
+}
+
+fn elapsed_us(started: std::time::Instant) -> Result<u64, String> {
+    u64::try_from(started.elapsed().as_micros()).map_err(|_| "STT timing duration overflow".into())
 }
 
 fn compression_ratio(text: &str) -> Result<f32, String> {

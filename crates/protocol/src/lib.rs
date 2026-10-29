@@ -5,7 +5,7 @@ use std::{
 };
 use voicepaste_core::{SessionId, settings::TranscriptionOptions};
 
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 3;
 pub const MAX_MESSAGE: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -40,12 +40,14 @@ pub enum Response {
         generation: Generation,
         device: String,
         mels: usize,
+        model_loading_us: u64,
     },
     Result {
         generation: Generation,
         id: RequestId,
         session: SessionId,
         text: String,
+        measurement: voicepaste_core::statistics::Measurement,
     },
     Error {
         generation: Generation,
@@ -86,18 +88,47 @@ pub fn write(writer: &mut impl Write, message: &impl Serialize) -> Result<(), St
 mod tests {
     use super::*;
     #[test]
+    fn readiness_transports_one_real_model_load_measurement() {
+        let response = Response::Ready {
+            version: VERSION,
+            generation: Generation(9),
+            device: "cuda".into(),
+            mels: 128,
+            model_loading_us: 2_500_000,
+        };
+        let mut bytes = Vec::new();
+        write(&mut bytes, &response).unwrap();
+        assert!(matches!(
+            read::<Response>(&mut bytes.as_slice()).unwrap(),
+            Some(Response::Ready {
+                version: VERSION,
+                generation: Generation(9),
+                model_loading_us: 2_500_000,
+                ..
+            })
+        ));
+    }
+    #[test]
     fn bounded_utf8_framing() {
         let value = Response::Result {
             generation: Generation(3),
             id: RequestId(2),
             session: SessionId(1),
             text: "Привіт, бро".into(),
+            measurement: voicepaste_core::statistics::Measurement {
+                inference_us: 1234,
+                audio_samples: 16000,
+                vad_us: Some(250),
+                preparation_us: Some(500),
+            },
         };
         let mut bytes = Vec::new();
         write(&mut bytes, &value).unwrap();
         assert!(
-            matches!(read::<Response>(&mut bytes.as_slice()).unwrap(), Some(Response::Result { text, .. }) if text == "Привіт, бро")
+            matches!(read::<Response>(&mut bytes.as_slice()).unwrap(), Some(Response::Result { text, measurement, .. }) if text == "Привіт, бро" && measurement.inference_us == 1234 && measurement.audio_samples == 16000 && measurement.vad_us == Some(250) && measurement.preparation_us == Some(500))
         );
+        // A legacy text-only result must not fabricate a zero-duration sample.
+        assert!(read::<Response>(&mut b"{\"type\":\"result\",\"generation\":3,\"id\":2,\"session\":1,\"text\":\"hello\"}\n".as_slice()).is_err());
         assert!(read::<Request>(&mut b"{broken}\n".as_slice()).is_err());
         assert!(read::<Request>(&mut b"{\"type\":\"shutdown\"}".as_slice()).is_err());
         assert!(read::<Request>(&mut vec![b'x'; MAX_MESSAGE + 1].as_slice()).is_err());

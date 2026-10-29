@@ -22,6 +22,12 @@ clipboard/focus, реальним завантаженням моделей чи
 
 ## Portable package і платформи
 
+- [ ] **Windows xtask self-lock:** 2026-10-29 `cargo xtask build --check` пройшов
+  fmt/tests/clippy, але вкладений `cargo build --workspace --locked --jobs 2`
+  намагався перебудувати запущений `build/cache/target/debug/xtask.exe` і впав
+  із `Access is denied (os error 5)`. Виправити self-rebuild ownership без зміни
+  канонічних portable outputs. Локальний обхід: запуск копії того самого xtask
+  з ignored `build/cache/xtask-runner/`; це не виправлення launcher/build-логіки.
 - [ ] Відтворювана native CT2 4.7.1 CUDA збірка й повна DLL/CRT/ORT/VAD closure
   замість залежності від наявного локального binary cache. Підтвердити чисту
   Windows-машину/driver-only CUDA та CPU route; не встановлювати SDK без дозволу.

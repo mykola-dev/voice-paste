@@ -12,12 +12,14 @@ pub trait Paste {
 pub enum TranscriptionEvent {
     Ready {
         device: String,
+        statistics: Option<voicepaste_core::statistics::ModelLoad>,
     },
     Completed {
         session: SessionId,
         text: String,
         target: usize,
         shortcut: PasteShortcut,
+        statistics: Option<voicepaste_core::statistics::Sample>,
     },
     Failed {
         session: Option<SessionId>,
