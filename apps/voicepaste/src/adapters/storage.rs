@@ -1,6 +1,6 @@
-use std::os::windows::fs::OpenOptionsExt;
+use super::files;
 use std::{
-    fs::{self, OpenOptions},
+    fs,
     io::Write,
     path::{Path, PathBuf},
 };
@@ -21,10 +21,9 @@ impl Storage {
         let config = data.join("config.json");
         // create_new never truncates an existing config, including another
         // instance's config. A failed seed is removed rather than accepted.
-        match OpenOptions::new()
+        match files::exclusive_options()
             .write(true)
             .create_new(true)
-            .share_mode(0)
             .open(&config)
         {
             Ok(mut file) => {
@@ -50,43 +49,27 @@ impl Storage {
     }
 
     pub fn log(&self, message: &str) {
-        let path = Self::log_path();
-        if let Some(parent) = path.parent()
-            && fs::create_dir_all(parent).is_err()
-        {
-            return;
-        }
-        // Bound diagnostics without recording audio, transcript or prompt.
-        if fs::metadata(&path).is_ok_and(|m| m.len() > 1024 * 1024) {
-            let _ = fs::rename(&path, path.with_extension("previous.log"));
-        }
-        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
-            let _ = writeln!(file, "{message}");
-        }
+        super::diagnostics::log(message);
     }
 
     pub fn log_path() -> PathBuf {
-        std::env::temp_dir().join("VoicePaste/voicepaste.log")
+        super::diagnostics::log_path()
     }
 }
 
 impl voicepaste_application::settings::SettingsRepository for Storage {
     fn save(&self, settings: &Settings) -> Result<(), String> {
         use std::sync::atomic::{AtomicU64, Ordering};
-        use windows_sys::Win32::Storage::FileSystem::{
-            MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
-        };
         static NEXT: AtomicU64 = AtomicU64::new(0);
         settings.validate()?;
         let data = self.root.join("data");
         // Persistent lock file, exclusive handle: process exit releases ownership
         // without leaving a stale create_new lock or disallowing multiple hosts.
-        let _lock = OpenOptions::new()
+        let _lock = files::exclusive_options()
             .read(true)
             .write(true)
             .create(true)
             .truncate(false)
-            .share_mode(0)
             .open(data.join("config.lock"))
             .map_err(|e| format!("Settings are locked or unwritable: {e}"))?;
         let previous = Settings::from_json(
@@ -97,10 +80,9 @@ impl voicepaste_application::settings::SettingsRepository for Storage {
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
-        let mut file = OpenOptions::new()
+        let mut file = files::exclusive_options()
             .write(true)
             .create_new(true)
-            .share_mode(0)
             .open(&temporary)
             .map_err(|e| e.to_string())?;
         let result = (|| {
@@ -109,14 +91,6 @@ impl voicepaste_application::settings::SettingsRepository for Storage {
                 .and_then(|()| file.sync_all())
                 .map_err(|e| e.to_string())?;
             drop(file);
-            use std::os::windows::ffi::OsStrExt;
-            let source: Vec<u16> = temporary.as_os_str().encode_wide().chain(Some(0)).collect();
-            let destination: Vec<u16> = data
-                .join("config.json")
-                .as_os_str()
-                .encode_wide()
-                .chain(Some(0))
-                .collect();
             // Registry and config are committed as one Save operation. A failed
             // file replacement restores the exact prior Run entry; hotkey rollback
             // remains owned by the UI's existing save-completion path.
@@ -124,17 +98,7 @@ impl voicepaste_application::settings::SettingsRepository for Storage {
                 previous.start_at_login,
                 settings.start_at_login,
             )?;
-            // SAFETY: live NUL-terminated same-directory paths; failed replacement
-            // leaves the previous config intact. Never fall back to AppData.
-            if unsafe {
-                MoveFileExW(
-                    source.as_ptr(),
-                    destination.as_ptr(),
-                    MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-                )
-            } == 0
-            {
-                let error = std::io::Error::last_os_error().to_string();
+            if let Err(error) = files::replace(&temporary, &data.join("config.json")) {
                 if let Some(startup) = startup {
                     startup.rollback().map_err(|rollback| {
                         format!("{error}; startup rollback failed: {rollback}")
@@ -191,17 +155,37 @@ mod tests {
             before,
             "opening an existing config must never reseed public defaults"
         );
-        let lock = OpenOptions::new()
+        let lock = files::exclusive_options()
             .read(true)
             .write(true)
-            .share_mode(0)
             .open(root.join("data/config.lock"))
             .unwrap();
         changed.beam_size = 8;
         assert!(storage.save(&changed).is_err());
         assert_eq!(fs::read(root.join("data/config.json")).unwrap(), before);
         drop(lock);
+        // Permit the earlier config read but deny delete/replacement, so failure
+        // happens at publication after the temporary file was written. Startup
+        // stays disabled; this fixture never mutates the real Run value.
+        let config_lock = files::stable_read(&root.join("data/config.json")).unwrap();
+        assert!(storage.save(&changed).is_err());
+        assert_eq!(fs::read(root.join("data/config.json")).unwrap(), before);
+        drop(config_lock);
+        assert_eq!(fs::read(root.join("data/config.json")).unwrap(), before);
+        assert!(
+            !fs::read_dir(root.join("data")).unwrap().any(|entry| {
+                entry
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".config-")
+            }),
+            "failed publication must remove its temporary file"
+        );
+        storage.save(&changed).unwrap();
+        assert_eq!(Storage::open(&root).unwrap().settings, changed);
         changed.beam_size = 0;
+        let before = fs::read(root.join("data/config.json")).unwrap();
         assert!(storage.save(&changed).is_err());
         assert_eq!(fs::read(root.join("data/config.json")).unwrap(), before);
     }

@@ -1,7 +1,8 @@
 //! Local verification receipts, not a security boundary against deliberate tampering.
 //! Changed size/creation/write time or pinned manifest invalidates the receipt.
+use crate::adapters::files;
 use serde::{Deserialize, Serialize};
-use std::{fs, os::windows::fs::MetadataExt, path::Path};
+use std::{fs, path::Path};
 use voicepaste_core::models::Model;
 
 #[derive(Serialize, Deserialize, PartialEq)]
@@ -30,12 +31,13 @@ impl Receipt {
                 if !metadata.is_file() || metadata.len() != artifact.bytes {
                     return None;
                 }
+                let (created, modified) = super::receipt_times(&metadata);
                 Some(FileStamp {
                     path: artifact.path.clone(),
                     sha256: artifact.sha256.clone(),
                     bytes: metadata.len(),
-                    created: metadata.creation_time(),
-                    modified: metadata.last_write_time(),
+                    created,
+                    modified,
                 })
             })
             .collect::<Option<Vec<_>>>()?;
@@ -57,22 +59,14 @@ impl Receipt {
     }
 
     pub(super) fn save(&self, directory: &Path) -> Result<(), String> {
-        use std::{
-            fs::OpenOptions,
-            io::Write,
-            os::windows::{ffi::OsStrExt, fs::OpenOptionsExt},
-        };
-        use windows_sys::Win32::Storage::FileSystem::{
-            MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
-        };
+        use std::io::Write;
         // Caller holds the exclusive model lock. A crash leaves only a cache
         // miss; the receipt is published only after all pinned hashes passed.
         let temporary = directory.join(".verified.json.partial");
-        let mut file = OpenOptions::new()
+        let mut file = files::exclusive_options()
             .write(true)
             .create(true)
             .truncate(true)
-            .share_mode(0)
             .open(&temporary)
             .map_err(|e| e.to_string())?;
         let data = serde_json::to_vec(self).map_err(|e| e.to_string())?;
@@ -80,25 +74,6 @@ impl Receipt {
             .and_then(|()| file.sync_all())
             .map_err(|e| e.to_string())?;
         drop(file);
-        let wide = |p: &Path| {
-            p.as_os_str()
-                .encode_wide()
-                .chain(Some(0))
-                .collect::<Vec<_>>()
-        };
-        let source = wide(&temporary);
-        let target = wide(&directory.join(".verified.json"));
-        // SAFETY: live, NUL-terminated same-directory paths.
-        if unsafe {
-            MoveFileExW(
-                source.as_ptr(),
-                target.as_ptr(),
-                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-            )
-        } == 0
-        {
-            return Err(std::io::Error::last_os_error().to_string());
-        }
-        Ok(())
+        files::replace(&temporary, &directory.join(".verified.json"))
     }
 }

@@ -1,5 +1,9 @@
 use crate::adapters::{
-    audio::Microphone, models::Preparation, paste::ClipboardPaste, storage::Storage, worker::Worker,
+    audio::Microphone,
+    models::Preparation,
+    paste::{ClipboardPaste, FocusTarget},
+    storage::Storage,
+    worker::Worker,
 };
 use std::{
     sync::{
@@ -18,7 +22,7 @@ use voicepaste_core::{SessionId, State};
 pub enum Command {
     Toggle {
         now: Duration,
-        target: usize,
+        target: FocusTarget,
     },
     Cancel(SessionId),
     SaveSettings {
@@ -360,6 +364,33 @@ fn prepare(storage: &Storage, model: &str, sender: &SyncSender<Event>) -> Option
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn full_event_queue_does_not_prevent_shutdown_or_receiver_disconnect() {
+        for disconnected in [false, true] {
+            let (sender, receiver) = mpsc::sync_channel(1);
+            let mut receiver = Some(receiver);
+            assert!(sender.try_send(Event::CaptureCompleted).is_ok());
+            let shutdown = Arc::new(AtomicBool::new(false));
+            let signal = shutdown.clone();
+            let (done, completed) = mpsc::channel();
+            let task = thread::spawn(move || {
+                done.send(reliable(&sender, Event::CaptureCompleted, &signal))
+                    .unwrap();
+            });
+            if disconnected {
+                drop(receiver.take());
+            } else {
+                shutdown.store(true, Ordering::Release);
+            }
+            let result = completed.recv_timeout(Duration::from_secs(1));
+            // Always unblock the thread before joining, including a failed check.
+            shutdown.store(true, Ordering::Release);
+            drop(receiver);
+            task.join().unwrap();
+            assert!(!result.unwrap());
+        }
+    }
 
     #[test]
     fn shutdown_does_not_block_on_a_full_command_queue() {

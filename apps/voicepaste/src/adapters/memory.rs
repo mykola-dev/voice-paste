@@ -1,28 +1,11 @@
 //! Resident RAM, including the always-running host, independent of residency policy.
-use std::mem::{size_of, zeroed};
-use windows_sys::Win32::{
-    Foundation::HANDLE,
-    System::{ProcessStatus::*, Threading::GetCurrentProcess},
-};
+#[cfg(target_os = "windows")]
+mod windows;
+#[cfg(target_os = "windows")]
+pub(super) use windows::child;
 
-fn working_set(process: HANDLE) -> Result<usize, String> {
-    // SAFETY: callers supply either the current-process pseudo handle or an owned
-    // live child-process handle. The sized output structure is writable.
-    unsafe {
-        let mut counters: PROCESS_MEMORY_COUNTERS = zeroed();
-        counters.cb = size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
-        if GetProcessMemoryInfo(process, &mut counters, counters.cb) == 0 {
-            return Err(std::io::Error::last_os_error().to_string());
-        }
-        Ok(counters.WorkingSetSize)
-    }
-}
-
-pub fn status(worker: Option<HANDLE>, ready: bool) -> String {
-    // SAFETY: GetCurrentProcess returns a borrowed pseudo handle; never close it.
-    let host = working_set(unsafe { GetCurrentProcess() });
-    let worker = worker.map(working_set).transpose();
-    format_status(host, worker, ready)
+pub fn status(worker: Result<Option<usize>, String>, ready: bool) -> String {
+    format_status(windows::host(), worker, ready)
 }
 
 fn format_status(
@@ -68,7 +51,7 @@ mod tests {
     }
     #[test]
     fn current_host_is_measured_without_a_worker() {
-        let text = status(None, false);
+        let text = status(Ok(None), false);
         assert!(!text.contains("Main application: unavailable"));
         assert!(!text.contains("Main application: 0.0 MiB"));
     }

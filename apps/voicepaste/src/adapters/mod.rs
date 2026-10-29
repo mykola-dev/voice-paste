@@ -1,6 +1,9 @@
 mod application_icon;
 pub mod audio;
+mod diagnostics;
+mod files;
 mod hotkey;
+pub mod launch;
 mod memory;
 pub mod models;
 pub mod overlay;
@@ -13,3 +16,6 @@ pub mod statistics;
 pub mod storage;
 pub mod tray_icons;
 pub mod worker;
+
+#[cfg(test)]
+mod boundaries;

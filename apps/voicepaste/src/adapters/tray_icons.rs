@@ -5,14 +5,10 @@
 //! Native-size premultiplied pixels cover standard Windows tray DPIs.
 
 use voicepaste_core::State;
-use windows_sys::Win32::{
-    Foundation::{HINSTANCE, HWND},
-    Graphics::Gdi::{MONITOR_DEFAULTTOPRIMARY, MonitorFromWindow},
-    UI::{
-        HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI},
-        WindowsAndMessaging::{CreateIcon, HICON},
-    },
-};
+#[cfg(target_os = "windows")]
+mod windows;
+#[cfg(target_os = "windows")]
+pub(super) use windows::{create_icon, system_icon_size};
 
 /// Tray face per application state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,19 +50,6 @@ pub fn canonical_size(px: usize) -> usize {
     best
 }
 
-/// Current monitor DPI mapped to a shipped icon size. Falls back to 16px.
-pub fn system_icon_size(hwnd: HWND) -> usize {
-    // SAFETY: transient monitor/DPI query on the UI thread; no owned state.
-    unsafe {
-        let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY);
-        let (mut x, mut y) = (96u32, 96u32);
-        if GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut x, &mut y) == 0 {
-            return canonical_size(icon_size_for_dpi(x));
-        }
-    }
-    16
-}
-
 macro_rules! tray_blobs {
     ($(($state:ident, $file:literal, $size:literal)),*) => {
         /// Shipped premultiplied BGRA for a state and canonical size.
@@ -102,7 +85,7 @@ fn mask_stride(edge: usize) -> usize {
 /// Create a tray icon from the shipped blob nearest to `size`.
 /// The AND mask is opaque wherever the blob has any alpha, so 1px
 /// anti-aliased edges blend instead of clipping.
-pub fn create_icon(instance: HINSTANCE, size: usize, state: Lips) -> Result<HICON, String> {
+fn icon_data(size: usize, state: Lips) -> (usize, &'static [u8], Vec<u8>) {
     let edge = canonical_size(size);
     let pixels = blob_bytes(state, edge);
     debug_assert_eq!(pixels.len(), edge * edge * 4);
@@ -115,23 +98,7 @@ pub fn create_icon(instance: HINSTANCE, size: usize, state: Lips) -> Result<HICO
             }
         }
     }
-    // SAFETY: buffers exactly match the declared icon dimensions.
-    let handle = unsafe {
-        CreateIcon(
-            instance,
-            edge as i32,
-            edge as i32,
-            1,
-            32,
-            mask.as_ptr(),
-            pixels.as_ptr(),
-        )
-    };
-    if handle.is_null() {
-        Err("Cannot create tray icon".into())
-    } else {
-        Ok(handle)
-    }
+    (edge, pixels, mask)
 }
 
 #[cfg(test)]

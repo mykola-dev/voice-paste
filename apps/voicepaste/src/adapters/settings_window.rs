@@ -81,19 +81,8 @@ impl SettingsWindow {
     pub fn is_closed(&self) -> bool {
         self.closed.get()
     }
-    pub fn native_handle(&self, cx: &mut App) -> Result<isize, String> {
+    pub fn handle(&self) -> AnyWindowHandle {
         self.handle
-            .update(cx, |_, window, _| {
-                use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-                match HasWindowHandle::window_handle(window)
-                    .map_err(|e| e.to_string())?
-                    .as_raw()
-                {
-                    RawWindowHandle::Win32(handle) => Ok(handle.hwnd.get()),
-                    _ => Err("Settings does not have a Windows window handle".into()),
-                }
-            })
-            .map_err(|e| e.to_string())?
     }
     pub fn take_save(&self, cx: &mut App) -> Option<Settings> {
         self.view.update(cx, |view, _| view.request.take())

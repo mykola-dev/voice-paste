@@ -1,10 +1,12 @@
 mod http;
 mod verification;
+#[cfg(target_os = "windows")]
+mod windows;
+use super::files;
 use sha2::{Digest, Sha256};
 use std::{
-    fs::{self, File, OpenOptions},
+    fs::{self, File},
     io::{Read, Seek, SeekFrom, Write},
-    os::windows::{ffi::OsStrExt, fs::OpenOptionsExt},
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
@@ -14,9 +16,8 @@ use std::{
     thread::{self, JoinHandle},
 };
 use voicepaste_core::models::{Artifact, Model};
-use windows_sys::Win32::Storage::FileSystem::{
-    FILE_SHARE_READ, MOVEFILE_WRITE_THROUGH, MoveFileExW, ReplaceFileW,
-};
+#[cfg(target_os = "windows")]
+use windows::times as receipt_times;
 
 pub fn local_path(root: &Path, selected: &str) -> Result<PathBuf, String> {
     let model = voicepaste_core::models::find(selected)?;
@@ -160,12 +161,11 @@ fn ensure(
     check_cancel(cancel)?;
     let directory = directory(root, model);
     fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
-    let _lock = OpenOptions::new()
+    let _lock = files::exclusive_options()
         .read(true)
         .write(true)
         .create(true)
         .truncate(false)
-        .share_mode(0)
         .open(directory.join(".download.lock"))
         .map_err(|e| format!("Model preparation is locked or unwritable: {e}"))?;
     if verification::Receipt::current(&directory, model) {
@@ -184,11 +184,7 @@ fn ensure(
         check_cancel(cancel)?;
         let final_path = directory.join(&artifact.path);
         progress.message(format!("Checking {} / {}", model.name, artifact.path));
-        let candidate = match OpenOptions::new()
-            .read(true)
-            .share_mode(FILE_SHARE_READ)
-            .open(&final_path)
-        {
+        let candidate = match files::stable_read(&final_path) {
             Ok(file) => Some(file),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
             Err(error) => return Err(format!("Cannot read model artifact: {error}")),
@@ -202,12 +198,11 @@ fn ensure(
         } else {
             drop(candidate);
             let partial_path = directory.join(format!("{}.partial", artifact.path));
-            let mut partial = OpenOptions::new()
+            let mut partial = files::exclusive_options()
                 .read(true)
                 .write(true)
                 .create(true)
                 .truncate(false)
-                .share_mode(0)
                 .open(&partial_path)
                 .map_err(|e| e.to_string())?;
             let mut offset = partial.metadata().map_err(|e| e.to_string())?.len();
@@ -220,10 +215,9 @@ fn ensure(
             let partial_complete = if offset == artifact.bytes {
                 drop(partial);
                 let valid = hash(&partial_path, cancel)?.eq_ignore_ascii_case(&artifact.sha256);
-                partial = OpenOptions::new()
+                partial = files::exclusive_options()
                     .read(true)
                     .write(true)
-                    .share_mode(0)
                     .open(&partial_path)
                     .map_err(|e| e.to_string())?;
                 if !valid {
@@ -287,13 +281,7 @@ fn ensure(
             }
             check_cancel(cancel)?;
             publish(&partial_path, &final_path)?;
-            verified_files.push(
-                OpenOptions::new()
-                    .read(true)
-                    .share_mode(FILE_SHARE_READ)
-                    .open(&final_path)
-                    .map_err(|e| e.to_string())?,
-            );
+            verified_files.push(files::stable_read(&final_path).map_err(|e| e.to_string())?);
         }
         completed += artifact.bytes;
         progress.bytes.store(completed, Ordering::Relaxed);
@@ -339,46 +327,23 @@ fn transfer(
 
 fn publish(partial: &Path, final_path: &Path) -> Result<(), String> {
     static NEXT: AtomicU64 = AtomicU64::new(0);
-    let wide = |path: &Path| {
-        path.as_os_str()
-            .encode_wide()
-            .chain(Some(0))
-            .collect::<Vec<u16>>()
-    };
-    let source = wide(partial);
-    let target = wide(final_path);
-    // SAFETY: owned NUL-terminated same-directory paths. A corrupt completed
-    // artifact is preserved in a uniquely named backup, never discarded blindly.
-    let result = unsafe {
-        if final_path.exists() {
-            let backup_path = loop {
-                let candidate = final_path.with_extension(format!(
-                    "corrupt-{}-{}",
-                    std::process::id(),
-                    NEXT.fetch_add(1, Ordering::Relaxed)
-                ));
-                if !candidate.exists() {
-                    break candidate;
-                }
-            };
-            let backup = wide(&backup_path);
-            ReplaceFileW(
-                target.as_ptr(),
-                source.as_ptr(),
-                backup.as_ptr(),
-                0,
-                std::ptr::null(),
-                std::ptr::null(),
-            )
-        } else {
-            MoveFileExW(source.as_ptr(), target.as_ptr(), MOVEFILE_WRITE_THROUGH)
-        }
-    };
-    if result == 0 {
-        Err(std::io::Error::last_os_error().to_string())
+    // Model policy retains a corrupt completed artifact rather than overwriting
+    // it blindly. Native replacement mechanics belong to the files adapter.
+    let backup = if final_path.exists() {
+        Some(loop {
+            let candidate = final_path.with_extension(format!(
+                "corrupt-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            if !candidate.exists() {
+                break candidate;
+            }
+        })
     } else {
-        Ok(())
-    }
+        None
+    };
+    files::replace_preserving(partial, final_path, backup.as_deref())
 }
 
 #[cfg(test)]

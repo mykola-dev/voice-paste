@@ -138,7 +138,7 @@ fn cargo_task(runner: &Runner, action: &str, options: &Options) -> Result<()> {
     } else if action == "fetch" {
         runner.cargo(&["fetch", "--locked"], false, options.offline)
     } else {
-        let mut args = vec![action, "--workspace", "--locked", "--jobs", "2"];
+        let mut args = cargo_workspace_args(action);
         if action == "clippy" {
             args.push("--all-targets");
         }
@@ -157,6 +157,17 @@ fn cargo_task(runner: &Runner, action: &str, options: &Options) -> Result<()> {
         }
         runner.run(&mut cmd)
     }
+}
+
+fn cargo_workspace_args(action: &str) -> Vec<&str> {
+    let mut args = vec![action, "--workspace", "--locked", "--jobs", "2"];
+    if action == "build" {
+        // Cargo already built the running xtask. Rebuilding that same EXE while
+        // it is mapped on Windows fails with Access denied. It is not a product
+        // binary; keep it in workspace test/clippy, exclude only nested builds.
+        args.extend(["--exclude", "xtask"]);
+    }
+    args
 }
 
 fn run() -> Result<()> {
@@ -275,6 +286,22 @@ fn main() -> std::process::ExitCode {
         Err(error) => {
             eprintln!("Build failed: {error:#}");
             std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+#[cfg(test)]
+mod task_tests {
+    use super::*;
+
+    #[test]
+    fn nested_build_does_not_overwrite_running_xtask_but_checks_still_cover_it() {
+        let build = cargo_workspace_args("build");
+        assert!(build.windows(2).any(|args| args == ["--exclude", "xtask"]));
+        for action in ["test", "clippy"] {
+            let args = cargo_workspace_args(action);
+            assert!(args.contains(&"--workspace"));
+            assert!(!args.contains(&"--exclude"));
         }
     }
 }

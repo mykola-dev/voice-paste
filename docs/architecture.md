@@ -50,13 +50,117 @@ GPUI's visually different accent blur.
 Unsupported effects use the same-alpha shared translucent body without an extra
 tint over supported material. Composition visuals/dispatcher belong to the host
 UI thread and outlive neither the shell nor its window. Windows is the only
-implemented/qualified target; shared rendering is not a claim of working ports.
+implemented target; its remaining qualification is tracked separately. Shared
+rendering is not a claim of working ports.
 
 Keep shared UI state/layout and domain/application free of native handles. Isolate
 OS behavior in compile-time-selected modules with target-scoped dependencies and
 narrow consumer-owned boundaries. Linux/macOS are future targets: no implemented
 port, fake-success adapter or speculative platform/plugin framework is intended.
-Remaining platform isolation/qualification is tracked in [TODO](../RustMigration/TODO.md).
+Remaining reliability/release qualification is tracked in [TODO](../TODO.md).
+Feature inventory and staged platform isolation are in
+[cross-platform readiness](cross-platform-roadmap.md). `platform/menu.rs` owns
+the complete menu description and typed commands; `platform/inbox.rs` owns the
+bounded batch policy (neither depends on GUI/OS APIs). `platform/windows.rs`
+renders the native menu and activates Settings. `platform/windows/host.rs` owns
+the hidden HWND, icons, timer, hook and staged hotkey registrations; its handles
+and bindings are private. `platform/windows/events.rs` bridges native callbacks
+to a UI-thread-local inbox without entering GPUI or borrowing the host/runtime.
+Hotkeys retain FIFO order up to eight pending entries, excess toggles set an
+overflow flag; Quit/Cancel have separate slots. Draining takes the complete batch
+and resets the inbox before any application work or native modal call.
+If native posting fails, same-UI-thread callbacks retain hotkey/Cancel/tray work
+directly in that same bounded inbox and coalesce a warning for the next host drain.
+Overflow still rejects excess toggles explicitly. No callback performs IO or UI
+activation. Detach clears its inbox and Escape state. This remains a single-host,
+single-UI-thread callback bridge, not multi-instance process-global coordination.
+
+`platform.rs` is now the small compile-time composition module selecting the
+Windows host and UI lifecycle adapters. `platform/session.rs` coordinates the GPUI session
+through those selected adapters, with no concrete Windows module paths, Win32
+API calls or binding-field access. Native menu IDs are decoded in the Windows adapter;
+the host validates hotkey registration IDs. Host Drop preserves the existing
+detach → unhook → release registrations → kill timer/remove tray/destroy HWND →
+release icons → unregister owned window class sequence. Class ownership also
+covers partial setup failure. Timer creation failure is reported; DPI icon size
+is committed only after both replacement icons exist, so a failed allocation is
+eligible for retry. Native menu construction uses RAII and reports Create/Append/
+cursor failures instead of treating them as dismissal; regular labels, commands,
+capture-before-activation and dismissal behavior stay unchanged. The GPUI platform still outlives app globals and runtime
+shutdown remains outside the UI task. These compile-time aliases do not implement
+other platforms or make the rest of the host independently portable.
+
+`platform/windows/ui.rs` now owns the GPUI/native lifecycle seam. Settings exposes
+only its GPUI `AnyWindowHandle`; Windows `SettingsActivation` privately snapshots
+the HWND under App, then reveals/restores/requests foreground outside App borrows.
+The one-poll intent is consumed only for the same, still-open Settings generation,
+so a Save completion that closed the draft does not reactivate it. No synthetic
+Alt activation is introduced. Native identity representation is absent from both
+shared Settings and session coordination.
+
+`OverlayLifecycle` owns the native shell and indicator-enabled flag. Attach
+snapshots under App and configures the hidden foreground after releasing it.
+Sync preserves hide/reprepare on a pending show, prepare → shared material update
+→ warm/show → shared fallback ordering, and geometry sync otherwise. Every native
+mutation is outside App/entity/runtime borrows. Indicator failure disables/hides
+only the indicator and clears its shared presentation, not dictation. Normal close
+hides and drops the shell (subclass/material/context) before removing the GPUI
+foreground. Task cancellation retains Shell's existing non-reentrant Drop path;
+this extraction does not add native foreground calls during App teardown.
+
+## Paste-target ownership
+
+Application contracts `Dictation<C, T>`, `Submission<A, T>`,
+`Transcription<A, T>`, `TranscriptionEvent<T>` and `Paste<T>` carry an uninterpreted
+adapter-owned target by value; they impose no native representation, `Copy`,
+`Clone`, `Default`, GUI or OS dependency. A recording retains its Start target;
+Stop's current target is discarded. Debounced/busy/rejected commands, cancellation,
+shutdown, failed submission and stale results release their targets normally.
+
+Windows `paste/windows.rs::FocusTarget` privately stores a borrowed foreground
+snapshot. It is captured before tray activation or in the hotkey callback, moved
+through the inbox/runtime/active recording/pending worker submission, then returned
+with a matching completion to `ClipboardPaste`. It never crosses worker IPC or
+settings serialization. Worker failure/release drops its pending target alongside
+audio. It does not own or keep another application's window alive. Restoration
+is best-effort via Windows validation; failure preserves the existing current-focus
+fallback. A null/current target requests no restoration. Clipboard retries,
+Unicode handling, modifier cleanup and session checks are unchanged. Handle reuse
+is not prevented by this snapshot; this refactor does not strengthen OS identity
+guarantees. Numeric representation is confined to the Windows focus adapter.
+The clipboard owner, Unicode allocation, retry/backoff and SendInput implementation
+now live in `paste/windows/clipboard.rs`, selected by `paste.rs`. Native hotkey
+registration/hook state is selected through `hotkey.rs` from `hotkey/windows.rs`.
+
+## Worker transport and native process ownership
+
+`worker.rs` owns readiness/device policy, generation/request/session validation,
+deadlines, residency and the pending application submission. It has no Win32 API,
+raw handle or native process-field access. Its selected `worker/windows.rs::Process`
+owns the child, kill-on-close Job Object, stdin, bounded response receiver and
+reader join handles. Its narrow operations are spawn/send/poll/working-set bytes;
+native fields are private. `worker/transport.rs` shares bounded protocol response
+decoding with a single sixteen-entry limit; overflow stops the producer without
+blocking and eventually disconnects after queued responses drain.
+
+Launch remains no-console, from `<exe-dir>/runtime/voicepaste-stt-worker.exe`, with
+runtime cwd and System32-only inherited DLL PATH. The child waits for Initialize;
+job-assignment failure kills/waits only this owned child. The process owner is now
+established before fallible pipe/thread setup, closing a pre-existing partial-setup
+reaping gap. Normal release requests Shutdown, closes stdin, waits up to 500 ms
+before killing/waiting, closes the job before joining readers, then drops pending
+audio/target. **The 500 ms bound is only the post-send wait:** synchronous stdin
+write and joins have no independent hard deadline; loaded-worker/fault-path
+qualification remains open, not proved by the owned child test fixture.
+
+`memory.rs` formats separate host/worker byte measurements; only
+`memory/windows.rs` probes native handles borrowed from `Child` or the current
+process. `diagnostics.rs` owns existing best-effort temp-path log rotation;
+Storage's logging methods delegate for existing consumers. `launch/windows.rs`
+owns parent-console/redirection handling and GUI startup-error dialogs; main
+retains CLI routing but no native API calls. Artwork/state/AND-mask calculation
+stays in `tray_icons.rs`; native HICON allocation and monitor DPI probing live in
+`tray_icons/windows.rs`, resource icons in `application_icon/windows.rs`.
 
 ## Storage and build inputs
 
@@ -64,6 +168,25 @@ Settings, models and temporary session data are under `<exe-dir>/data/`;
 diagnostics are `%TEMP%/VoicePaste/voicepaste.log`. Existing config is never reseeded
 on upgrade. Public defaults and the pinned model catalog live in
 `crates/core/assets/`; private prompts belong only in app-local configuration.
+
+`files/windows.rs` implements exclusive sharing, stable read handles and durable
+publication through a small compile-time-selected `files.rs` boundary. Storage
+owns validation, portable paths, lock/temporary-file lifetime and Save ordering;
+`startup/windows.rs` owns the exact prior Run-value snapshot/rollback. Config
+replacement and model replacement-with-backup remain distinct operations, not a
+universal retry/publication policy. `models.rs` retains provisioning, pinned
+hashes, partial/resume/cancel and backup-name policy. `models/http/windows.rs`
+owns synchronous WinHTTP handles/TLS/timeouts on the provisioning thread;
+Content-Range validation is shared in `models/http.rs`. Receipt JSON and v1 native
+timestamp values are unchanged; `models/windows.rs` extracts the Windows stamps.
+Future ports must invalidate/reverify incompatible receipts, not reinterpret them.
+
+All host Win32/Windows/raw-window-handle API imports now reside in Windows-selected
+modules, with native dependencies target-scoped. Shared policy/UI modules have a
+source-level regression guard (`adapters/boundaries.rs`); it is not a non-Windows
+build test. The host explicitly rejects unsupported OS builds rather than providing
+successful no-op adapters. GPUI/CPAL/SQLite and the ML/native build/packaging still
+require real target qualification; this architecture is not implemented ports.
 
 Transcription measurements are pure core types. The resident worker separately
 measures engine loading, VAD filtering, log-mel preparation and the prepared-input-
@@ -78,6 +201,9 @@ installed runtime. Statistics failure does not fail transcription or paste.
 
 `cargo xtask` owns native preparation, checks and packaging; the root BAT only
 launches the same Rust task used on CI. Its native lock is `xtask/native-inputs.json`.
+Nested Cargo builds exclude only the already-running, non-product `xtask` binary
+to avoid Windows executable self-rebuild locking; workspace tests/clippy still
+include it. No copied-xtask launcher is required for this fix.
 Complete runnable profiles live only in `build/debug/` and `build/release/`;
 archives live in `build/package/`. Cargo/native/tooling/staging files belong to `build/cache/`.
 No additional shell interpreter, Python installation or legacy application supplies build logic.

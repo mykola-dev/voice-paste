@@ -31,8 +31,8 @@ the requested master–detail view has compact left navigation for Hotkeys
 (startup/residency/memory/logging). Horizontal tabs were rejected and removed.
 Owned inputs and individual page scroll handles survive navigation; Save/Cancel
 apply to the whole draft. The detail panel reflows based on its available width,
-not the full window width. The System memory report uses four readable rows and
-explains combined resident RAM/shared-page double counting without `WS sum` jargon.
+not the full window width. The System memory report shows host and worker
+separately, without a combined total or a fabricated GPU-memory value.
 Each detail page has just one bold heading; fields/groups do not repeat section
 headings. Keep in memory and the readable memory report both live under System.
 The live model status appears below the Model dropdown in Transcription, not in
@@ -57,7 +57,7 @@ Save validates centrally, reserves a new hotkey before persisting and rolls back
 the reservation on failure. Config replacement is atomic and exclusively locked.
 Active dictation retains its settings snapshot; new worker options/model/residency
 apply at the next idle boundary before another recording starts. Cancel never
-saves. Live VRAM reports unavailable until a native per-process provider is added.
+saves. GPU memory is not displayed.
 
 Latest feedback corrections: hotkey is a dropdown (ScrollLock, Numpad0, Right Alt,
 Right Ctrl, F8, F12); existing custom config keys are preserved until changed.
@@ -66,18 +66,19 @@ cross-Rust-instance reservations, side distinction and autorepeat suppression.
 Left tray click opens Settings; right click opens the unchanged context menu.
 The open-mouth raster `apps/voicepaste/assets/icon.ico` is embedded as resource 1,
 which GPUI's Windows backend also uses for its window/taskbar icon. Default tray
-states use a toothy smile (idle), open mouth (recording), and bitten lip
-(transcribing), at native DPI sizes; provenance in `assets/tray/README.md`.
+states use bitten lips (idle) and an open mouth (recording, transcribing or model
+preparation), at native DPI sizes; provenance in `assets/tray/README.md`.
 
 Settings includes opt-in **Start VoicePaste when I sign in**. Save writes a quoted
 absolute EXE command to current-user `HKCU/.../CurrentVersion/Run/VoicePasteRust`;
 no elevation/shell/legacy registration changes. Cancel does nothing. A failed
 config replacement restores the prior Run value. Old/frozen configs default off.
-RAM now always measures the host plus any worker, separately, with a labeled
-working-set sum (shared pages can overlap). This is a reporting fix, not savings.
+RAM measures the host and any worker separately, without a working-set sum.
+This is a reporting policy, not a claim of memory savings.
 Logs use `%TEMP%/VoicePaste/voicepaste.log`, explicitly requested instead of the
-portable log path. Overlay body alpha is 200/255 instead of 224/255; text,
-waveform and red-dot opacity/timing are unchanged.
+portable log path. Overlay background alpha follows the shared transparency
+setting (57% by default); foreground text, waveform and red-dot opacity/timing
+are independent of the background material.
 
 UI-open host-only sample (settings-only, no worker): 78.18 MiB working set,
 104.41 MiB private commit. GPUI adds UI cost; this is not an inference-memory
@@ -117,14 +118,23 @@ acceptance remains necessary. macOS/Linux ports are not part of this change.
 one interactive paste test ignored). A complete portable Debug build was deployed
 to `build/debug/` and its config-only `--check` passed. No interactive recording,
 focus/menu/DPI visual acceptance was performed; the running Release was not updated.
-The existing copied xtask runner under `build/cache/xtask-runner/` was used to
-avoid the separately tracked Windows xtask self-rebuild lock.
+That historical validation used a copied xtask runner under `build/cache/xtask-runner/`.
+The self-rebuild lock is now fixed in the normal nested Cargo build; copying the
+runner is no longer needed. Current source-isolation validation is recorded in
+the [cross-platform roadmap](../../docs/cross-platform-roadmap.md).
 
 Follow-up blur regression: geometry/DPI synchronization used to raise the backdrop
 above the GPUI foreground, blurring the indicator itself. Backdrop placement now
 preserves Z-order (`SWP_NOZORDER`); a hidden native relative-order regression was
 added. Follow-up fmt/test/clippy passed (97 tests, one interactive test ignored).
 Visual acceptance must be repeated; previous migration checks did not catch this.
+
+Native effects are now selected in Windows-specific modules: worker child/job/
+pipes, durable file publication/locking, WinHTTP, startup registry transactions,
+focus/clipboard/input, memory probes and console/error/icon integration. Shared
+GPUI views and policy coordination carry no native handles. See
+[architecture](../../docs/architecture.md) for ownership and remaining limits;
+this does not implement or qualify macOS/Linux ports.
 
 ```powershell
 cargo xtask fetch                 # pinned Cargo.lock dependencies
@@ -150,8 +160,8 @@ also creates portable ZIPs; see [the build guide](../../docs/build-windows.md).
 First `--check` seeds `data/config.json`. If legacy owns ScrollLock, interactive
 launch fails clearly rather than taking over; quit legacy yourself or change
 **only the Rust hotkey** (for example to F8) using `--settings`. This setup mode
-does not reserve the old hotkey or start model work; Save checks the chosen key
-and exits after applying settings. No automatic rebind or legacy termination.
+does not reserve the old hotkey or start model work; Save checks the chosen key.
+OK closes on success; Apply keeps the draft open. No automatic rebind or legacy termination.
 
 Historical validation before the GPUI overlay migration: build/fmt/clippy,
 **39 tests** plus the then-existing opt-in native-menu animation and interactive paste tests,

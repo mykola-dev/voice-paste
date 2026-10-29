@@ -1,17 +1,9 @@
-use super::{audio::AudioFile, storage::Storage};
+use super::{audio::AudioFile, paste::FocusTarget, storage::Storage};
 use std::{
     fs::OpenOptions,
-    io::{BufReader, Read, Write},
-    mem::{size_of, zeroed},
-    os::windows::{io::AsRawHandle, process::CommandExt},
-    path::PathBuf,
-    process::{Child, ChildStdin, Command, Stdio},
-    ptr::null,
-    sync::{
-        Arc,
-        mpsc::{self, Receiver},
-    },
-    thread::{self, JoinHandle},
+    io::Write,
+    sync::{Arc, mpsc},
+    thread,
     time::{Duration, Instant},
 };
 use voicepaste_application::{Submission, Transcription, TranscriptionEvent};
@@ -20,160 +12,11 @@ use voicepaste_core::{
     settings::{Settings, TranscriptionOptions},
 };
 use voicepaste_protocol::{Generation, Request, RequestId, Response, VERSION};
-use windows_sys::Win32::{Foundation::*, System::JobObjects::*};
-
-struct Job(HANDLE);
-impl Drop for Job {
-    fn drop(&mut self) {
-        /* SAFETY: owned kill-on-close job, containing only our child. */
-        unsafe {
-            CloseHandle(self.0);
-        }
-    }
-}
-impl Job {
-    fn new() -> Result<Self, String> {
-        // SAFETY: zero-initialized POD, owned handle configured before assignment.
-        unsafe {
-            let handle = CreateJobObjectW(null(), null());
-            if handle.is_null() {
-                return Err(std::io::Error::last_os_error().to_string());
-            }
-            let job = Self(handle);
-            let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = zeroed();
-            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-            if SetInformationJobObject(
-                handle,
-                JobObjectExtendedLimitInformation,
-                (&info as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast(),
-                size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
-            ) == 0
-            {
-                return Err(std::io::Error::last_os_error().to_string());
-            }
-            Ok(job)
-        }
-    }
-}
-
-struct Process {
-    child: Child,
-    job: Option<Job>,
-    stdin: Option<ChildStdin>,
-    responses: Receiver<Result<Response, String>>,
-    readers: Vec<JoinHandle<()>>,
-}
-impl Process {
-    fn spawn(storage: &Arc<Storage>) -> Result<Self, String> {
-        let runtime = storage.root.join("runtime");
-        let job = Job::new()?;
-        let mut child = Command::new(runtime.join("voicepaste-stt-worker.exe"))
-            .current_dir(&runtime)
-            .creation_flags(0x08000000)
-            .env(
-                "PATH",
-                std::env::var_os("SystemRoot")
-                    .map(PathBuf::from)
-                    .ok_or("SystemRoot missing")?
-                    .join("System32"),
-            )
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("Cannot launch native STT worker: {e}"))?;
-        // SAFETY: handle refers to our newly spawned child, waiting for Initialize
-        // on stdin. Parent exit closes pipes even before job assignment completes.
-        if unsafe { AssignProcessToJobObject(job.0, child.as_raw_handle()) } == 0 {
-            let error = std::io::Error::last_os_error();
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(format!("Cannot own STT worker job: {error}"));
-        }
-        let (sender, responses) = mpsc::sync_channel(16);
-        let stdout = child.stdout.take().ok_or("Worker stdout missing")?;
-        let mut stderr = child.stderr.take().ok_or("Worker stderr missing")?;
-        let stdin = child.stdin.take();
-        let mut process = Self {
-            child,
-            job: Some(job),
-            stdin,
-            responses,
-            readers: Vec::new(),
-        };
-        process.readers.push(
-            thread::Builder::new()
-                .name("stt-stdout".into())
-                .spawn(move || {
-                    let mut stdout = BufReader::new(stdout);
-                    loop {
-                        match voicepaste_protocol::read::<Response>(&mut stdout) {
-                            Ok(Some(response)) => {
-                                if sender.try_send(Ok(response)).is_err() {
-                                    break;
-                                }
-                            }
-                            result => {
-                                let error = match result {
-                                    Err(error) => error,
-                                    _ => "Native worker output closed".into(),
-                                };
-                                let _ = sender.try_send(Err(error));
-                                break;
-                            }
-                        }
-                    }
-                })
-                .map_err(|e| e.to_string())?,
-        );
-        let storage = storage.clone();
-        process.readers.push(
-            thread::Builder::new()
-                .name("stt-stderr".into())
-                .spawn(move || {
-                    let mut buffer = [0u8; 4096];
-                    loop {
-                        match stderr.read(&mut buffer) {
-                            Ok(0) | Err(_) => break,
-                            Ok(count) => storage.log(&format!(
-                                "STT: {}",
-                                String::from_utf8_lossy(&buffer[..count])
-                            )),
-                        }
-                    }
-                })
-                .map_err(|e| e.to_string())?,
-        );
-        Ok(process)
-    }
-    fn send(&mut self, request: &Request) -> Result<(), String> {
-        voicepaste_protocol::write(self.stdin.as_mut().ok_or("Worker stdin closed")?, request)
-    }
-}
-impl Drop for Process {
-    fn drop(&mut self) {
-        let _ = self.send(&Request::Shutdown);
-        drop(self.stdin.take());
-        let deadline = Instant::now() + Duration::from_millis(500);
-        loop {
-            match self.child.try_wait() {
-                Ok(Some(_)) => break,
-                _ if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
-                _ => {
-                    let _ = self.child.kill();
-                    let _ = self.child.wait();
-                    break;
-                }
-            }
-        }
-        // Close the job before joining readers: any owned descendant inheriting
-        // a pipe must also exit, otherwise EOF could wait on that descendant.
-        drop(self.job.take());
-        for reader in self.readers.drain(..) {
-            let _ = reader.join();
-        }
-    }
-}
+mod transport;
+#[cfg(target_os = "windows")]
+mod windows;
+#[cfg(target_os = "windows")]
+use windows::Process;
 
 pub struct Worker {
     storage: Arc<Storage>,
@@ -185,7 +28,7 @@ pub struct Worker {
     statistics_filter: Option<voicepaste_core::statistics::Filter>,
     options: Option<TranscriptionOptions>,
     model: String,
-    pending: Option<(RequestId, Submission<AudioFile>)>,
+    pending: Option<(RequestId, Submission<AudioFile, FocusTarget>)>,
     sent: bool,
     deadline: Option<Instant>,
 }
@@ -223,7 +66,7 @@ impl Worker {
             .0
             .checked_add(1)
             .ok_or("Worker generation exhausted")?;
-        let mut process = Process::spawn(&self.storage)?;
+        let mut process = Process::spawn(&self.storage.root)?;
         process.send(&Request::Initialize {
             version: VERSION,
             generation: self.generation,
@@ -257,7 +100,7 @@ impl Worker {
         }
         Ok(())
     }
-    fn failed(&mut self, message: String) -> TranscriptionEvent {
+    fn failed(&mut self, message: String) -> TranscriptionEvent<FocusTarget> {
         let session = self.pending.as_ref().map(|(_, s)| s.session);
         self.release();
         TranscriptionEvent::Failed { session, message }
@@ -265,9 +108,7 @@ impl Worker {
 
     pub fn memory_status(&self) -> String {
         super::memory::status(
-            self.process
-                .as_ref()
-                .map(|process| process.child.as_raw_handle()),
+            self.process.as_ref().map(Process::working_set).transpose(),
             self.ready,
         )
     }
@@ -298,7 +139,7 @@ impl Worker {
             session: SessionId(1),
             audio: owned,
             settings: settings.clone(),
-            target: 0,
+            target: FocusTarget::current(),
         })?;
         loop {
             match self.poll() {
@@ -310,11 +151,11 @@ impl Worker {
     }
 }
 
-impl Transcription<AudioFile> for Worker {
+impl Transcription<AudioFile, FocusTarget> for Worker {
     fn preload(&mut self, settings: &Settings) -> Result<(), String> {
         self.initialize(settings)
     }
-    fn submit(&mut self, submission: Submission<AudioFile>) -> Result<(), String> {
+    fn submit(&mut self, submission: Submission<AudioFile, FocusTarget>) -> Result<(), String> {
         if self.pending.is_some() {
             return Err("Transcription already in progress".into());
         }
@@ -330,14 +171,14 @@ impl Transcription<AudioFile> for Worker {
         }
         Ok(())
     }
-    fn poll(&mut self) -> Option<TranscriptionEvent> {
+    fn poll(&mut self) -> Option<TranscriptionEvent<FocusTarget>> {
         if self
             .deadline
             .is_some_and(|deadline| Instant::now() >= deadline)
         {
             return Some(self.failed("Native worker timed out".into()));
         }
-        let result = match self.process.as_ref()?.responses.try_recv() {
+        let result = match self.process.as_ref()?.poll() {
             Ok(response) => response,
             Err(mpsc::TryRecvError::Empty) => return None,
             Err(mpsc::TryRecvError::Disconnected) => {
@@ -348,6 +189,22 @@ impl Transcription<AudioFile> for Worker {
             Ok(response) => response,
             Err(error) => return Some(self.failed(error)),
         };
+        self.receive(response)
+    }
+    fn release(&mut self) {
+        // Kill/join child before dropping the audio file it could still be using.
+        drop(self.process.take());
+        drop(self.pending.take());
+        self.ready = false;
+        self.actual_device.clear();
+        self.statistics_filter = None;
+        self.sent = false;
+        self.deadline = None;
+    }
+}
+
+impl Worker {
+    fn receive(&mut self, response: Response) -> Option<TranscriptionEvent<FocusTarget>> {
         match response {
             Response::Ready {
                 version,
@@ -453,19 +310,158 @@ impl Transcription<AudioFile> for Worker {
             }
         }
     }
-    fn release(&mut self) {
-        // Kill/join child before dropping the audio file it could still be using.
-        drop(self.process.take());
-        drop(self.pending.take());
-        self.ready = false;
-        self.actual_device.clear();
-        self.statistics_filter = None;
-        self.sent = false;
-        self.deadline = None;
-    }
 }
 impl Drop for Worker {
     fn drop(&mut self) {
         self.release();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        fs,
+        path::PathBuf,
+        sync::atomic::{AtomicU64, Ordering},
+    };
+    use voicepaste_core::{settings::Device, statistics::Measurement};
+
+    struct Fixture {
+        worker: Worker,
+        root: PathBuf,
+    }
+    impl Fixture {
+        fn new() -> Self {
+            static NEXT: AtomicU64 = AtomicU64::new(0);
+            let root = std::env::current_exe()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .join(format!(
+                    "worker-state-test-{}-{}",
+                    std::process::id(),
+                    NEXT.fetch_add(1, Ordering::Relaxed)
+                ));
+            fs::create_dir(&root).unwrap();
+            let storage = Arc::new(Storage::open(&root).unwrap());
+            let mut worker = Worker::new(storage);
+            worker.generation = Generation(7);
+            worker.options = Some(TranscriptionOptions::from(&worker.storage.settings));
+            Self { worker, root }
+        }
+        fn pending(&mut self) -> PathBuf {
+            let path = self.worker.storage.temp.join("owned.wav");
+            fs::write(&path, b"owned audio fixture, not microphone data").unwrap();
+            self.worker.pending = Some((
+                RequestId(11),
+                Submission {
+                    session: SessionId(3),
+                    audio: AudioFile { path: path.clone() },
+                    settings: self.worker.storage.settings.clone(),
+                    target: FocusTarget::current(),
+                },
+            ));
+            self.worker.sent = true;
+            self.worker.ready = true;
+            self.worker.actual_device = "cpu".into();
+            path
+        }
+    }
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            self.worker.release();
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+
+    fn result(generation: u64, request: u64, session: u64) -> Response {
+        Response::Result {
+            generation: Generation(generation),
+            id: RequestId(request),
+            session: SessionId(session),
+            text: "Привіт, бро".into(),
+            measurement: Measurement {
+                inference_us: 100,
+                audio_samples: 16000,
+                vad_us: None,
+                preparation_us: Some(20),
+            },
+        }
+    }
+
+    #[test]
+    fn matching_result_returns_metadata_and_releases_audio_without_paste() {
+        let mut fixture = Fixture::new();
+        let audio = fixture.pending();
+        let event = fixture.worker.receive(result(7, 11, 3));
+        assert!(
+            matches!(event, Some(TranscriptionEvent::Completed { session: SessionId(3), text, statistics: Some(_), .. }) if text == "Привіт, бро")
+        );
+        assert!(!audio.exists());
+        assert!(fixture.worker.pending.is_none());
+        assert!(fixture.worker.deadline.is_none());
+        assert!(!fixture.worker.sent);
+    }
+
+    #[test]
+    fn stale_generation_request_or_session_fail_and_release_pending_audio() {
+        for ids in [(6, 11, 3), (7, 10, 3), (7, 11, 2)] {
+            let mut fixture = Fixture::new();
+            let audio = fixture.pending();
+            assert!(matches!(
+                fixture.worker.receive(result(ids.0, ids.1, ids.2)),
+                Some(TranscriptionEvent::Failed {
+                    session: Some(SessionId(3)),
+                    ..
+                })
+            ));
+            assert!(!audio.exists());
+            assert!(!fixture.worker.ready);
+        }
+    }
+
+    #[test]
+    fn invalid_readiness_and_cuda_policy_fail_without_submission() {
+        for (version, generation, mels, device) in [
+            (VERSION + 1, 7, 80, "cuda"),
+            (VERSION, 6, 80, "cuda"),
+            (VERSION, 7, 81, "cuda"),
+            (VERSION, 7, 80, "cpu"),
+            (VERSION, 7, 80, "unknown"),
+        ] {
+            let mut fixture = Fixture::new();
+            fixture.worker.options.as_mut().unwrap().device = Device::CudaOnly;
+            assert!(matches!(
+                fixture.worker.receive(Response::Ready {
+                    version,
+                    generation: Generation(generation),
+                    mels,
+                    device: device.into(),
+                    model_loading_us: 20,
+                }),
+                Some(TranscriptionEvent::Failed { session: None, .. })
+            ));
+            assert!(!fixture.worker.ready);
+        }
+    }
+
+    #[test]
+    fn timeout_and_explicit_release_clear_owned_submission() {
+        let mut fixture = Fixture::new();
+        let audio = fixture.pending();
+        fixture.worker.deadline = Some(Instant::now());
+        assert!(matches!(
+            fixture.worker.poll(),
+            Some(TranscriptionEvent::Failed {
+                session: Some(SessionId(3)),
+                ..
+            })
+        ));
+        assert!(!audio.exists());
+        let audio = fixture.pending();
+        fixture.worker.release();
+        assert!(!audio.exists());
+        assert!(fixture.worker.poll().is_none());
     }
 }

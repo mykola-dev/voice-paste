@@ -3,9 +3,9 @@ fn main() {
     println!("cargo:rerun-if-env-changed=VOICEPASTE_CT2_INCLUDE");
     println!("cargo:rerun-if-env-changed=VOICEPASTE_CT2_LIB");
     let include = std::env::var("VOICEPASTE_CT2_INCLUDE")
-        .expect("Use scripts/build-rust.ps1: matching CT2 4.7.1 headers required");
+        .expect("Use cargo xtask build: matching CT2 4.7.1 headers required");
     let library = std::env::var("VOICEPASTE_CT2_LIB")
-        .expect("Use scripts/build-rust.ps1: CT2 import library required");
+        .expect("Use cargo xtask build: CT2 import library required");
     cc::Build::new()
         .cpp(true)
         .std("c++17")

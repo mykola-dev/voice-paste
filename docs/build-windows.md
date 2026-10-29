@@ -73,6 +73,9 @@ cargo xtask verify --archive build/package/VoicePaste-2.0.0-windows-x86_64.zip
 process and packaging modules. It never depends on application/native ML crates.
 Its tests can run on Windows/Linux/macOS (`cargo test --locked -p xtask`), but
 application compilation/packaging currently requires Windows x64 with MSVC.
+Nested builds exclude the already-running `xtask` executable to avoid Windows
+self-rebuild locking; tests/clippy still cover the whole workspace. No copied
+build-tool executable or alternate runnable output folder is needed.
 
 Native inputs are SHA-256-pinned in `xtask/native-inputs.json`, cached under
 `build/cache/upstream-native/` and prepared into `build/cache/prepared-native/`.
@@ -125,8 +128,10 @@ remains distinct from automated tests.
 
 ## Status and documentation
 
-Windows is the current target. Linux/macOS boundaries are being prepared; neither
-port is implemented. Reproducible native source builds, redistribution closure,
+Windows is the current target. Native host effects are isolated behind Windows
+module selection; [cross-platform readiness](cross-platform-roadmap.md) records
+the boundaries and validation. Neither Linux nor macOS port is implemented.
+Reproducible native source builds, redistribution closure,
 equivalent-state memory comparison and some device/model/interaction qualification
 remain open. A GPUI shutdown drop-order deadlock is fixed and has a bounded
 process regression; loaded-worker/busy shutdown qualification remains open.
@@ -144,7 +149,7 @@ only the test's own process. It never stops a running user instance.
 - [Native worker and build inputs](../apps/stt-worker/README.md)
 - [Behavior contract](behavior.md)
 - [Architecture](architecture.md)
-- [Outstanding work and validation](../RustMigration/TODO.md)
+- [Outstanding work and validation](../TODO.md)
 - [Documentation index](README.md)
 
 ## GitHub release automation

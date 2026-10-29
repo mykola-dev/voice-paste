@@ -5,11 +5,13 @@ use voicepaste_core::{
     settings::{PasteShortcut, Settings},
 };
 
-pub trait Paste {
-    fn paste(&mut self, text: &str, target: usize, shortcut: PasteShortcut) -> Result<(), String>;
+/// The consumer carries an adapter-owned target by value, without interpreting
+/// it. No native handles, cloning or ownership of another app's window required.
+pub trait Paste<T> {
+    fn paste(&mut self, text: &str, target: T, shortcut: PasteShortcut) -> Result<(), String>;
 }
 
-pub enum TranscriptionEvent {
+pub enum TranscriptionEvent<T> {
     Ready {
         device: String,
         statistics: Option<voicepaste_core::statistics::ModelLoad>,
@@ -17,7 +19,7 @@ pub enum TranscriptionEvent {
     Completed {
         session: SessionId,
         text: String,
-        target: usize,
+        target: T,
         shortcut: PasteShortcut,
         statistics: Option<voicepaste_core::statistics::Sample>,
     },
@@ -27,10 +29,10 @@ pub enum TranscriptionEvent {
     },
 }
 
-pub trait Transcription<A> {
+pub trait Transcription<A, T> {
     fn preload(&mut self, settings: &Settings) -> Result<(), String>;
-    fn submit(&mut self, submission: Submission<A>) -> Result<(), String>;
-    fn poll(&mut self) -> Option<TranscriptionEvent>;
+    fn submit(&mut self, submission: Submission<A, T>) -> Result<(), String>;
+    fn poll(&mut self) -> Option<TranscriptionEvent<T>>;
     fn release(&mut self);
 }
 
@@ -43,29 +45,29 @@ pub trait AudioCapture {
     fn failed(&self, recording: &Self::Recording) -> bool;
 }
 
-pub struct Submission<A> {
+pub struct Submission<A, T> {
     pub session: SessionId,
     pub audio: A,
     pub settings: Settings,
-    pub target: usize,
+    pub target: T,
 }
 
-struct Active<R> {
+struct Active<R, T> {
     id: SessionId,
     recording: R,
     settings: Settings,
-    target: usize,
+    target: T,
 }
 
-pub struct Dictation<C: AudioCapture> {
+pub struct Dictation<C: AudioCapture, T> {
     capture: C,
     state: State,
-    active: Option<Active<C::Recording>>,
+    active: Option<Active<C::Recording, T>>,
     next_id: u64,
     last_toggle: Option<Duration>,
 }
 
-impl<C: AudioCapture> Dictation<C> {
+impl<C: AudioCapture, T> Dictation<C, T> {
     pub fn new(capture: C) -> Self {
         Self {
             capture,
@@ -88,8 +90,8 @@ impl<C: AudioCapture> Dictation<C> {
         &mut self,
         now: Duration,
         settings: &Settings,
-        target: usize,
-    ) -> Result<Option<Submission<C::Audio>>, String> {
+        target: T,
+    ) -> Result<Option<Submission<C::Audio, T>>, String> {
         if self
             .last_toggle
             .is_some_and(|last| now.saturating_sub(last) < Duration::from_millis(300))
@@ -156,9 +158,9 @@ impl<C: AudioCapture> Dictation<C> {
         &mut self,
         id: SessionId,
         text: &str,
-        target: usize,
+        target: T,
         shortcut: PasteShortcut,
-        paste: &mut impl Paste,
+        paste: &mut impl Paste<T>,
     ) -> Result<bool, String> {
         if !self.complete(id) {
             return Ok(false);
@@ -182,11 +184,96 @@ impl<C: AudioCapture> Dictation<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{cell::RefCell, rc::Rc};
+
+    // Intentionally neither Copy, Clone nor Default, and not an OS identifier.
+    struct Target {
+        name: &'static str,
+        released: Rc<RefCell<Vec<&'static str>>>,
+    }
+    impl Drop for Target {
+        fn drop(&mut self) {
+            self.released.borrow_mut().push(self.name);
+        }
+    }
+    struct TargetPaste(Vec<&'static str>);
+    impl Paste<Target> for TargetPaste {
+        fn paste(&mut self, _: &str, target: Target, _: PasteShortcut) -> Result<(), String> {
+            self.0.push(target.name);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn opaque_target_moves_from_start_through_completion_and_is_released_once() {
+        let released = Rc::new(RefCell::new(Vec::new()));
+        let target = |name| Target {
+            name,
+            released: released.clone(),
+        };
+        let settings = Settings::initial().unwrap();
+        let mut app = Dictation::new(Capture);
+        let mut paste = TargetPaste(Vec::new());
+        app.toggle(Duration::ZERO, &settings, target("start"))
+            .unwrap();
+        app.toggle(Duration::from_millis(10), &settings, target("debounced"))
+            .unwrap();
+        let submission = app
+            .toggle(Duration::from_secs(1), &settings, target("stop"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(&*released.borrow(), &["debounced", "stop"]);
+        assert_eq!(submission.target.name, "start");
+        assert!(
+            !app.deliver(
+                SessionId(99),
+                "stale",
+                target("stale"),
+                settings.paste_shortcut,
+                &mut paste
+            )
+            .unwrap()
+        );
+        assert!(paste.0.is_empty());
+        assert!(
+            app.deliver(
+                submission.session,
+                "Привіт",
+                submission.target,
+                settings.paste_shortcut,
+                &mut paste
+            )
+            .unwrap()
+        );
+        assert_eq!(paste.0, ["start"]);
+        assert_eq!(
+            &*released.borrow(),
+            &["debounced", "stop", "stale", "start"]
+        );
+    }
+
+    #[test]
+    fn cancel_and_shutdown_release_owned_targets_without_paste() {
+        let released = Rc::new(RefCell::new(Vec::new()));
+        let target = |name| Target {
+            name,
+            released: released.clone(),
+        };
+        let settings = Settings::initial().unwrap();
+        let mut app = Dictation::new(Capture);
+        app.toggle(Duration::ZERO, &settings, target("cancel"))
+            .unwrap();
+        app.cancel(SessionId(1)).unwrap();
+        app.toggle(Duration::from_secs(1), &settings, target("shutdown"))
+            .unwrap();
+        app.shutdown().unwrap();
+        assert_eq!(&*released.borrow(), &["cancel", "shutdown"]);
+    }
     struct Clipboard {
         calls: usize,
         fail: bool,
     }
-    impl Paste for Clipboard {
+    impl Paste<usize> for Clipboard {
         fn paste(&mut self, _: &str, _: usize, _: PasteShortcut) -> Result<(), String> {
             self.calls += 1;
             if self.fail {

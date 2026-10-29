@@ -37,7 +37,7 @@
   residency reductions merely to manufacture memory savings.
 - IPC is serialized, bounded, versioned and session/request/generation-tagged;
   readiness/result deadlines, bounded stderr, process ownership and shutdown are
-  explicit. Remaining lifecycle defects/qualification are in [TODO](../RustMigration/TODO.md).
+  explicit. Remaining lifecycle defects/qualification are in [TODO](../TODO.md).
 
 ## Settings and appearance
 

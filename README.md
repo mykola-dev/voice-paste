@@ -53,6 +53,6 @@ No PowerShell or Bash is needed. See the
 
 <p align="center">
   <a href="docs/README.md">📖 Documentation</a> ·
-  <a href="RustMigration/TODO.md">🚧 Known issues &amp; unfinished work</a> ·
+  <a href="TODO.md">🚧 Known issues &amp; unfinished work</a> ·
   <a href="https://github.com/mykola-dev/voice-agent/issues">🐛 Report a bug</a>
 </p>

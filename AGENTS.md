@@ -10,7 +10,8 @@
   in `crates/core/assets/default-settings.json`. Preserve
   existing saved user prompts; public defaults intentionally contain none.
   Numbered legacy specifications in `docs/` are historical; the named Rust guides
-  are current. Prototype source was removed; open work is `RustMigration/TODO.md`.
+  are current. Prototype source was removed; open work is `TODO.md`
+  (`RustMigration/TODO.md` is a compatibility link).
 - Record defects instead of copying them or silently changing visible behavior.
 
 ## Engineering rules

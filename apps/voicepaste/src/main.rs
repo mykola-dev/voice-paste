@@ -1,4 +1,8 @@
-#![cfg_attr(not(test), windows_subsystem = "windows")]
+#![cfg_attr(all(not(test), target_os = "windows"), windows_subsystem = "windows")]
+#[cfg(not(target_os = "windows"))]
+compile_error!(
+    "VoicePaste host adapters currently support Windows only; macOS/Linux ports are not implemented"
+);
 #[cfg(test)]
 extern crate gpui_kit as gpui;
 mod adapters;
@@ -83,23 +87,7 @@ fn main() -> std::process::ExitCode {
         .skip(1)
         .any(|arg| arg != "--settings" && arg != "--capture-preview");
     if cli {
-        // SAFETY: inspect inherited handles without owning/closing them. Attaching
-        // resets standard handles, so preserve explicit file/pipe redirection.
-        unsafe {
-            use windows_sys::Win32::{
-                Storage::FileSystem::{FILE_TYPE_DISK, FILE_TYPE_PIPE, GetFileType},
-                System::Console::*,
-            };
-            let redirected = [STD_OUTPUT_HANDLE, STD_ERROR_HANDLE].into_iter().any(|id| {
-                matches!(
-                    GetFileType(GetStdHandle(id)),
-                    FILE_TYPE_DISK | FILE_TYPE_PIPE
-                )
-            });
-            if !redirected {
-                AttachConsole(ATTACH_PARENT_PROCESS);
-            }
-        }
+        adapters::launch::attach_parent_console();
     }
     match run() {
         Ok(()) => std::process::ExitCode::SUCCESS,
@@ -108,20 +96,7 @@ fn main() -> std::process::ExitCode {
             // Startup failure must be visible in every console-free GUI build.
             // This is an explicit error dialog, not a recording overlay.
             if !cli {
-                let message: Vec<u16> = error.encode_utf16().chain(Some(0)).collect();
-                let title: Vec<u16> = "VoicePaste Rust — startup error"
-                    .encode_utf16()
-                    .chain(Some(0))
-                    .collect();
-                // SAFETY: both strings are live, NUL-terminated UTF-16 buffers.
-                unsafe {
-                    windows_sys::Win32::UI::WindowsAndMessaging::MessageBoxW(
-                        std::ptr::null_mut(),
-                        message.as_ptr(),
-                        title.as_ptr(),
-                        0x10,
-                    );
-                }
+                adapters::launch::startup_error(&error);
             }
             std::process::ExitCode::FAILURE
         }
