@@ -55,8 +55,9 @@
 - [ ] Чиста Windows: CPU та driver-only CUDA, реальна inference з packaged
   ORT/CRT, перенесення/розпакування portable. Локальна перевірка hashes/imports/
   ZIP не доводить clean-machine або hardware compatibility.
-- [ ] Підтвердити фактичний GitHub Actions build і draft Release. Workflow
-  реалізовано; review YAML не є запуском CI. Не публікувати без запиту.
+- [ ] Підтвердити фактичний GitHub Actions build і публічний Release. Version tag
+  автоматично публікує реліз після перевірки checksums і завантаження assets;
+  review YAML не є запуском CI. Публікацію погоджено користувачем.
 - [ ] Повний redistribution review: Rust/UI/native licenses, artwork rights,
   model cards і застосовні VS Distributable Code terms. Hash/version/origin/
   license-path inventory уже є, але не замінює юридичну перевірку.

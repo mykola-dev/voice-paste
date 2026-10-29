@@ -156,14 +156,15 @@ only the test's own process. It never stops a running user instance.
 
 Push a tag matching the workspace version, for example `v2.0.0`. The Windows
 workflow builds, runs fmt/tests/clippy, uploads a CI artifact and attaches the ZIP
-and SHA-256 file to a **draft** GitHub Release for review. Manual workflow runs
-produce a CI artifact only. Publishing remains a maintainer decision.
+and SHA-256 file to a GitHub Release, then publishes it automatically as the latest
+release. Manual workflow runs produce a CI artifact only.
 
 No private native bundle or repository approval variables are required. The
 builder acquires pinned official archives and installed MSVC redistributable files,
 validates notices/inventory, checks app-local DLL imports, then verifies the ZIP.
-The tag must exactly match the workspace version. Version tags currently create
-**drafts**, not automatic public releases; maintainers review and publish them.
+The tag must exactly match the workspace version. The release is staged as a
+draft until checksum verification and all asset uploads succeed, then published.
+If uploading fails, the draft remains unpublished; rerun the failed job to retry.
 The workflow never replaces assets of an already published release.
 
 `Source and build-tool checks` tests the build tool on Windows/Linux/macOS without

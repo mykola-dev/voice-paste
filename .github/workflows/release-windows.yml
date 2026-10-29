@@ -41,7 +41,7 @@ jobs:
         with:
           name: VoicePaste-windows-x86_64
           path: release-assets
-      - name: Attach Windows package to draft release
+      - name: Publish Windows release with verified packages
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -57,3 +57,4 @@ jobs:
             exit 1
           fi
           gh release upload "$RELEASE_TAG" release-assets/*.zip release-assets/*.sha256 --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --latest

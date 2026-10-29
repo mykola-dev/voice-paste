@@ -1,7 +1,7 @@
 name: Source and build-tool checks
 on:
   push:
-    branches: [master, Rust]
+    branches: [master]
   pull_request:
   workflow_dispatch:
 

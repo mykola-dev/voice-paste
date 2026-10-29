@@ -51,6 +51,21 @@ Requires Rust and MSVC/Windows SDK; native runtime files are acquired automatica
 No PowerShell or Bash is needed. See the
 [Windows build guide](docs/build-windows.md#build-and-checks-windows-x64).
 
+## 🧰 Stack & acknowledgements
+
+Built with **Rust**, using [GPUI](https://www.gpui.rs/) for GPU-accelerated UI
+and [GPUI Kit](https://github.com/longbridge/gpui-kit) for components and assets.
+Huge thanks to the Zed team, the GPUI Kit developers and all contributors for
+making these open-source tools available! ❤️
+
+## 🗺️ Roadmap
+
+- [ ] macOS port.
+- [ ] Linux port.
+
+Windows is the only currently supported platform. See [TODO.md](TODO.md) for
+known issues and other unfinished work.
+
 <p align="center">
   <a href="docs/README.md">📖 Documentation</a> ·
   <a href="TODO.md">🚧 Known issues &amp; unfinished work</a> ·
