@@ -43,7 +43,11 @@ diagnostics are `%TEMP%/VoicePaste/voicepaste.log`. Existing config is never res
 on upgrade. Public defaults and the pinned model catalog live in
 `crates/core/assets/`; private prompts belong only in app-local configuration.
 
-`scripts/build-rust.ps1` uses explicit native inputs, not Python packages or the
-legacy application. See the [worker prerequisites](../apps/stt-worker/README.md).
+`cargo xtask` owns native preparation, checks and packaging; the root BAT only
+launches the same Rust task used on CI. Its native lock is `xtask/native-inputs.json`.
+Complete runnable profiles live only in `build/debug/` and `build/release/`;
+archives live in `build/package/`. Cargo/native/tooling/staging files belong to `build/cache/`.
+No additional shell interpreter, Python installation or legacy application supplies build logic.
+See the [worker prerequisites](../apps/stt-worker/README.md).
 Reproducible CUDA source builds, complete redistribution inventory and clean-machine
 qualification are still pending; a successful local build does not establish them.

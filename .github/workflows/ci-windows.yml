@@ -1,4 +1,4 @@
-name: Windows source checks
+name: Source and build-tool checks
 on:
   push:
     branches: [master, Rust]
@@ -14,16 +14,17 @@ concurrency:
 
 jobs:
   source:
-    runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2025, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
-      - name: Install pinned formatter
-        shell: pwsh
-        run: rustup toolchain install 1.98.1 --profile minimal --component rustfmt
-      - name: Format and packaging contracts (no native bundle needed)
-        shell: pwsh
-        run: |
-          ./scripts/build-rust.ps1 -Action fmt
-          ./tests/native-inputs.Tests.ps1
-          ./tests/portable-package.Tests.ps1
+      - name: Format (toolchain pinned by rust-toolchain.toml)
+        run: cargo xtask fmt
+      - name: Build-tool and packaging contracts (no native runtime needed)
+        run: cargo test --locked --package xtask
+      - name: Build-tool lint
+        run: cargo clippy --locked --package xtask --all-targets -- -D warnings

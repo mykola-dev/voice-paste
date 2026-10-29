@@ -3,8 +3,8 @@
 param([Parameter(Mandatory)][string]$Executable)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
-$work = Join-Path $root ('build/quit-test-' + [guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory $work | Out-Null
+$work = Join-Path $root ('build/cache/quit-test-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory $work -Force | Out-Null
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;

@@ -108,11 +108,11 @@ Idle stops animation. No new overlay research/probes. Exact visual/mixed-DPI
 parity and full behavioral parity are not claimed.
 
 ```powershell
-./scripts/build-rust.ps1 -Action fetch # pinned Cargo.lock dependencies
-./scripts/build-rust.ps1              # offline dev build; does not launch
-./scripts/build-rust.ps1 -ModelSource '<existing-large-v2-directory>' # hash-check/copy, no download
-./scripts/build-rust.ps1 -Action test
-./scripts/build-rust.ps1 -Action clippy
+cargo xtask fetch                 # pinned Cargo.lock dependencies
+cargo xtask build                 # native preparation + dev build; does not launch
+cargo xtask build --no-deploy --offline # compile only, no dependency downloads
+cargo xtask test
+cargo xtask clippy
 ./build/debug/VoicePaste.exe --check # config-only; no mic/hotkey/tray
 ./build/debug/VoicePaste.exe --settings # setup only; no model loading/download
 ./build/debug/VoicePaste.exe --download-model # explicit selected-model provisioning
@@ -121,12 +121,12 @@ parity and full behavioral parity are not claimed.
 ./build/debug/VoicePaste.exe --transcribe-file '<wav>' # same worker, no clipboard/mic
 ```
 
-The script uses the existing local Rust 1.98.1 toolchain when present, otherwise
-the installed Cargo/rustup. Outputs/config/models/session data stay under
-`build/debug/` (or `build/release/` with `-Release`); native build inputs live in `build/native-runtime/`. Requested
+Rust 1.98.1 is pinned in `rust-toolchain.toml`. The root BAT supports the existing
+local toolchain or installed Cargo/rustup. Outputs/config/models/session data stay under
+`build/debug/` (or `build/release/` with `--release`); native build inputs live in `build/cache/prepared-native/`. Requested
 exceptions are diagnostics in Windows Temp and opt-in current-user startup.
-It neither stops apps nor downloads models. This is a developer build, not the
-finished portable pipeline.
+The builder neither stops apps nor downloads speech models. The same `xtask`
+also creates portable ZIPs; see [the build guide](../../docs/build-windows.md).
 
 First `--check` seeds `data/config.json`. If legacy owns ScrollLock, interactive
 launch fails clearly rather than taking over; quit legacy yourself or change
@@ -140,7 +140,7 @@ interactive paste tests,
 requests through the actual host/worker using untouched saved defaults (including
 VAD=true, UA, custom prompt, CUDA-only). Reference words matched both times;
 owned temp WAVs and worker were gone after exit. File-mode evidence:
-`build/voicepaste-rust/evidence/resident-file-test.json`.
+`build/cache/previous-build/voicepaste-rust/evidence/resident-file-test.json`.
 
 New tests exercise hidden native form values/Save/Cancel without showing a window
 or stealing focus, atomic-save failures/locking, deferred settings, HTTP Range on
@@ -150,7 +150,7 @@ changing config, then F8 saved through the real UI. Selected local model hashes
 were verified before startup; no model download. On the updated host, injected
 F8 started actual microphone capture and the visible overlay, with foreground
 unchanged in that observation. Session-tagged cancellation removed the WAV
-without STT/paste. Screenshot: `build/voicepaste-rust/evidence/recording-overlay-live.png`.
+without STT/paste. Screenshot: `build/cache/previous-build/voicepaste-rust/evidence/recording-overlay-live.png`.
 This does not qualify physical-key delivery, Escape interception or edge clicks.
 Only the Rust runtime config selects F8; frozen defaults still select ScrollLock.
 Debug logs record toggle/state and local/cache/download status, not audio/transcript.
@@ -164,7 +164,7 @@ uses a cached 3x grayscale mask; animation uses the minimum Win32 timer interval
 instead of a 16-ms interval that can round to half-rate. Busy bars use the selected
 indicator color. Latest injected F8/actual microphone capture followed by injected
 Escape hid the overlay and removed its WAV, without changing foreground in the
-observation. Screenshot: `build/voicepaste-rust/evidence/recording-overlay-aa-fixed.png`.
+observation. Screenshot: `build/cache/previous-build/voicepaste-rust/evidence/recording-overlay-aa-fixed.png`.
 Exact subjective smoothness/visual parity still needs user confirmation.
 First receipt-producing local check took about 2.06 s; the next normal start
 reused the receipt without rewriting it, with `network_download=false` and no
@@ -188,7 +188,7 @@ startup overlay. This is not an end-to-end readiness/latency benchmark.
   erase can be visible during interaction. Earlier final-pixel matches to forced
   repaint/roundtrip top and hidden control-geometry/prompt tests did not cover
   flicker, actual native resize delivery, DPI sharpness or a temporary hang.
-  Evidence `build/voicepaste-rust/evidence/settings-scroll-*.png` is static only,
+  Evidence `build/cache/previous-build/voicepaste-rust/evidence/settings-scroll-*.png` is static only,
   not proof of corrected scrolling. Replace this renderer rather than declaring
   another global invalidation patch a completed fix.
 - **Historical pre-GPUI status: One Dark replacement and STT memory optimization were open.** The lower

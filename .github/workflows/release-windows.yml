@@ -15,47 +15,17 @@ jobs:
   package:
     runs-on: windows-2025
     timeout-minutes: 90
-    env:
-      NATIVE_URL: ${{ vars.VOICEPASTE_NATIVE_BUNDLE_URL }}
-      NATIVE_SHA256: ${{ vars.VOICEPASTE_NATIVE_BUNDLE_SHA256 }}
-      REDISTRIBUTION_APPROVED: ${{ vars.VOICEPASTE_REDISTRIBUTION_APPROVED }}
     steps:
       - uses: actions/checkout@v5
-      - name: Validate release inputs
-        shell: pwsh
-        run: |
-          $version = [regex]::Match((Get-Content Cargo.toml -Raw), '(?m)^version = "([0-9]+\.[0-9]+\.[0-9]+)"').Groups[1].Value
-          if (!$version) { throw 'Workspace version missing' }
-          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") { throw 'Tag/workspace version mismatch' }
-          if ($env:REDISTRIBUTION_APPROVED -ne 'true') { throw 'Native/artwork redistribution review required' }
-          if ($env:NATIVE_URL -notmatch '^https://' -or $env:NATIVE_SHA256 -notmatch '^[0-9a-fA-F]{64}$') { throw 'Configure immutable native bundle URL and SHA-256 repository variables' }
-      - name: Prepare verified native inputs
-        shell: pwsh
-        run: |
-          ./scripts/get-native-inputs.ps1 -Url $env:NATIVE_URL -Sha256 $env:NATIVE_SHA256 -Destination build/native-runtime
-      - name: Install pinned Rust
-        shell: pwsh
-        run: rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
-      - name: Fetch locked Cargo inputs
-        shell: pwsh
-        run: ./scripts/build-rust.ps1 -Action fetch
-      - name: Checks
-        shell: pwsh
-        run: |
-          ./tests/portable-package.Tests.ps1
-          ./tests/native-inputs.Tests.ps1
-          ./scripts/build-rust.ps1 -Action fmt
-          ./scripts/build-rust.ps1 -Action test -Release -NoDeploy -Ct2Include "$pwd/build/native-runtime/include"
-          ./scripts/build-rust.ps1 -Action clippy -Release -NoDeploy -Ct2Include "$pwd/build/native-runtime/include"
-      - name: Build portable Release
-        shell: pwsh
-        run: ./scripts/build-rust.ps1 -Action package -Release -Ct2Include "$pwd/build/native-runtime/include" -RequireNotices
+      - name: Build and check portable Release (same launcher as local Windows)
+        shell: cmd
+        run: build-portable-windows.bat --check
       - uses: actions/upload-artifact@v5
         with:
           name: VoicePaste-windows-x86_64
           path: |
-            build/packages/*.zip
-            build/packages/*.zip.sha256
+            build/package/*.zip
+            build/package/*.zip.sha256
           if-no-files-found: error
           compression-level: 0
           retention-days: 14

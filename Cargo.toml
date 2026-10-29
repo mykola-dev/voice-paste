@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/core", "crates/application", "crates/protocol", "apps/voicepaste", "apps/stt-worker"]
+members = ["crates/core", "crates/application", "crates/protocol", "apps/voicepaste", "apps/stt-worker", "xtask"]
 resolver = "3"
 
 [workspace.package]
@@ -17,4 +17,11 @@ incremental = false
 
 # Local multi-GB integrity checks should not run unoptimized SHA rounds in dev.
 [profile.dev.package.sha2]
+opt-level = 3
+
+# cargo xtask runs in dev while packaging hundreds of MB of native DLLs.
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+
+[profile.dev.package.crc32fast]
 opt-level = 3

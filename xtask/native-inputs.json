@@ -1,0 +1,68 @@
+{
+  "ct2Revision": "226c95d94e660c48b11c62e108886b7ef76d589d",
+  "hostFiles": ["vcruntime140.dll"],
+  "runtimeFiles": ["ctranslate2.dll", "libiomp5md.dll", "cublas64_12.dll", "cublasLt64_12.dll", "onnxruntime.dll", "silero_vad_v6.onnx", "msvcp140.dll", "msvcp140_1.dll", "vcruntime140.dll", "vcruntime140_1.dll"],
+  "ct2Source": {
+    "name": "ctranslate2-226c95d94e660c48b11c62e108886b7ef76d589d.zip",
+    "url": "https://codeload.github.com/OpenNMT/CTranslate2/zip/226c95d94e660c48b11c62e108886b7ef76d589d",
+    "hash": "1ae629084e113829f8f31825525b88e13b6cae44ae3dea3703288e0047c71862"
+  },
+  "archives": [
+    {
+      "name": "ctranslate2-4.7.1-windows-native.zip",
+      "version": "4.7.1 (Intel OpenMP 2025.3.0)",
+      "url": "https://files.pythonhosted.org/packages/9b/15/6e8e87c6a201d69803a79ac2e29623ce7c2cc9cd1df9db99810cca714373/ctranslate2-4.7.1-cp313-cp313-win_amd64.whl",
+      "hash": "baa6d2b10f57933d8c11791e8522659217918722d07bbef2389a443801125fe7",
+      "licensePath": "notices/CTranslate2-LICENSE.txt",
+      "files": {"ctranslate2/ctranslate2.dll": "ctranslate2.dll", "ctranslate2/libiomp5md.dll": "libiomp5md.dll"}
+    },
+    {
+      "name": "cublas-12.9.1.4.zip", "version": "12.9.1.4",
+      "url": "https://developer.download.nvidia.com/compute/cuda/redist/libcublas/windows-x86_64/libcublas-windows-x86_64-12.9.1.4-archive.zip",
+      "hash": "d534d98b0b453a98914dbf3adf47d7e84b55037abf02f87466439e1dcef581ed",
+      "licensePath": "notices/CUDA-LICENSE.txt",
+      "files": {
+        "libcublas-windows-x86_64-12.9.1.4-archive/bin/cublas64_12.dll": "cublas64_12.dll",
+        "libcublas-windows-x86_64-12.9.1.4-archive/bin/cublasLt64_12.dll": "cublasLt64_12.dll",
+        "libcublas-windows-x86_64-12.9.1.4-archive/LICENSE": "notices/CUDA-LICENSE.txt"
+      }
+    },
+    {
+      "name": "onnxruntime-1.25.1.zip", "version": "1.25.1",
+      "url": "https://github.com/microsoft/onnxruntime/releases/download/v1.25.1/onnxruntime-win-x64-1.25.1.zip",
+      "hash": "33f2e8a63774811f99a5fc224cac32f4eed8c27643d46c6cc685319fa8f18019",
+      "licensePath": "notices/ONNX-Runtime-LICENSE.txt",
+      "files": {
+        "onnxruntime-win-x64-1.25.1/lib/onnxruntime.dll": "onnxruntime.dll",
+        "onnxruntime-win-x64-1.25.1/LICENSE": "notices/ONNX-Runtime-LICENSE.txt",
+        "onnxruntime-win-x64-1.25.1/ThirdPartyNotices.txt": "notices/ONNX-Runtime-NOTICES.txt"
+      }
+    },
+    {
+      "name": "mkl-2025.3.0.zip", "version": "2025.3.0",
+      "url": "https://files.pythonhosted.org/packages/75/0e/b863a60889643e21d5d8d6b619f913703257878979b1df22d344a56276d0/mkl-2025.3.0-py2.py3-none-win_amd64.whl",
+      "hash": "2dbf81b016150c2ce418d80707dcce11d0e3c56f20e1d54813174e7665405561",
+      "licensePath": "notices/Intel-Simplified-Software-LICENSE.txt",
+      "files": {"mkl-2025.3.0.dist-info/LICENSE.txt": "notices/Intel-Simplified-Software-LICENSE.txt"}
+    }
+  ],
+  "notices": [
+    {"name":"SIMD-Utils-LICENSE.txt","url":"https://raw.githubusercontent.com/JishinMaster/simd_utils/993f6522c7358e2de6a3bc2b628f3f902e2dbe81/LICENSE","hash":"dfaa54b4188ffa0e6298ce7ea27c865d12edcf73d742e2200ce9812db6268c0f"},
+    {"name":"cpu_features-LICENSE.txt","url":"https://raw.githubusercontent.com/google/cpu_features/8a494eb1e158ec2050e5f699a504fbc9b896a43b/LICENSE","hash":"af272c1b4dd08dd61d43e001d3134119d03ca7a2b057a64f7355fdf27fbea3dd"},
+    {"name":"CUTLASS-LICENSE.txt","url":"https://raw.githubusercontent.com/NVIDIA/cutlass/bbe579a9e3beb6ea6626d9227ec32d0dae119a49/LICENSE.txt","hash":"6fc6ad419e4d26571a14c7c4d26b65345865c20dd8686ddcf5e8673f54d3d233"},
+    {"name":"spdlog-LICENSE.txt","url":"https://raw.githubusercontent.com/gabime/spdlog/76fb40d95455f249bd70824ecfcae7a8f0930fa3/LICENSE","hash":"a7241a379cb98d37788f82c2fc2e484c3ae85dae881fd3406f0637644850926f"},
+    {"name":"fmt-LICENSE.txt","url":"https://raw.githubusercontent.com/fmtlib/fmt/8.1.1/LICENSE.rst","hash":"825c9324e70f8c839c8ba910543dd4a7daee243b86ef960594c11381a19980b8"},
+    {"name":"oneDNN-LICENSE.txt","url":"https://raw.githubusercontent.com/oneapi-src/oneDNN/v3.1.1/LICENSE","hash":"dd12452e1ae11e3282271aa5895d8175296b83e936a027209f9399d26a407d0f"},
+    {"name":"oneDNN-NOTICES.txt","url":"https://raw.githubusercontent.com/oneapi-src/oneDNN/v3.1.1/THIRD-PARTY-PROGRAMS","hash":"9117585dfc6b5cd0fafc063312f28a86ec82eb97bf68316dcefcaaa7fc11428e"},
+    {"name":"Thrust-LICENSE.txt","url":"https://raw.githubusercontent.com/NVIDIA/thrust/d997cd37a95b0fa2f1a0cd4697fd1188a842fbc8/LICENSE","hash":"9e42656b2b02223cee05e2344fee5673d9d5b731ac686ad1e3e543ace6ea6b95"},
+    {"name":"Silero-LICENSE.txt","url":"https://raw.githubusercontent.com/snakers4/silero-vad/v6.0/LICENSE","hash":"2e63e9a38b6e8fc0c7bc37ce174caca1862870856c6daf5697cfb785e925520b"},
+    {"name":"faster-whisper-LICENSE.txt","url":"https://raw.githubusercontent.com/SYSTRAN/faster-whisper/dea24cbcc6cbef23ff599a63be0bbb647a0b23d6/LICENSE","hash":"af6798135e729f8aa6c853936d037dfdea449734d26b8ea6a89805fca758c0d5"},
+    {"name":"thread-pool-LICENSE.txt","url":"https://raw.githubusercontent.com/bshoshany/thread-pool/v3.5.0/LICENSE.txt","hash":"8c7efc9fe0ee86f30fdbc8dd437d5a1f73b58ff8a6ff6ab566f6b830af44b21e"},
+    {"name":"Microsoft-CRT-LICENSE.docx","url":"https://visualstudio.microsoft.com/wp-content/uploads/2021/09/Visual-C-Runtime-2015-2022-License-1.docx","hash":"f1e3d56ceb2ad68aae0711b910375009e651ac5530fa0760f0dea6e81e54fae1"}
+  ],
+  "vad": {
+    "name": "silero_vad_v6.onnx", "version": "6.0 (faster-whisper export)",
+    "url": "https://raw.githubusercontent.com/SYSTRAN/faster-whisper/dea24cbcc6cbef23ff599a63be0bbb647a0b23d6/faster_whisper/assets/silero_vad_v6.onnx",
+    "hash": "4cbf549b8326f60f80f2536d9eefeb450a9abe83365a098031c89719f1be17d2"
+  }
+}

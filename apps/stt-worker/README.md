@@ -12,18 +12,17 @@ UA/bilingual suppress Russian-only character tokens without losing default
 non-speech suppression. CUDA-only never silently switches to CPU; auto mode may
 load CPU INT8 and reports the actual device. Saved settings remain unchanged.
 
-Build through `scripts/build-rust.ps1`. Supply a flat native input folder via
-`-NativeRuntimeSource <directory>` (default: ignored `build/native-runtime/`).
+Build through `cargo xtask build` or the root `build-portable-windows.bat` launcher.
+Native inputs are acquired from SHA-256-pinned official archives into ignored
+`build/cache/prepared-native/`; override with `--native-runtime-source <directory>`.
 It must contain `ctranslate2.dll` (4.7.1), `libiomp5md.dll`,
 `cublas64_12.dll`, `cublasLt64_12.dll`, `onnxruntime.dll`, `silero_vad_v6.onnx`,
 `msvcp140.dll`, `msvcp140_1.dll`, `vcruntime140.dll` and `vcruntime140_1.dll`. These are native
-dependencies of the Rust worker, not a Python runtime. The script does not search
-Python packages, use the old portable application, install SDKs or download files.
-The existing validated Rust runtime can supply these files; local cleanup preserved
-their exact hashes in the separate input cache. Matching source headers are the already-downloaded
-CT2 revision `226c95d94e660c48b11c62e108886b7ef76d589d`. No new SDK/model download
-occurs. A reproducible CUDA source-build and complete redistribution/license
-inventory are still packaging work, not claims made by this build.
+dependencies of the Rust worker, not a Python runtime. No installed Python packages,
+legacy application or CUDA SDK supply them. Matching source headers are acquired
+from CT2 revision `226c95d94e660c48b11c62e108886b7ef76d589d`. Builds never install
+SDKs or download speech models. See [native inputs](../../docs/native-inputs.md)
+for the lock, inventory and remaining redistribution/clean-machine acceptance.
 
 The validated Windows CT2 4.7.1 binary uses cuBLAS, not cuDNN; do not bundle the
 cuDNN dispatcher or its component libraries for this binary. CUDA-only and CPU
@@ -34,10 +33,9 @@ not a transcription-quality or clean-machine qualification. Recheck dependencies
 if replacing CT2. `msvcp140_1.dll` is an actual ONNX Runtime import; a system-wide
 VC++ runtime must not silently supply it in a self-contained package.
 
-`-ModelSource <existing-large-v2-directory>` verifies against the frozen manifest
-and copies into `data/models/large-v2/<revision>/`. It never changes source cache
-files or overwrites a differing destination artifact. Missing model means a clear
-error in file-only mode; normal host startup now provisions its selected model.
+Builds/package ZIPs exclude personal speech models and never seed `data/`.
+Existing local models remain untouched. Missing model means a clear error in
+file-only mode; normal host startup provisions its selected model.
 Other models can also be placed in the
 corresponding manifest revision folder; turbo is not runtime-tested yet.
 

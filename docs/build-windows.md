@@ -42,59 +42,63 @@ downloaded models. Never overwrite an active recording or an open Settings draft
 
 ## Build and checks (Windows x64)
 
-Requires PowerShell **7 x64**, Rust **1.98.1**, MSVC C++/Windows SDK tools, matching CT2
-headers and native runtime inputs. The development script uses the local toolchain
-under `build/rust-migration-tools/` when available, otherwise installed Cargo.
+Requires Rust **1.98.1** (pinned by `rust-toolchain.toml`), Visual Studio C++ Build
+Tools, Windows SDK including SignTool, and Windows' built-in `curl.exe`.
+Install those developer prerequisites explicitly before building. No PowerShell,
+Bash, Python, .NET application runtime or CUDA Toolkit is required by the builder.
+Cargo resolves the pinned Rust toolchain; no task installs an SDK or speech model.
 
-Run commands below from the repository root. Native inputs default to
-`build/native-runtime/`; an explicit folder can be passed
-with `-NativeRuntimeSource`. See the [worker build prerequisites](../apps/stt-worker/README.md).
-This script does not install prerequisites or download models.
+From the repository root, run or double-click **`build-portable-windows.bat`**.
+It only launches `cargo xtask package --release`; CI invokes the same BAT.
+The BAT also supports the existing repository-local Rust installation under
+`build/cache/rust-tools/`; otherwise Cargo must be on PATH.
 
-```powershell
-./build-portable-windows.bat
-# Or provide explicit native runtime and matching CT2 headers:
-./build-portable-windows.bat -NativeRuntimeSource D:/native-runtime -Ct2Include D:/CTranslate2/include
+```text
+build-portable-windows.bat --check
+cargo xtask package --release          # identical packaging task, no BAT needed
+cargo xtask package --release --no-deploy # ZIP only; leave running installation alone
+cargo xtask build                      # update complete portable Debug folder
+cargo xtask build --no-deploy          # debug compilation only; runnable folder NOT updated
+cargo xtask build --release            # update portable Release folder, no ZIP
+cargo xtask prepare                    # acquire/verify native inputs only
+cargo xtask check --release            # fmt, workspace tests, clippy
+cargo xtask fmt
+cargo xtask test
+cargo xtask clippy
+cargo xtask fetch
+cargo xtask verify --archive build/package/VoicePaste-2.0.0-windows-x86_64.zip
 ```
 
-Double-click `build-portable-windows.bat` to build a portable Release; its window
-stays open so you can read the result. It only forwards parameters to the single
-universal builder, `scripts/build-rust.ps1`. GitHub Actions uses the same builder.
+`xtask/` is a standalone build-tool crate with cohesive filesystem, native-input,
+process and packaging modules. It never depends on application/native ML crates.
+Its tests can run on Windows/Linux/macOS (`cargo test --locked -p xtask`), but
+application compilation/packaging currently requires Windows x64 with MSVC.
 
-```powershell
-./scripts/build-rust.ps1 -Action build -NoDeploy          # debug binaries only
-./scripts/build-rust.ps1 -Action build -Release -NoDeploy # Release binaries only
-./scripts/build-rust.ps1 -Action package                 # debug portable + ZIP
-./scripts/build-rust.ps1 -Action package -Release        # Release portable + ZIP
-```
+Native inputs are SHA-256-pinned in `xtask/native-inputs.json`, cached under
+`build/cache/upstream-native/` and prepared into `build/cache/prepared-native/`.
+`--native-runtime-source <folder>` selects an explicit complete input folder;
+`--ct2-include <folder>` overrides matching headers. Existing input folders must
+pass the inventory check and are never silently repaired/overwritten.
+`--offline` rejects missing native cache entries and disables Cargo network access
+inside the task; use `cargo --offline xtask ... --offline` to make the initial
+build-tool compilation offline too. See [native inputs](native-inputs.md).
 
-The BAT launcher always requests Release host/worker using the locked dependencies.
-Output is the portable app directly in `build/release/`, plus a Windows-named
-ZIP and `.zip.sha256` in `build/packages/`. Compilation caches remain outside the package. Models,
-personal config and session data are never packaged and the existing `data/`
-folder is preserved. Rebuilding overwrites executables, runtime files, notices,
-docs and the manifest/archive; quit the app first because a running binary locks
-its files. No application is started or stopped by the builder. `-WhatIf` checks inputs and describes the operation without
-building. Debug portable apps go directly to `build/debug/`; their archives in
-`build/packages/` have a `-debug` filename suffix. ZIPs are always made from clean
-staging, never from a runnable folder containing personal data.
-Local builds with incomplete native notices are for evaluation only.
+Ready-to-run outputs: **`build/release/`** and **`build/debug/`**. ZIPs and SHA-256
+live separately in **`build/package/`** (debug names have a `-debug` suffix). All technical inputs,
+tools and temporary staging live under **`build/cache/`**; Cargo uses
+`build/cache/target/`. There are no other canonical output folders.
 
-```powershell
-./scripts/build-rust.ps1 -Action fetch # explicit Cargo dependency fetch
-./scripts/build-rust.ps1 -NoDeploy    # build without changing the dev installation
-./scripts/build-rust.ps1 -Action fmt
-./scripts/build-rust.ps1 -Action clippy
-./scripts/build-rust.ps1 -Action test
-```
-
-After quitting the running Rust application, build without `-NoDeploy` to update
-`build/debug/` (default) or `build/release/` (`-Release`). Development and packaging
-use the same portable-folder publisher and preserve all existing `data/` contents.
-Ordinary builds do not create ZIPs. `-NoDeploy` only updates the internal Cargo
-cache at `build/voicepaste-rust/target/`. The script neither stops nor launches applications.
-Keep generated tools, binaries, models and disposable diagnostics under ignored
-`build/`; do not commit them.
+ZIPs always come from fresh staging, never from a personal runnable folder.
+They exclude settings, prompts, models and sessions. Existing `data/` contents
+are preserved on rebuild. Publication preflights file locks and refuses unsafe
+paths/unmanaged collisions; it never terminates or launches applications.
+Quit the target portable instance yourself after saving drafts/finishing recording
+before updating it, or use `package --no-deploy` to produce only the ZIP in
+`build/package/`. That option does NOT refresh the runnable EXEs, and the
+task reports this explicitly. An existing ZIP may likewise predate a later
+`build` command; only `package` refreshes it. Archives always use clean staging,
+so neither existing ZIPs nor personal data are included recursively.
+Keep tools and disposable diagnostics under ignored `build/cache/`.
 
 ```powershell
 ./build/debug/VoicePaste.exe --check    # config-only check
@@ -115,7 +119,7 @@ remains distinct from automated tests.
 | `crates/core/` | Domain state, settings and shared policies |
 | `crates/application/` | Use cases and consumer-owned ports |
 | `crates/protocol/` | Bounded versioned host/worker IPC |
-| `scripts/` | Rust development build |
+| `xtask/` | Shared Rust build, native preparation and portable packaging |
 | `RustMigration/` | One TODO file with unfinished work |
 | `docs/` | Current contracts/engineering guides and marked legacy specifications |
 
@@ -130,7 +134,7 @@ process regression; loaded-worker/busy shutdown qualification remains open.
 Quick shutdown regression (isolated disposable config, no model/network/microphone):
 
 ```powershell
-./tests/quit-process.Tests.ps1 -Executable ./build/voicepaste-rust/target/release/voicepaste.exe
+./tests/quit-process.Tests.ps1 -Executable ./build/release/VoicePaste.exe
 ```
 
 Startup is limited to 10 seconds, exit to 5 seconds; timeout fails and cleans up
@@ -150,26 +154,15 @@ workflow builds, runs fmt/tests/clippy, uploads a CI artifact and attaches the Z
 and SHA-256 file to a **draft** GitHub Release for review. Manual workflow runs
 produce a CI artifact only. Publishing remains a maintainer decision.
 
-Configure repository variables `VOICEPASTE_NATIVE_BUNDLE_URL` (HTTPS) and
-`VOICEPASTE_NATIVE_BUNDLE_SHA256` for a reviewed, immutable native-input ZIP.
-See [native input preparation and inventory schema](native-inputs.md) for the
-validation/bundle commands and hosting restrictions.
-Its root must contain the runtime files listed in `scripts/native-runtime.psd1`,
-`include/` from CT2 revision `226c95d94e660c48b11c62e108886b7ef76d589d`,
-and `notices/` containing third-party license texts and `inventory.json`
-(versions, origins, hashes and redistribution terms). The validated CT2 binary
-does not use cuDNN; its minimal runtime list includes the ONNX Runtime dependency
-`msvcp140_1.dll`. Dependency changes require requalification; these local checks
-do not establish complete clean-machine closure.
-Set `VOICEPASTE_REDISTRIBUTION_APPROVED=true` only after reviewing the native
-bundle and embedded artwork rights. The workflow fails closed without these
-inputs; it never takes native dependencies from a developer machine.
+No private native bundle or repository approval variables are required. The
+builder acquires pinned official archives and installed MSVC redistributable files,
+validates notices/inventory, checks app-local DLL imports, then verifies the ZIP.
+The tag must exactly match the workspace version. Version tags currently create
+**drafts**, not automatic public releases; maintainers review and publish them.
+The workflow never replaces assets of an already published release.
 
-The current native inventory, artwork rights and clean-machine qualification
-remain incomplete. Automation does not certify redistribution or feature parity.
-
-`Windows source checks` runs formatting and synthetic packaging/native-input
-tests on pushes to `master`/`Rust` and pull requests, including forks, without
-needing a native bundle. The separate release workflow verifies bundle contents,
-runs workspace tests/clippy, and packages Release binaries. Invalid or missing
-release inputs fail explicitly rather than producing misleading empty artifacts.
+`Source and build-tool checks` tests the build tool on Windows/Linux/macOS without
+native ML inputs. The separate Windows release workflow runs full workspace
+fmt/tests/clippy and packages Release. Collected notices and signatures are
+integrity evidence, not legal approval; redistribution/artwork review and
+clean-machine/GPU qualification remain maintainer acceptance tasks.

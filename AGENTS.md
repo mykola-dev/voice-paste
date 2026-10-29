@@ -64,17 +64,25 @@ layout, scrolling, rendering, DPI or UI event/lifetime handling.
 
 ## Build, data and safety
 
-- `scripts/build-rust.ps1 -Action build -NoDeploy`, `-Action fmt`, `-Action clippy`,
-  `-Action test`; see README/worker README for native prerequisites.
+- `cargo xtask build`, `cargo xtask fmt`, `cargo xtask clippy`,
+  `cargo xtask test`; see README/worker README for native prerequisites.
 - Ready-to-run portable builds have one canonical location per profile:
-  `build/debug/` (default) and `build/release/` (`-Release`). Rebuild through
-  `scripts/build-rust.ps1 -Action build [-Release]` to update those folders;
-  `-NoDeploy` only compiles into the internal Cargo cache, not a runnable package.
+  `build/debug/` (default) and `build/release/` (`--release`). Rebuild through
+  `cargo xtask build [--release]` to update those folders;
+  `build --no-deploy` only compiles into the internal Cargo cache, not a runnable package.
   `build-portable-windows.bat` updates the same Release folder and writes ZIP/checksum
-  to `build/packages/`. Never deploy to the old `build/VoicePaste-Rust/` or a
-  version-named subfolder. Rebuilds preserve `data/`; never archive personal data.
-- Native files come from an explicit flat `-NativeRuntimeSource` folder (default
-  ignored `build/native-runtime/`), never pip, a Python installation or legacy app.
+  to `build/package/` (both profiles; debug archives have a `-debug` suffix).
+  Keep archives separate from the runnable `debug/` and `release/` folders.
+  All compilation caches, native inputs, local tools and temporary staging belong
+  under `build/cache/` (Cargo target: `build/cache/target/`). Never deploy to
+  `build/voicepaste-rust/`, a Cargo target directory or a version-named subfolder.
+  Only run/deliver the complete app from `build/debug/` or `build/release/`, not
+  raw Cargo EXEs. Use `--no-deploy` deliberately when the target app is running;
+  explicitly report that the runnable folder was NOT updated.
+  Rebuilds preserve `data/`; never archive personal data.
+- Native inputs are pinned in `xtask/native-inputs.json` and prepared into ignored
+  `build/cache/prepared-native/` (override: `--native-runtime-source`). Never use pip,
+  an installed Python environment or the legacy app. Wheels are archives only.
 - Run Windows commands with hidden console windows and without focus theft.
 - Preserve application-local config/models/session data; logs belong at
   `%TEMP%/VoicePaste/voicepaste.log`. Do not change saved defaults during builds.
