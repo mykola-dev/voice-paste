@@ -37,6 +37,8 @@ and pasted into the active app. Pause as long as you need: you decide when to st
 Press <kbd>Esc</kbd> during recording to discard it without pasting.
 Open **Settings** from the tray to change the hotkey, model, language or appearance.
 
+See [Changelog](CHANGELOG.md) for release notes.
+
 **Requirements:** Windows x64. The default GPU mode needs a compatible NVIDIA GPU
 and driver. To configure the device before loading a model, run `VoicePaste.exe --settings`.
 

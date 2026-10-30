@@ -3,6 +3,7 @@ mod layout;
 mod native;
 mod package;
 mod process;
+mod release;
 
 use anyhow::{Context, Result, bail, ensure};
 use process::Runner;
@@ -20,6 +21,7 @@ struct Options {
     source: PathBuf,
     include: Option<PathBuf>,
     archive: Option<PathBuf>,
+    tag: Option<String>,
 }
 
 fn options() -> Result<Options> {
@@ -33,6 +35,7 @@ fn options() -> Result<Options> {
         source: layout::PREPARED_NATIVE.into(),
         include: None,
         archive: None,
+        tag: None,
     };
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -47,6 +50,7 @@ fn options() -> Result<Options> {
                 options.include = Some(args.next().context("Missing CT2 include folder")?.into())
             }
             "--archive" => options.archive = Some(args.next().context("Missing ZIP path")?.into()),
+            "--tag" => options.tag = Some(args.next().context("Missing release tag")?),
             _ => bail!("Unknown argument: {arg}. Run cargo xtask help"),
         }
     }
@@ -65,9 +69,14 @@ fn options() -> Result<Options> {
                 | "clippy"
                 | "fetch"
                 | "verify"
+                | "release-notes"
         ),
         "Unknown task: {}",
         options.action
+    );
+    ensure!(
+        options.tag.is_none() || options.action == "release-notes",
+        "--tag applies to release-notes"
     );
     ensure!(
         !options.check || matches!(options.action.as_str(), "build" | "package"),
@@ -186,10 +195,11 @@ fn run() -> Result<()> {
     match options.action.as_str() {
         "help" | "--help" | "-h" => {
             println!(
-                "cargo xtask <build|package|prepare|check|fmt|test|clippy|fetch|verify>\n\
+                "cargo xtask <build|package|prepare|check|fmt|test|clippy|fetch|verify|release-notes>\n\
                 Options: --release --no-deploy --offline --check\n\
                 Inputs: --native-runtime-source <folder> --ct2-include <folder>\n\
                 Verify: cargo xtask verify --archive <zip>\n\
+                Release notes: cargo xtask release-notes --tag vMAJOR.MINOR.PATCH\n\
                 Outputs: build/debug or build/release; ZIP + SHA-256 in build/package; internals in build/cache.\n\
                 Requires Rust; Windows builds also require MSVC/Windows SDK. No SDK installation or model downloads."
             );
@@ -203,6 +213,18 @@ fn run() -> Result<()> {
                     .as_deref()
                     .context("verify requires --archive <zip>")?,
             ));
+        }
+        "release-notes" => {
+            let notes = release::notes(
+                &fs::read_to_string(root.join("Cargo.toml"))?,
+                &fs::read_to_string(root.join("CHANGELOG.md"))?,
+                options
+                    .tag
+                    .as_deref()
+                    .context("release-notes requires --tag")?,
+            )?;
+            print!("{notes}");
+            return Ok(());
         }
         "fmt" | "fetch" => return cargo_task(&runner, &options.action, &options),
         _ => (),

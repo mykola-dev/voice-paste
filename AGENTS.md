@@ -13,6 +13,10 @@
   are current. Prototype source was removed; open work is `TODO.md`
   (`RustMigration/TODO.md` is a compatibility link).
 - Record defects instead of copying them or silently changing visible behavior.
+- After completing a user-visible feature or fix, add a concise English one-line
+  bullet to `CHANGELOG.md` under `[Unreleased]`. Describe the user-facing result,
+  merge related entries and avoid duplicates, internal refactors and unverified
+  claims. Do not move entries into a numbered release until release is requested.
 
 ## Engineering rules
 

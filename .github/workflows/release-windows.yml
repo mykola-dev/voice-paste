@@ -17,15 +17,26 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
+      - name: Validate and extract release changelog
+        if: github.ref_type == 'tag'
+        shell: cmd
+        run: |
+          if not exist build\cache mkdir build\cache
+          cargo xtask release-notes --tag "%GITHUB_REF_NAME%" > build\cache\release-notes.md
       - name: Build and check portable Release (same launcher as local Windows)
         shell: cmd
         run: build-portable-windows.bat --check
+      - name: Stage release changelog beside archives
+        if: github.ref_type == 'tag'
+        shell: cmd
+        run: copy /y build\cache\release-notes.md build\package\release-notes.md
       - uses: actions/upload-artifact@v5
         with:
           name: VoicePaste-windows-x86_64
           path: |
             build/package/*.zip
             build/package/*.zip.sha256
+            build/package/release-notes.md
           if-no-files-found: error
           compression-level: 0
           retention-days: 14
@@ -51,10 +62,11 @@ jobs:
           (cd release-assets && sha256sum --check ./*.sha256)
           existing=$(gh api "repos/$GH_REPO/releases?per_page=100" --jq ".[] | select(.tag_name == \"$RELEASE_TAG\") | .draft")
           if [ -z "$existing" ]; then
-            gh release create "$RELEASE_TAG" --verify-tag --draft --title "VoicePaste ${RELEASE_TAG#v}" --generate-notes
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "VoicePaste ${RELEASE_TAG#v}" --notes-file release-assets/release-notes.md
           elif [ "$existing" != "true" ]; then
             echo "Refusing to replace assets on an already published release" >&2
             exit 1
           fi
+          gh release edit "$RELEASE_TAG" --notes-file release-assets/release-notes.md
           gh release upload "$RELEASE_TAG" release-assets/*.zip release-assets/*.sha256 --clobber
           gh release edit "$RELEASE_TAG" --draft=false --latest
