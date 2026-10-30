@@ -13,7 +13,19 @@ case "${1:-}" in
   *) fail 'Usage: bash build-macos-preview.sh [--yes]' ;;
 esac
 [[ $# -eq 0 ]] || fail 'Usage: bash build-macos-preview.sh [--yes]'
-[[ "$(uname -s)" == Darwin && "$(uname -m)" == arm64 ]] || fail 'Requires an Apple Silicon Mac (native arm64 Terminal).'
+[[ "$(uname -s)" == Darwin ]] || fail 'Requires macOS; run this script on the Mac, not Windows or Linux.'
+if [[ "$(uname -m)" != arm64 ]]; then
+  # A translated Terminal reports x86_64 even on Apple Silicon. Restart only
+  # this script natively; do not change Terminal settings or install Rosetta.
+  [[ "$(/usr/sbin/sysctl -n hw.optional.arm64 2>/dev/null || true)" == 1 ]] || fail 'This Mac reports no ARM64 support. Intel Macs are not supported by this preview.'
+  [[ "${VOICEPASTE_NATIVE_RESTART:-}" != 1 ]] || fail 'ARM64 restart did not take effect. Open a native Terminal and retry.'
+  printf 'Terminal reports a translated architecture; restarting this build script as ARM64.\n'
+  if [[ "$ASSUME_YES" == true ]]; then
+    exec /usr/bin/env VOICEPASTE_NATIVE_RESTART=1 /usr/bin/arch -arm64 /bin/bash "$ROOT/build-macos-preview.sh" --yes
+  else
+    exec /usr/bin/env VOICEPASTE_NATIVE_RESTART=1 /usr/bin/arch -arm64 /bin/bash "$ROOT/build-macos-preview.sh"
+  fi
+fi
 [[ -z "${CARGO_BUILD_TARGET:-}" ]] || fail 'Unset CARGO_BUILD_TARGET before building the native preview.'
 
 # Validate Apple tools BEFORE offering a Rust download. Never install an SDK,
@@ -37,7 +49,10 @@ export RUSTUP_AUTO_INSTALL=0
 has_pinned_rust() {
   local actual
   actual="$(rustc --version 2>/dev/null)" || return 1
-  [[ "$actual" == "rustc $VERSION "* ]] && cargo --version >/dev/null 2>&1
+  [[ "$actual" == "rustc $VERSION "* ]] || return 1
+  # A global Intel Rust installation may still be on PATH after native restart.
+  rustc -vV 2>/dev/null | grep -qx 'host: aarch64-apple-darwin' || return 1
+  cargo --version >/dev/null 2>&1
 }
 
 if ! has_pinned_rust; then

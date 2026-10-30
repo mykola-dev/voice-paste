@@ -34,6 +34,10 @@ Build locally **on an Apple Silicon development Mac**, from a checkout of
 bash build-macos-preview.sh
 ```
 
+When started from a Rosetta-translated Terminal on Apple Silicon, the script
+restarts itself in native ARM64 mode without changing Terminal settings. Intel
+Macs remain unsupported.
+
 The script checks Xcode (including the Metal compiler) before downloading
 anything. It never installs/selects Xcode, accepts its license or requests sudo.
 If the pinned Rust version is already available, it reuses it. Otherwise it
