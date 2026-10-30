@@ -111,3 +111,14 @@ The successful audit job means evidence collection succeeded, NOT distribution
 approval. The corporate Mac's failed override remains unexplained. A bounded
 follow-up compares policy results with a trivial locally compiled ad-hoc control
 app and records runner policy logs; no security controls are changed.
+
+Follow-up run `41072723117` reproduced the same Internal Xprotect Error and
+exit 70 for both VoicePaste and a freshly compiled `int main(void) { return 0; }`
+ad-hoc control bundle. Thus the runner error is not specific evidence against
+VoicePaste's payload; it is not a clean malware scan either. The runner had no
+receipts under the two probed XProtect package IDs (not proof the components
+are entirely absent). Stop expanding runner probes: the remaining useful
+diagnostic is a read-only `syspolicy_check distribution <app-path>` on the
+affected Mac or an IT assessment. No package corruption was found; a new ZIP
+or DMG alone cannot provide Developer ID trust/notarization. The exact reason
+the user's per-app GUI override fails remains unverified.
