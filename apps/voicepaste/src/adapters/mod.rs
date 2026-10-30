@@ -1,6 +1,5 @@
 #[cfg(target_os = "windows")]
 mod application_icon;
-#[cfg(target_os = "windows")]
 pub mod audio;
 #[cfg(target_os = "windows")]
 mod diagnostics;

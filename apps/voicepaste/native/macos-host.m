@@ -2,6 +2,7 @@
 // callbacks only coalesce intents and never call Rust or perform IO.
 #import <AppKit/AppKit.h>
 #import <mach/mach.h>
+#import <AVFoundation/AVFoundation.h>
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -9,12 +10,17 @@
 @property(nonatomic, strong) NSStatusItem *item;
 @property(nonatomic, strong) NSMenu *menu;
 @property(nonatomic) uint32_t pending;
+@property(atomic) bool microphoneRequestPending;
+@property(nonatomic, strong) NSMenuItem *captureItem;
+@property(nonatomic, strong) NSMenuItem *cancelItem;
+@property(nonatomic, strong) NSMenuItem *captureStatus;
 @end
 
 @implementation VPMenuHost
 - (void)showSettings:(id)sender { (void)sender; self.pending |= 1; }
 - (void)quit:(id)sender { (void)sender; self.pending |= 2; }
 - (void)toggle:(id)sender { (void)sender; self.pending |= 4; }
+- (void)cancel:(id)sender { (void)sender; self.pending |= 8; }
 - (void)clicked:(id)sender {
     (void)sender;
     if (NSApp.currentEvent.type == NSEventTypeRightMouseUp) {
@@ -71,6 +77,53 @@ void vp_menu_destroy(void *raw) {
     host.item.button.target = nil;
     host.item.button.action = NULL;
     [NSStatusBar.systemStatusBar removeStatusItem:host.item];
+}
+
+// Explicit capture-only mode: normal launches never request microphone access.
+void vp_capture_menu_enable(void *raw) {
+    NSCAssert([NSThread isMainThread], @"capture menu must be on the main thread");
+    VPMenuHost *host = (__bridge VPMenuHost *)raw;
+    host.captureItem = [host.menu itemAtIndex:0];
+    host.captureItem.title = @"Start microphone capture (no transcription)";
+    host.captureItem.enabled = YES;
+    host.cancelItem = [[NSMenuItem alloc] initWithTitle:@"Cancel recording" action:@selector(cancel:) keyEquivalent:@""];
+    host.cancelItem.target = host;
+    host.cancelItem.enabled = NO;
+    [host.menu insertItem:host.cancelItem atIndex:1];
+    host.captureStatus = [[NSMenuItem alloc] initWithTitle:@"Capture preview — no transcription or paste" action:NULL keyEquivalent:@""];
+    host.captureStatus.enabled = NO;
+    [host.menu insertItem:host.captureStatus atIndex:2];
+    host.item.button.toolTip = host.captureStatus.title;
+}
+
+void vp_capture_menu_update(void *raw, bool recording, bool busy, const char *status) {
+    NSCAssert([NSThread isMainThread], @"capture menu must be on the main thread");
+    VPMenuHost *host = (__bridge VPMenuHost *)raw;
+    host.captureItem.title = recording ? @"Stop and discard capture" : @"Start microphone capture (no transcription)";
+    host.captureItem.enabled = !busy;
+    host.cancelItem.enabled = recording && !busy;
+    host.captureStatus.title = [NSString stringWithUTF8String:status];
+    host.item.button.toolTip = host.captureStatus.title;
+}
+
+// 0 undecided, 1 granted, 2 denied/restricted, 3 request in flight.
+uint32_t vp_microphone_permission(void *raw, bool request) {
+    NSCAssert([NSThread isMainThread], @"permission request must be on the main thread");
+    VPMenuHost *host = (__bridge VPMenuHost *)raw;
+    AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
+    if (status == AVAuthorizationStatusAuthorized) return 1;
+    if (status == AVAuthorizationStatusDenied || status == AVAuthorizationStatusRestricted) return 2;
+    if (!request) return host.microphoneRequestPending ? 3 : 0;
+    if (!host.microphoneRequestPending) {
+        host.microphoneRequestPending = YES;
+        // The block owns host until completion. No borrowed Rust pointer, no
+        // GPUI reentry and no menu mutation from the arbitrary completion thread.
+        [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio completionHandler:^(BOOL granted) {
+            (void)granted;
+            host.microphoneRequestPending = NO;
+        }];
+    }
+    return 3;
 }
 
 uint64_t vp_host_resident_bytes(void) {

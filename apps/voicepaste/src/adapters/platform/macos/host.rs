@@ -9,6 +9,14 @@ unsafe extern "C" {
     fn vp_menu_destroy(host: *mut c_void);
     fn vp_host_resident_bytes() -> u64;
     fn vp_startup_error(message: *const std::ffi::c_char);
+    fn vp_capture_menu_enable(host: *mut c_void);
+    fn vp_capture_menu_update(
+        host: *mut c_void,
+        recording: bool,
+        busy: bool,
+        status: *const std::ffi::c_char,
+    );
+    fn vp_microphone_permission(host: *mut c_void, request: bool) -> u32;
 }
 
 pub(super) fn startup_error(message: &str) {
@@ -30,6 +38,21 @@ pub struct Host {
     pointer: NonNull<c_void>,
     // AppKit owns UI-thread callbacks; never transfer this handle to a worker.
     _main_thread: PhantomData<Rc<()>>,
+}
+
+pub struct Intents {
+    pub settings: bool,
+    pub quit: bool,
+    pub toggle: bool,
+    pub cancel: bool,
+}
+
+#[derive(PartialEq, Eq)]
+pub enum MicrophonePermission {
+    Undecided,
+    Granted,
+    Denied,
+    Pending,
 }
 
 impl Host {
@@ -77,10 +100,43 @@ impl Host {
         Ok(host)
     }
 
-    pub fn drain(&self) -> (bool, bool) {
+    pub fn drain(&self) -> Intents {
         // SAFETY: the retained native host is live and this is its UI thread.
         let flags = unsafe { vp_menu_drain(self.pointer.as_ptr()) };
-        (flags & 1 != 0, flags & 2 != 0)
+        Intents {
+            settings: flags & 1 != 0,
+            quit: flags & 2 != 0,
+            toggle: flags & 4 != 0,
+            cancel: flags & 8 != 0,
+        }
+    }
+
+    pub fn enable_capture(&self) {
+        // SAFETY: live retained main-thread host; only called once in capture mode.
+        unsafe {
+            vp_capture_menu_enable(self.pointer.as_ptr());
+        }
+    }
+
+    pub fn capture_status(&self, recording: bool, busy: bool, message: &str) {
+        let message = message.replace('\0', "");
+        if let Ok(message) = std::ffi::CString::new(message) {
+            // SAFETY: native adapter copies the string during this UI-thread call.
+            unsafe {
+                vp_capture_menu_update(self.pointer.as_ptr(), recording, busy, message.as_ptr());
+            }
+        }
+    }
+
+    pub fn microphone_permission(&self, request: bool) -> MicrophonePermission {
+        // SAFETY: retained UI-thread host; async completion retains only native
+        // state and never calls back through a borrowed Rust pointer.
+        match unsafe { vp_microphone_permission(self.pointer.as_ptr(), request) } {
+            1 => MicrophonePermission::Granted,
+            2 => MicrophonePermission::Denied,
+            3 => MicrophonePermission::Pending,
+            _ => MicrophonePermission::Undecided,
+        }
     }
 
     pub fn memory_status(&self) -> String {

@@ -51,8 +51,32 @@ menu-bar icon. Existing Windows public defaults remain unchanged.
 - Host resident memory is a real Mach task query. Worker memory, GGML artifact
   sizes and transcription statistics explicitly remain unavailable; no CT2
   sizes/revisions are presented as macOS models.
-- No model downloads, microphone/accessibility requests, recording, overlay,
-  transcription or paste are connected yet. Settings displays this limit.
+- Normal launch makes no model downloads or microphone/accessibility requests.
+  Dictation, hotkeys, overlay, transcription and paste remain pending.
+
+## Capture integration slice
+
+`VoicePaste.app/Contents/MacOS/VoicePaste --capture-preview` selects the same
+explicit capture-only mode already available on Windows. Only in this mode,
+the menu enables **Start microphone capture (no transcription)**. Selecting it
+requests microphone permission asynchronously through AVFoundation; a denied
+or restricted permission is reported in the menu without changing security
+controls or retrying prompts. Merely opening Settings/the menu never requests it.
+
+CoreAudio capture uses the shared CPAL adapter, bounded PCM queue and writer,
+mono conversion and 16-kHz PCM16 WAV resampling. Streams and writers belong to
+a capture thread, not the UI. Stop finishes and discards the temporary audio;
+Cancel and Quit discard it too. Files are created exclusively with Unix mode
+0600 in the app's private `temp/` folder under Application Support. No transcript,
+clipboard, inference, hotkey or overlay behavior is claimed by this mode. The
+menu shows recording/completion/error status; Settings retains the ordinary
+dictation-not-connected notice. No automatic recovery of files left by a process
+crash is implemented yet. Escape cancellation waits for the hotkey adapter.
+
+This slice reuses the application debounce/session/cancellation rules; it is not
+a second dictation state machine. Host contract tests do not request TCC access
+or use a live microphone. Real-device permission, capture and audio-device-loss
+acceptance remain pending; tests on the Mac will be requested after development.
 
 For an update, quit the old preview explicitly and **move the existing
 `build/release/VoicePaste.app` aside** before running the build script again.

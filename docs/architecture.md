@@ -30,8 +30,14 @@ callback borrows or Settings IO run in menu tracking. A separately owned,
 bounded preference thread commits local saves and joins on shutdown. Startup
 errors use a native alert so Finder failures are visible.
 
-macOS recording, hotkeys, overlay lifecycle, model artifacts, Metal worker,
-paste and statistics are still unimplemented. The Settings preview states this
+macOS normal-use recording, hotkeys, overlay lifecycle, model artifacts, Metal worker,
+paste and statistics are still unimplemented. Opt-in `--capture-preview` now
+wires the shared CPAL audio adapter and application state machine on an owned
+capture thread. AVFoundation permission is requested only on explicit Start;
+native completion owns native state and never reenters Rust/GPUI. The bounded
+command/event/meter handoffs keep UI callbacks free of capture/writer IO.
+Stop/cancel/Quit discard temporary audio; no STT or paste is faked.
+The Settings preview states the normal-use limit
 and does not provide fake-success adapters or silently reuse CT2 artifacts.
 The existing Windows composition/runtime remains selected on Windows. See
 [current preview scope and acceptance](macos-preview.md).

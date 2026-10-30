@@ -51,4 +51,5 @@ fn build_macos_host() {
     println!("cargo:rustc-link-search=native={}", output.display());
     println!("cargo:rustc-link-lib=static=voicepaste_macos_host");
     println!("cargo:rustc-link-lib=framework=AppKit");
+    println!("cargo:rustc-link-lib=framework=AVFoundation");
 }

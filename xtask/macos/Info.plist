@@ -11,5 +11,6 @@
     <key>CFBundleVersion</key><string>1</string>
     <key>LSMinimumSystemVersion</key><string>26.0</string>
     <key>NSHighResolutionCapable</key><true/>
+    <key>NSMicrophoneUsageDescription</key><string>VoicePaste records your microphone when you explicitly start recording for local transcription.</string>
 </dict>
 </plist>

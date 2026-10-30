@@ -102,6 +102,17 @@ impl Storage {
             let _ = writeln!(file, "{message}");
         }
     }
+
+    pub fn capture_directory(&self) -> Result<PathBuf, String> {
+        let directory = self.root.join("temp");
+        reject_link(&directory)?;
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&directory)
+            .map_err(|error| format!("Cannot create recording directory: {error}"))?;
+        Ok(directory)
+    }
 }
 
 fn read_settings(path: &Path) -> Result<Settings, String> {

@@ -99,11 +99,14 @@ impl AudioCapture for Microphone {
             std::process::id(),
             session.0
         ));
-        let file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-            .map_err(|e| e.to_string())?;
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let file = options.open(&path).map_err(|e| e.to_string())?;
         let owned = AudioFile { path };
         let (sender, receiver) = bounded(QUEUE_BLOCKS);
         let failed = Arc::new(AtomicBool::new(false));
@@ -377,6 +380,49 @@ fn write_audio(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn writer_produces_mono_16khz_and_owned_audio_is_removed_on_drop() {
+        let root =
+            std::env::temp_dir().join(format!("voicepaste-audio-writer-{}", std::process::id()));
+        fs::create_dir(&root).unwrap();
+        struct Directory(PathBuf);
+        impl Drop for Directory {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let _directory = Directory(root.clone());
+        let path = root.join("fixture.wav");
+        let file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .unwrap();
+        let audio = AudioFile { path: path.clone() };
+        let (sender, receiver) = bounded(2);
+        sender
+            .send(Block {
+                samples: [0.25; BLOCK],
+                len: BLOCK,
+            })
+            .unwrap();
+        sender
+            .send(Block {
+                samples: [-0.25; BLOCK],
+                len: 137,
+            })
+            .unwrap();
+        drop(sender);
+        write_audio(file, &path, receiver, 48000).unwrap();
+        let mut wav = hound::WavReader::open(&path).unwrap();
+        assert_eq!(wav.spec().channels, 1);
+        assert_eq!(wav.spec().sample_rate, 16000);
+        assert_eq!(wav.spec().bits_per_sample, 16);
+        assert_eq!(wav.samples::<i16>().count(), (BLOCK + 137) * 16000 / 48000);
+        drop(wav);
+        drop(audio);
+        assert!(!path.exists());
+    }
     #[test]
     fn pcm_clamps_without_wraparound() {
         assert_eq!(

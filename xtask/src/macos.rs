@@ -75,7 +75,7 @@ pub fn preview(runner: &mut Runner, release: bool, offline: bool) -> Result<()> 
     )?;
     fs::write(contents.join("Info.plist"), PLIST)?;
     let report = format!(
-        "VoicePaste macOS Settings preview\nCommit: {sha}\nArchitecture: arm64\nMinimum macOS: {MINIMUM_OS}\nSigning: ad-hoc, NOT Developer ID signed, NOT notarized\nUI: GPUI Kit 0.8.1 / GPUI-pre 0.3.10\nConnected: shared Settings, native menu bar, local config and opt-in current-user login item.\nNo STT backend/worker/models; recording, hotkeys, overlay and paste are not connected yet.\nNo model downloads or microphone/accessibility permission requests. Config: ~/Library/Application Support/VoicePaste/config.json.\n"
+        "VoicePaste macOS preview\nCommit: {sha}\nArchitecture: arm64\nMinimum macOS: {MINIMUM_OS}\nSigning: ad-hoc, NOT Developer ID signed, NOT notarized\nUI: GPUI Kit 0.8.1 / GPUI-pre 0.3.10\nConnected: shared Settings, native menu bar, local config and opt-in current-user login item.\nOpt-in --capture-preview: real microphone capture; stop/cancel discards audio, no transcription/paste.\nNo STT backend/worker/models; hotkeys, overlay and paste are not connected yet.\nNo model downloads. Microphone permission requested only after Start in capture-preview; no accessibility request. Config: ~/Library/Application Support/VoicePaste/config.json.\n"
     );
     fs::write(contents.join("Resources/preview.txt"), &report)?;
     let architectures = runner.output(runner.command("lipo").arg("-archs").arg(&executable))?;
@@ -152,11 +152,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn launch_bundle_has_stable_identity_without_premature_permission_requests() {
+    fn preview_bundle_has_stable_identity_and_explicit_microphone_purpose() {
         assert!(PLIST.contains("dev.mykola.voicepaste"));
         assert!(PLIST.contains("<string>VoicePaste</string>"));
         assert!(PLIST.contains(&format!("<string>{MINIMUM_OS}</string>")));
-        assert!(!PLIST.contains("UsageDescription"));
-        assert!(!PLIST.contains("LSUIElement")); // This launch gate has a normal window, no menu bar yet.
+        assert!(PLIST.contains("NSMicrophoneUsageDescription"));
+        assert!(!PLIST.contains("NSCameraUsageDescription"));
+        assert!(!PLIST.contains("NSAppleEventsUsageDescription"));
     }
 }
