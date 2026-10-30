@@ -85,3 +85,18 @@ The first macOS run passed formatting and inner-layer tests but exposed that
 packaging fixtures reject macOS's `/var` symlink in the default temp path.
 The preview job now uses a physical `build/cache/tmp/` directory; symlink safety
 checks remain unchanged, and the failed tests are not skipped.
+
+## Launch blocker reported on macOS 26.7.1
+
+The user launches the original `aa24bde` app from Downloads. Gatekeeper says
+Apple could not verify it is free of malware; only **Done / Move to Bin** are
+shown, including after **Open Anyway** in Privacy & Security. Launch acceptance
+is blocked. This is not evidence of detected malware or proof of an MDM rule.
+
+The workflow's `audit_original_artifact` dispatch mode downloads artifact
+`12984205097` from run `41065476513` (no rebuild), validates the original ZIP
+checksum and extracted executable permissions/plist/signature, and records
+`spctl` / `syspolicy_check distribution` results. It does not modify signatures,
+quarantine, trust rules or system security. A valid ad-hoc signature is integrity
+evidence, not Developer ID trust or notarization. Runner policy checks cannot
+reproduce this managed Mac's local approval state.

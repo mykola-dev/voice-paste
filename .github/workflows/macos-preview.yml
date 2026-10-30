@@ -3,6 +3,11 @@ on:
   push:
     branches: [macOS-2]
   workflow_dispatch:
+    inputs:
+      audit_original_artifact:
+        description: Audit the exact aa24bde launch artifact without rebuilding
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -13,6 +18,7 @@ concurrency:
 
 jobs:
   launch-preview:
+    if: ${{ !inputs.audit_original_artifact }}
     runs-on: macos-26
     timeout-minutes: 60
     env:
@@ -52,5 +58,68 @@ jobs:
         with:
           name: VoicePaste-macos-arm64-launch-preview-${{ github.sha }}
           path: build/package/*
+          if-no-files-found: error
+          retention-days: 14
+  audit-original-package:
+    if: ${{ inputs.audit_original_artifact }}
+    runs-on: macos-26
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Download the original delivered artifact (not a rebuild)
+        uses: actions/download-artifact@v5
+        with:
+          artifact-ids: '12984205097'
+          run-id: '41065476513'
+          github-token: ${{ github.token }}
+          path: build/cache/original-artifact
+          merge-multiple: true
+      - name: Verify delivery round trip and record system-policy assessment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/package-audit build/cache/original-extracted
+          exec > >(tee build/package-audit/audit.txt) 2>&1
+          sw_vers
+          uname -m
+          cd build/cache/original-artifact
+          archive=VoicePaste-macos-arm64-launch-preview-aa24bde347fbc4fc01021f9fd7538a5ac0a7fbc9.zip
+          shasum -a 256 -c "$archive.sha256"
+          unzip -Z -l "$archive"
+          ditto -x -k "$archive" ../original-extracted
+          cd ../original-extracted
+          app=VoicePaste.app
+          executable="$app/Contents/MacOS/VoicePaste"
+          test -x "$executable"
+          stat -f '%Sp %N' "$executable"
+          plutil -lint "$app/Contents/Info.plist"
+          plutil -p "$app/Contents/Info.plist"
+          lipo -archs "$executable"
+          otool -L "$executable"
+          vtool -show-build "$executable"
+          codesign --display --verbose=4 "$app"
+          codesign --display --requirements - "$app"
+          codesign --verify --deep --strict --verbose=4 "$app"
+          # Diagnostic only: do not sign again, remove quarantine, add trust
+          # rules, or disable Gatekeeper. Ad-hoc policy rejection is expected
+          # and is distinct from a broken signature or missing executable bit.
+          xattr -lr "$app"
+          set +e
+          spctl --assess --type execute --verbose=4 "$app"
+          assessment=$?
+          echo "spctl exit: $assessment"
+          syspolicy_check distribution "$app" --verbose
+          policy=$?
+          echo "syspolicy_check exit: $policy"
+          set -e
+          echo 'Archive integrity/executable/plist/signature checks passed. Policy results above do not establish launch approval on the corporate Mac.'
+      - name: Upload audit evidence even if a structural check fails
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: original-macos-package-audit-${{ github.run_id }}
+          path: build/package-audit/
           if-no-files-found: error
           retention-days: 14
