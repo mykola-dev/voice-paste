@@ -71,12 +71,57 @@ pub const HOTKEY_CHOICES: &[(&str, &str)] = &[
     ("F12", "F12"),
 ];
 
+/// Explicit product policy, selected by composition; never inferred from saved values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsPlatform {
+    Windows,
+    Macos,
+}
+
+impl SettingsPlatform {
+    pub fn hotkeys(self) -> &'static [(&'static str, &'static str)] {
+        match self {
+            Self::Windows => HOTKEY_CHOICES,
+            Self::Macos => &[
+                ("Right Control", "RightCtrl"),
+                ("Right Option", "RightAlt"),
+                ("F8", "F8"),
+                ("F12", "F12"),
+            ],
+        }
+    }
+
+    pub fn devices(self) -> &'static [(&'static str, Device)] {
+        match self {
+            Self::Windows => &[
+                ("CUDA (auto CPU fallback)", Device::CudaAuto),
+                ("CUDA only", Device::CudaOnly),
+                ("CPU", Device::Cpu),
+            ],
+            // Auto/CPU fallback policy is not yet agreed for the Metal backend.
+            Self::Macos => &[("Metal only", Device::MetalOnly), ("CPU", Device::Cpu)],
+        }
+    }
+
+    pub fn paste_shortcuts(self) -> &'static [(&'static str, PasteShortcut)] {
+        match self {
+            Self::Windows => &[
+                ("Ctrl+V", PasteShortcut::CtrlV),
+                ("Ctrl+Shift+V", PasteShortcut::CtrlShiftV),
+                ("Shift+Insert", PasteShortcut::ShiftInsert),
+            ],
+            Self::Macos => &[("Cmd+V", PasteShortcut::CmdV)],
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum Device {
     Cpu,
     CudaOnly,
     CudaAuto,
+    MetalOnly,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
@@ -94,6 +139,7 @@ pub enum PasteShortcut {
     CtrlV,
     CtrlShiftV,
     ShiftInsert,
+    CmdV,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -133,9 +179,25 @@ impl Settings {
         Self::from_json(INITIAL_SETTINGS)
     }
 
-    pub fn from_json(text: &str) -> Result<Self, String> {
-        let mut value: serde_json::Value =
+    pub fn initial_for(platform: SettingsPlatform) -> Result<Self, String> {
+        let mut settings: Self =
             serde_json::from_str(INITIAL_SETTINGS).map_err(|e| e.to_string())?;
+        if platform == SettingsPlatform::Macos {
+            settings.hotkey = "RightCtrl".into();
+            settings.paste_shortcut = PasteShortcut::CmdV;
+            settings.device = Device::MetalOnly;
+        }
+        settings.validate_for(platform)?;
+        Ok(settings)
+    }
+
+    pub fn from_json(text: &str) -> Result<Self, String> {
+        Self::from_json_for(text, SettingsPlatform::Windows)
+    }
+
+    pub fn from_json_for(text: &str, platform: SettingsPlatform) -> Result<Self, String> {
+        let mut value =
+            serde_json::to_value(Self::initial_for(platform)?).map_err(|e| e.to_string())?;
         let supplied: serde_json::Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
         let fields = supplied
             .as_object()
@@ -146,6 +208,37 @@ impl Settings {
         let settings: Self = serde_json::from_value(value).map_err(|e| e.to_string())?;
         settings.validate()?;
         Ok(settings)
+    }
+
+    pub fn validate_for(&self, platform: SettingsPlatform) -> Result<(), String> {
+        self.validate()?;
+        if !platform
+            .devices()
+            .iter()
+            .any(|(_, device)| *device == self.device)
+        {
+            return Err("The saved transcription device is not supported on this platform".into());
+        }
+        if !platform
+            .paste_shortcuts()
+            .iter()
+            .any(|(_, shortcut)| *shortcut == self.paste_shortcut)
+        {
+            return Err("The saved paste shortcut is not supported on this platform".into());
+        }
+        // Preserve Windows custom parser-supported chords, but do not introduce
+        // multi-key presets or reinterpret Windows keys on macOS.
+        if platform == SettingsPlatform::Macos
+            && !platform
+                .hotkeys()
+                .iter()
+                .any(|(_, value)| Hotkey::parse(value).ok() == Hotkey::parse(&self.hotkey).ok())
+        {
+            return Err(
+                "macOS recording keys must be Right Control, Right Option, F8 or F12".into(),
+            );
+        }
+        Ok(())
     }
 
     pub fn validate(&self) -> Result<(), String> {
@@ -248,6 +341,57 @@ impl Hotkey {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn platform_defaults_are_explicit_and_saved_values_are_not_reinterpreted() {
+        let windows = Settings::initial().unwrap();
+        assert_eq!(
+            windows,
+            Settings::initial_for(SettingsPlatform::Windows).unwrap()
+        );
+        assert_eq!(windows.hotkey, "ScrollLock");
+        assert_eq!(windows.device, Device::CudaOnly);
+        let mac = Settings::initial_for(SettingsPlatform::Macos).unwrap();
+        assert_eq!(mac.hotkey, "RightCtrl");
+        assert_eq!(mac.device, Device::MetalOnly);
+        assert_eq!(mac.paste_shortcut, PasteShortcut::CmdV);
+        assert_eq!(
+            Settings::from_json_for("{}", SettingsPlatform::Macos).unwrap(),
+            mac
+        );
+        let text = serde_json::to_string(&windows).unwrap();
+        let imported = Settings::from_json_for(&text, SettingsPlatform::Macos).unwrap();
+        assert_eq!(imported, windows);
+        assert!(imported.validate_for(SettingsPlatform::Macos).is_err());
+        assert!(mac.validate_for(SettingsPlatform::Windows).is_err());
+        let prompt = "My vocabulary\r\nЗбережений словник";
+        let text = serde_json::json!({"customInitialPrompt": prompt, "beamSize": 7}).to_string();
+        let saved = Settings::from_json_for(&text, SettingsPlatform::Macos).unwrap();
+        assert_eq!(saved.custom_initial_prompt, prompt);
+        assert_eq!(saved.beam_size, 7);
+        assert_eq!(
+            Settings::from_json_for(
+                &serde_json::to_string(&saved).unwrap(),
+                SettingsPlatform::Macos
+            )
+            .unwrap(),
+            saved
+        );
+    }
+
+    #[test]
+    fn macos_presets_are_single_keys_and_reject_windows_policy() {
+        let mut mac = Settings::initial_for(SettingsPlatform::Macos).unwrap();
+        assert_eq!(SettingsPlatform::Macos.hotkeys().len(), 4);
+        for (_, key) in SettingsPlatform::Macos.hotkeys() {
+            mac.hotkey = (*key).into();
+            assert_eq!(Hotkey::parse(key).unwrap().modifiers, 0);
+            assert!(mac.validate_for(SettingsPlatform::Macos).is_ok());
+        }
+        for key in ["ScrollLock", "Numpad0", "Ctrl+Alt+Space"] {
+            mac.hotkey = key.into();
+            assert!(mac.validate_for(SettingsPlatform::Macos).is_err());
+        }
+    }
     #[test]
     fn frozen_defaults_round_trip_without_changes() {
         let defaults = Settings::initial().unwrap();

@@ -54,6 +54,8 @@ jobs:
         run: cargo xtask macos-preview --release
       - name: Lint macOS host
         run: cargo clippy --locked -p voicepaste --bin voicepaste -- -D warnings
+      - name: Test macOS host contracts (no GUI interaction or personal data)
+        run: cargo test --locked -p voicepaste --bin voicepaste
       - uses: actions/upload-artifact@v5
         with:
           name: VoicePaste-macos-arm64-launch-preview-${{ github.sha }}

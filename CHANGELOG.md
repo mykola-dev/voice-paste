@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 - Added an Apple Silicon macOS launch preview with a local build script that handles Rosetta terminals and downloads Rust only when needed, with approval.
+- Added shared Settings, a native menu-bar icon and opt-in sign-in startup to the macOS preview, with configuration stored in Application Support.
 
 ## [2.0.0]
 

@@ -5,16 +5,12 @@ compile_error!(
 );
 #[cfg(test)]
 extern crate gpui_kit as gpui;
-#[cfg(target_os = "windows")]
 mod adapters;
 #[cfg(target_os = "macos")]
 #[path = "adapters/platform/macos.rs"]
 mod macos;
 #[cfg(target_os = "windows")]
 mod runtime;
-#[cfg(target_os = "macos")]
-#[path = "adapters/settings_theme.rs"]
-mod settings_theme;
 
 #[cfg(target_os = "windows")]
 use adapters::{platform, storage::Storage};

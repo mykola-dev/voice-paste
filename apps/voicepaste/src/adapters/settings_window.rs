@@ -16,12 +16,17 @@ use gpui_kit::{
     size,
 };
 use std::{cell::Cell, rc::Rc};
-use voicepaste_core::settings::{
-    Device, HOTKEY_CHOICES, Hotkey, Language, PasteShortcut, Settings,
-};
+#[cfg(all(test, target_os = "windows"))]
+use voicepaste_core::settings::HOTKEY_CHOICES;
+use voicepaste_core::settings::{Device, Hotkey, Language, Settings, SettingsPlatform};
 use voicepaste_core::statistics::{Filter as StatisticsFilter, Summary as StatisticsSummary};
 
 type Choice = Entity<SelectState<SearchableVec<String>>>;
+
+#[cfg(target_os = "windows")]
+const PLATFORM: SettingsPlatform = SettingsPlatform::Windows;
+#[cfg(target_os = "macos")]
+const PLATFORM: SettingsPlatform = SettingsPlatform::Macos;
 
 pub struct SettingsWindow {
     handle: AnyWindowHandle,
@@ -30,8 +35,12 @@ pub struct SettingsWindow {
     pub id: u64,
 }
 
+// The Windows dictation session uses the full status/query surface. macOS
+// currently connects persistence/menu lifecycle; backend queries follow later.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 impl SettingsWindow {
     pub fn open(base: Settings, id: u64, log_path: &str, cx: &mut App) -> Result<Self, String> {
+        base.validate_for(PLATFORM)?;
         let closed = Rc::new(Cell::new(false));
         let close = closed.clone();
         let bounds = initial_bounds(&base, cx);
@@ -123,6 +132,17 @@ impl SettingsWindow {
                     "The model needs to be downloaded"
                 }
                 .into();
+                cx.notify();
+            }
+        });
+    }
+    #[cfg(target_os = "macos")]
+    pub fn backend_pending(&self, cx: &mut App) {
+        self.view.update(cx, |view, cx| {
+            view.model_query = None;
+            let message = "Metal transcription and GGML model provisioning are not connected yet. No model downloads occur in this preview.";
+            if view.status != message {
+                view.status = message.into();
                 cx.notify();
             }
         });
@@ -307,11 +327,13 @@ impl SettingsView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let mut hotkeys: Vec<String> = HOTKEY_CHOICES
+        let mut hotkeys: Vec<String> = PLATFORM
+            .hotkeys()
             .iter()
             .map(|(label, _)| (*label).into())
             .collect();
-        let selected = HOTKEY_CHOICES
+        let selected = PLATFORM
+            .hotkeys()
             .iter()
             .position(|(_, value)| Hotkey::parse(value).ok() == Hotkey::parse(&draft.hotkey).ok())
             .unwrap_or_else(|| {
@@ -322,12 +344,16 @@ impl SettingsView {
             });
         let hotkey = choice(hotkeys, selected, window, cx);
         let paste = choice(
-            strings(&["Ctrl+V", "Ctrl+Shift+V", "Shift+Insert"]),
-            match draft.paste_shortcut {
-                PasteShortcut::CtrlV => 0,
-                PasteShortcut::CtrlShiftV => 1,
-                PasteShortcut::ShiftInsert => 2,
-            },
+            PLATFORM
+                .paste_shortcuts()
+                .iter()
+                .map(|(label, _)| (*label).into())
+                .collect(),
+            PLATFORM
+                .paste_shortcuts()
+                .iter()
+                .position(|(_, value)| *value == draft.paste_shortcut)
+                .unwrap_or(0),
             window,
             cx,
         );
@@ -337,12 +363,16 @@ impl SettingsView {
             .unwrap_or(0);
         let model = choice(models, model_index, window, cx);
         let device = choice(
-            strings(&["CUDA (auto CPU fallback)", "CUDA only", "CPU"]),
-            match draft.device {
-                Device::CudaAuto => 0,
-                Device::CudaOnly => 1,
-                Device::Cpu => 2,
-            },
+            PLATFORM
+                .devices()
+                .iter()
+                .map(|(label, _)| (*label).into())
+                .collect(),
+            PLATFORM
+                .devices()
+                .iter()
+                .position(|(_, value)| *value == draft.device)
+                .unwrap_or(0),
             window,
             cx,
         );
@@ -507,26 +537,27 @@ impl SettingsView {
                 .map(|i| i.row)
                 .ok_or("Select a value")
         };
-        draft.hotkey = HOTKEY_CHOICES
+        draft.hotkey = PLATFORM
+            .hotkeys()
             .get(index(&self.hotkey)?)
             .map(|(_, value)| (*value).to_owned())
             .unwrap_or_else(|| self.draft.hotkey.clone());
-        draft.paste_shortcut = match index(&self.paste)? {
-            0 => PasteShortcut::CtrlV,
-            1 => PasteShortcut::CtrlShiftV,
-            _ => PasteShortcut::ShiftInsert,
-        };
+        draft.paste_shortcut = PLATFORM
+            .paste_shortcuts()
+            .get(index(&self.paste)?)
+            .ok_or("Select a paste shortcut")?
+            .1;
         draft.model = voicepaste_core::models::id_from_display(
             self.model
                 .read(cx)
                 .selected_value()
                 .ok_or("Select a model")?,
         );
-        draft.device = match index(&self.device)? {
-            0 => Device::CudaAuto,
-            1 => Device::CudaOnly,
-            _ => Device::Cpu,
-        };
+        draft.device = PLATFORM
+            .devices()
+            .get(index(&self.device)?)
+            .ok_or("Select a device")?
+            .1;
         draft.language_mode = match index(&self.language)? {
             0 => Language::Auto,
             1 => Language::En,
@@ -553,7 +584,7 @@ impl SettingsView {
         draft.settings_window_height = bounds.size.height.as_f32().clamp(420., 1200.) as f64;
         draft.settings_window_left = bounds.origin.x.as_f32() as f64;
         draft.settings_window_top = bounds.origin.y.as_f32() as f64;
-        draft.validate()?;
+        draft.validate_for(PLATFORM)?;
         Ok(draft)
     }
     fn cancel(&self, window: &mut Window) {
@@ -645,11 +676,10 @@ fn model_size_label(selected: &str) -> String {
 impl SettingsView {
     fn statistics_filter(&self, cx: &App) -> Option<StatisticsFilter> {
         let model = voicepaste_core::models::id_from_display(self.model.read(cx).selected_value()?);
-        let device = match self.device.read(cx).selected_index(cx)?.row {
-            0 => Device::CudaAuto,
-            1 => Device::CudaOnly,
-            _ => Device::Cpu,
-        };
+        let device = PLATFORM
+            .devices()
+            .get(self.device.read(cx).selected_index(cx)?.row)?
+            .1;
         let language = match self.language.read(cx).selected_index(cx)?.row {
             0 => Language::Auto,
             1 => Language::En,
@@ -667,6 +697,9 @@ impl SettingsView {
     }
 
     fn statistics_report(&self, cx: &App) -> String {
+        if PLATFORM == SettingsPlatform::Macos {
+            return "Transcription statistics will be available when the Metal backend is connected.".into();
+        }
         let Some(filter) = self.statistics_filter(cx) else {
             return "Select a transcription configuration.".into();
         };
@@ -680,6 +713,7 @@ impl SettingsView {
             Device::Cpu => "CPU",
             Device::CudaOnly => "CUDA",
             Device::CudaAuto => "Auto (CPU / CUDA)",
+            Device::MetalOnly => "Metal",
         };
         let mut report = format!(
             "{} · Beam {} · VAD {} · {} · {}",
@@ -740,7 +774,11 @@ fn phase_time(average_ms: Option<f64>) -> String {
 
 impl Render for SettingsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let model_size = model_size_label(&self.status_model);
+        let model_size = if PLATFORM == SettingsPlatform::Macos {
+            "Model size: pending GGML artifact catalog (Windows CT2 sizes do not apply)".into()
+        } else {
+            model_size_label(&self.status_model)
+        };
         let statistics_report = self.statistics_report(cx);
         let sidebar_width = if window.viewport_size().width < px(700.) {
             px(144.)
@@ -816,10 +854,12 @@ impl Render for SettingsView {
                             .gap_2()
                             .child(Select::new(&self.device).w_full().disabled(self.busy))
                             .child(hint(
-                                match device {
-                                    0 => "Prefer CUDA FP16; report CPU INT8 fallback.",
-                                    1 => "Requires NVIDIA CUDA; no CPU fallback.",
-                                    _ => "CPU INT8; GPU not used.",
+                                match PLATFORM.devices().get(device).map(|(_, value)| value) {
+                                    Some(Device::CudaAuto) => "Prefer CUDA FP16; report CPU INT8 fallback.",
+                                    Some(Device::CudaOnly) => "Requires NVIDIA CUDA; no CPU fallback.",
+                                    Some(Device::MetalOnly) => "Requires Apple Metal; no silent CPU fallback. Backend not connected yet.",
+                                    _ if PLATFORM == SettingsPlatform::Windows => "CPU INT8; GPU not used.",
+                                    _ => "CPU inference selected; backend not connected yet.",
                                 },
                                 cx,
                             )),
@@ -1039,7 +1079,7 @@ impl Render for SettingsView {
                                 cx.notify();
                             }))
                             .into_any_element(),
-                        hint("Current Windows user only. Applied with OK or Apply.", cx)
+                        hint(if PLATFORM == SettingsPlatform::Macos { "Current macOS user only. Applied with OK or Apply; takes effect on next sign-in." } else { "Current Windows user only. Applied with OK or Apply." }, cx)
                             .into_any_element(),
                     ],
                     cx,
@@ -1064,7 +1104,7 @@ impl Render for SettingsView {
                             .gap(px(8.))
                             .children(self.memory.lines().chain(std::iter::once(model_size.as_str())).map(|line| report_line(line, cx)))
                             .into_any_element(),
-                        hint("Resident RAM is memory currently held in physical RAM. Model size is the selected model.bin file size, not RAM or VRAM usage; it is shown even before download.", cx).into_any_element(),
+                        hint(if PLATFORM == SettingsPlatform::Macos { "Resident RAM belongs to the UI host. STT worker and model residency are not connected yet." } else { "Resident RAM is memory currently held in physical RAM. Model size is the selected model.bin file size, not RAM or VRAM usage; it is shown even before download." }, cx).into_any_element(),
                     ],
                     cx,
                 ).into_any_element(),
@@ -1092,7 +1132,7 @@ impl Render for SettingsView {
                     div().flex().child(
                         Button::new("reset-statistics")
                             .label("Reset Stats")
-                            .disabled(self.statistics_reset_pending)
+                            .disabled(self.statistics_reset_pending || PLATFORM == SettingsPlatform::Macos)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.reset_statistics(cx);
                             }))
@@ -1118,6 +1158,9 @@ impl Render for SettingsView {
                     .bg(cx.theme().title_bar)
                     .child("VoicePaste Settings"),
             )
+            .when(PLATFORM == SettingsPlatform::Macos, |root| root.child(
+                div().px(px(12.)).py(px(8.)).text_size(px(12.)).child("macOS settings preview — settings are saved; recording, hotkeys, overlay, transcription and paste are not connected yet.")
+            ))
             .child(
                 div()
                     .flex()
@@ -1253,5 +1296,5 @@ impl Render for SettingsView {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "windows"))]
 mod tests;

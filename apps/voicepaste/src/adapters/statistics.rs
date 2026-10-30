@@ -114,6 +114,7 @@ impl Statistics {
             Device::Cpu => "cpu",
             Device::CudaOnly => "cuda",
             Device::CudaAuto => "",
+            Device::MetalOnly => "metal",
         };
         let mut statement = self
             .0

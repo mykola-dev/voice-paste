@@ -27,6 +27,9 @@ impl Paste<FocusTarget> for ClipboardPaste {
         target: FocusTarget,
         shortcut: PasteShortcut,
     ) -> Result<(), String> {
+        if shortcut == PasteShortcut::CmdV {
+            return Err("Cmd+V is a macOS paste shortcut; clipboard was not changed".into());
+        }
         if self.shutdown.load(Ordering::Acquire) {
             return Err("Paste cancelled by shutdown".into());
         }
@@ -136,6 +139,7 @@ fn sequence(shortcut: PasteShortcut) -> Vec<(u16, bool)> {
         PasteShortcut::CtrlV => &[VK_CONTROL, 0x56],
         PasteShortcut::CtrlShiftV => &[VK_CONTROL, VK_SHIFT, 0x56],
         PasteShortcut::ShiftInsert => &[VK_SHIFT, VK_INSERT],
+        PasteShortcut::CmdV => &[], // Rejected before focus/clipboard effects.
     };
     keys.iter()
         .map(|&key| (key, false))

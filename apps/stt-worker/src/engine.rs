@@ -93,6 +93,7 @@ impl Engine {
             Device::Cpu => 0,
             Device::CudaOnly => 1,
             Device::CudaAuto => 2,
+            Device::MetalOnly => return Err("Metal requires the macOS whisper.cpp backend".into()),
         };
         // SAFETY: buffers live for the synchronous call. Success transfers one
         // native Engine owner to this !Send/!Sync RAII wrapper.

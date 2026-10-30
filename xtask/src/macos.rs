@@ -1,4 +1,4 @@
-//! Complete launch-preview bundle. No worker/models are claimed or downloaded.
+//! Complete macOS preview bundle. No worker/models are claimed or downloaded.
 use crate::{files, layout, process::Runner};
 use anyhow::{Context, Result, ensure};
 use std::fs;
@@ -75,7 +75,7 @@ pub fn preview(runner: &mut Runner, release: bool, offline: bool) -> Result<()> 
     )?;
     fs::write(contents.join("Info.plist"), PLIST)?;
     let report = format!(
-        "VoicePaste launch-only preview\nCommit: {sha}\nArchitecture: arm64\nMinimum macOS: {MINIMUM_OS}\nSigning: ad-hoc, NOT Developer ID signed, NOT notarized\nUI: GPUI Kit 0.8.1 / GPUI-pre 0.3.10\nNo STT backend/worker/models; no recording, paste, menu bar or Settings yet.\nNo permissions requested and no user data modified.\n"
+        "VoicePaste macOS Settings preview\nCommit: {sha}\nArchitecture: arm64\nMinimum macOS: {MINIMUM_OS}\nSigning: ad-hoc, NOT Developer ID signed, NOT notarized\nUI: GPUI Kit 0.8.1 / GPUI-pre 0.3.10\nConnected: shared Settings, native menu bar, local config and opt-in current-user login item.\nNo STT backend/worker/models; recording, hotkeys, overlay and paste are not connected yet.\nNo model downloads or microphone/accessibility permission requests. Config: ~/Library/Application Support/VoicePaste/config.json.\n"
     );
     fs::write(contents.join("Resources/preview.txt"), &report)?;
     let architectures = runner.output(runner.command("lipo").arg("-archs").arg(&executable))?;

@@ -1,7 +1,9 @@
 # Apple Silicon macOS preview
 
 Development branch: `macOS-2`, based on `ab6c864` from `master`.
-The first milestone is a **launch-only** `.app`, not a working dictation port.
+The launch-only milestone is complete: the user confirmed a locally compiled
+Rust preview opens on the corporate Mac. The current slice adds **Settings and
+menu-bar lifecycle**, not a working dictation port.
 No Developer ID membership is available: previews are ad-hoc signed and **not
 notarized**. Managed Macs may block them. Do not disable security controls or
 work around company policy to launch a preview.
@@ -20,12 +22,49 @@ one runner is not runtime qualification of both systems or of M1 hardware.
 5. Include build SHA, chip, RAM and macOS version in the report. Do not send
    transcripts, personal prompts or audio.
 
-The gate uses the production executable and pinned GPUI family, sharing the
-existing One Dark theme/font installation. It does not request permissions,
-write application data, access the microphone/clipboard, download models, or
-pretend that dictation is connected. Menu bar, Settings, overlay and STT remain
-unimplemented on macOS. The window says so explicitly. Existing Windows code
-and public defaults remain selected unchanged on Windows.
+The original `aa24bde` gate used the production executable and pinned GPUI
+family without data/permission effects. The current preview uses the **same
+Settings view** as Windows, with macOS-specific choices, and a real AppKit
+menu-bar icon. Existing Windows public defaults remain unchanged.
+
+## Current local Settings/menu milestone
+
+- Left-click the lips icon to open/reveal Settings; right-click for the shared
+  menu description and Quit. Start recording remains disabled until connected.
+- Settings use the shared One Dark master–detail UI, draft identity, prompt,
+  geometry, OK/Apply/Cancel and validation. macOS choices are Right Control
+  (default), Right Option, F8, F12, Cmd+V, and Metal-only (default) / CPU. These
+  are saved preferences, not a claim that native hotkeys or inference run yet.
+  An Auto policy is not introduced before its behavior is agreed.
+- Config is `~/Library/Application Support/VoicePaste/config.json`; logs are
+  `~/Library/Logs/VoicePaste/voicepaste.log`. Existing legacy `mac.config.json`
+  is not imported, overwritten or deleted. Saved prompts are preserved.
+- Saves run on an owned background thread, use a nonblocking advisory lock and
+  atomic same-directory replacement. Cancel does not undo a completed Apply.
+- Opt-in startup writes only the current user's
+  `~/Library/LaunchAgents/dev.mykola.voicepaste.plist`, for the executable's
+  current path, on Save. No `launchctl` bootstrap or immediate launch occurs;
+  the item takes effect next sign-in. Disabling removes only the app-owned file.
+  Existing unrelated files are rejected, and failed config publication restores
+  the prior login-item contents. Moving the app later requires re-saving the
+  login preference; corporate policy can still prevent login launch.
+- Host resident memory is a real Mach task query. Worker memory, GGML artifact
+  sizes and transcription statistics explicitly remain unavailable; no CT2
+  sizes/revisions are presented as macOS models.
+- No model downloads, microphone/accessibility requests, recording, overlay,
+  transcription or paste are connected yet. Settings displays this limit.
+
+For an update, quit the old preview explicitly and **move the existing
+`build/release/VoicePaste.app` aside** before running the build script again.
+Do not delete Application Support data. The script does not stop the old app
+or overwrite it automatically.
+
+Manual acceptance for this slice: open/close/reopen Settings from the icon,
+check right-click/Quit, change a prompt and Apply, then Cancel subsequent edits
+and reopen/relaunch to check persistence. Check resizing/Unicode/scrolling and
+that Save failures leave the draft editable. Sign-in startup is a separate
+opt-in test, not a reason to modify corporate policy. CI contracts do not prove
+these interactions or actual login launch.
 
 Build locally **on an Apple Silicon development Mac**, from a checkout of
 `macOS-2`, with:

@@ -80,8 +80,11 @@
 
 ## macOS: authorized development on `macOS-2`
 
-- [ ] Apple Silicon port: first launch-only GPUI bundle and ad-hoc preview
-  workflow are implemented; remote build and corporate-Mac acceptance pending.
+- [ ] Apple Silicon port: launch-only GPUI bundle passed CI and the user confirmed
+  a locally compiled build opens on the corporate Mac (macOS 26.7.1).
+  Downloaded CI artifacts remain blocked there; local builds are the test route.
+  Shared Settings, native menu-bar host and Application Support persistence are
+  now implemented; compilation and interaction acceptance are tracked separately.
   See [preview instructions and portability audit](docs/macos-preview.md).
   Full native adapters, shared Settings/overlay integration, whisper.cpp + Metal,
   pinned model artifacts and end-to-end dictation remain open. No Linux port.
