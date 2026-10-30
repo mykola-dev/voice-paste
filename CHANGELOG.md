@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-- Added an Apple Silicon macOS launch preview for testing application launch before dictation support.
+- Added an Apple Silicon macOS launch preview with a local build script that downloads Rust only when needed, with approval.
 
 ## [2.0.0]
 

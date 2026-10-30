@@ -27,9 +27,28 @@ pretend that dictation is connected. Menu bar, Settings, overlay and STT remain
 unimplemented on macOS. The window says so explicitly. Existing Windows code
 and public defaults remain selected unchanged on Windows.
 
-Build locally **on an Apple Silicon development Mac** with
-`cargo xtask macos-preview --release`. No developer tools are needed on the
-user's test Mac. The task creates `build/release/VoicePaste.app`, archives and
+Build locally **on an Apple Silicon development Mac**, from a checkout of
+`macOS-2`, with:
+
+```bash
+bash build-macos-preview.sh
+```
+
+The script checks Xcode (including the Metal compiler) before downloading
+anything. It never installs/selects Xcode, accepts its license or requests sudo.
+If the pinned Rust version is already available, it reuses it. Otherwise it
+reuses a repository-local toolchain or asks before downloading Rust into
+`build/cache/macos-rust/`. The official rustup installer is SHA-256 checked before
+execution; Rust does not modify shell profiles or install globally. `--yes`
+explicitly approves that toolchain download for noninteractive use. Missing
+Cargo dependencies are fetched according to `Cargo.lock`; subsequent builds
+reuse the caches. A network restriction produces an error, not a TLS bypass.
+No models, Python, Homebrew or transcription runtimes are installed.
+
+With Rust already prepared, the underlying command remains
+`cargo xtask macos-preview --release`. Developer tools are required for local
+compilation, but not merely for running a prebuilt app. The task creates
+`build/release/VoicePaste.app`, archives and
 checksums in `build/package/`, and stages under `build/cache/`. It refuses to
 overwrite an existing `.app` that might be running; explicitly move that app
 aside before rebuilding. Debug uses `build/debug/`. No personal data is archived.
@@ -37,6 +56,12 @@ aside before rebuilding. Debug uses `build/debug/`. No personal data is archived
 The package checks ARM64 architecture, system-only dynamic dependencies, plist,
 and signature integrity. These checks do not prove GUI launch, Gatekeeper trust,
 TCC permission persistence, or actual GPU inference.
+
+The user reports that the old `origin/MacOS` Swift port, built directly on the
+same corporate Mac, launches with an ad-hoc signature. Its `build-mac.sh` did
+not remove quarantine or change Gatekeeper rules. This establishes a useful
+local-build test route, not proof that this Rust preview will launch. Downloaded
+CI apps remain blocked there; local compilation is the next launch gate.
 
 ## Portability audit: first implementation slice
 
