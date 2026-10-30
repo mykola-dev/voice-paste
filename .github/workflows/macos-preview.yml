@@ -28,6 +28,10 @@ jobs:
           xcodebuild -version
           xcrun --find metal
           rustc --version
+          # macOS defaults to /var -> /private/var. Packaging contracts reject
+          # symlink ancestors deliberately; use an owned physical temp root.
+          mkdir -p build/cache/tmp
+          echo "TMPDIR=$(cd build/cache/tmp && pwd -P)/" >> "$GITHUB_ENV"
       - uses: actions/cache@v4
         with:
           path: |

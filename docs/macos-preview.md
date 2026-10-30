@@ -81,3 +81,7 @@ Debug compilation). Used the existing repository-local Rust/native inputs.
 Neither runnable Windows profile was updated; no running app was stopped.
 macOS compilation and real-device launch are tracked separately by the preview
 Actions run and the user's report; they are not implied by the Windows checks.
+The first macOS run passed formatting and inner-layer tests but exposed that
+packaging fixtures reject macOS's `/var` symlink in the default temp path.
+The preview job now uses a physical `build/cache/tmp/` directory; symlink safety
+checks remain unchanged, and the failed tests are not skipped.
