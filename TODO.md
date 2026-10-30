@@ -78,13 +78,21 @@
   транзакцією на весь каталог; після preflight збій IO може залишити часткове
   оновлення. Locked-destination rejection/data preservation уже тестуються.
 
+## macOS: authorized development on `macOS-2`
+
+- [ ] Apple Silicon port: first launch-only GPUI bundle and ad-hoc preview
+  workflow are implemented; remote build and corporate-Mac acceptance pending.
+  See [preview instructions and portability audit](docs/macos-preview.md).
+  Full native adapters, shared Settings/overlay integration, whisper.cpp + Metal,
+  pinned model artifacts and end-to-end dictation remain open. No Linux port.
+
 ## Відкладено за рішенням користувача
 
 - [ ] **Моделі / реальна мережа:** великий HTTPS download/resume/cancel/failure,
   integrity/cache та offline restart. Наразі пропускаємо. Loopback tests не
   замінюють цей сценарій; provisioning Drop чекає свій потік і не має глобального
   shutdown deadline. Не завантажувати моделі без окремого погодження.
-- [ ] **macOS/Linux:** реалізувати й кваліфікувати native adapters, permissions,
+- [ ] **Linux:** реалізувати й кваліфікувати native adapters, permissions,
   GPUI/CPAL backends і native ML packaging лише за окремим дозволом. Source
   isolation завершена, але портів немає. Receipt-v1 timestamps Windows-specific:
   invalidate/reverify, не reinterpret. Windows focus restore лишається best-effort;

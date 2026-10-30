@@ -1,17 +1,29 @@
 #![cfg_attr(all(not(test), target_os = "windows"), windows_subsystem = "windows")]
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 compile_error!(
-    "VoicePaste host adapters currently support Windows only; macOS/Linux ports are not implemented"
+    "VoicePaste supports Windows and the macOS launch preview; Linux is not implemented"
 );
 #[cfg(test)]
 extern crate gpui_kit as gpui;
+#[cfg(target_os = "windows")]
 mod adapters;
+#[cfg(target_os = "macos")]
+#[path = "adapters/platform/macos.rs"]
+mod macos;
+#[cfg(target_os = "windows")]
 mod runtime;
+#[cfg(target_os = "macos")]
+#[path = "adapters/settings_theme.rs"]
+mod settings_theme;
 
+#[cfg(target_os = "windows")]
 use adapters::{platform, storage::Storage};
+#[cfg(target_os = "windows")]
 use std::{path::PathBuf, sync::Arc};
+#[cfg(target_os = "windows")]
 use voicepaste_core::settings::Hotkey;
 
+#[cfg(target_os = "windows")]
 fn run() -> Result<(), String> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let file_mode = args.len() >= 2 && args[0] == "--transcribe-file";
@@ -79,6 +91,7 @@ fn run() -> Result<(), String> {
     result
 }
 
+#[cfg(target_os = "windows")]
 fn main() -> std::process::ExitCode {
     // GUI launches never allocate a console, even in dev builds. Explicit CLI
     // modes may reuse the caller's console; inherited redirected handles remain
@@ -98,6 +111,17 @@ fn main() -> std::process::ExitCode {
             if !cli {
                 adapters::launch::startup_error(&error);
             }
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn main() -> std::process::ExitCode {
+    match macos::run() {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("VoicePaste launch preview failed: {error}");
             std::process::ExitCode::FAILURE
         }
     }

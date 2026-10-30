@@ -2,7 +2,7 @@
 
 ## Scope and sources of truth
 
-- Continue development on branch `master`; leave changes uncommitted/unpushed unless requested.
+- macOS port development is authorized on `macOS-2` from `master`, including feature-branch commits, pushes and preview Actions. Do not merge/push master or publish releases without a separate request.
 - Production source lives in `apps/` and `crates/`. The C#/WPF/Python application
   and its build scripts were removed; do not restore legacy dependencies.
 - Follow `docs/engineering-principles.md` and `docs/architecture.md`.
@@ -36,7 +36,7 @@
 
 ## Cross-platform readiness
 
-Linux/macOS are future targets, not authorization to implement ports. Shared UI
+The Apple Silicon macOS port is authorized; Linux remains a future target. Shared UI
 state/layout and domain/application must not contain native OS handles. Isolate
 OS behavior/effects in platform-specific modules selected with `cfg`, target-scoped
 native dependencies and narrow consumer-owned boundaries. No fake successful
@@ -52,7 +52,7 @@ layout, scrolling, rendering, DPI or UI event/lifetime handling.
   Zed One Dark. Overlay foreground/state/animation use the shared GPUI pipeline;
   native nonactivation/placement/backdrop stay in the Windows adapter. Preserve
   Gaussian blur + white tint and matching 16-DIP rounded clipping; unsupported
-  effects retain translucency. macOS/Linux overlay adapters are out of scope.
+  effects retain translucency. macOS overlay adapters are authorized; Linux adapters remain out of scope.
 - Actual Windows scale **175%** is the primary target. Check EXE/live-window DPI
   awareness, separate logical units/device pixels and handle DPI changes. No OS
   bitmap upscaling for text/icons.

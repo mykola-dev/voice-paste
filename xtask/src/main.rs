@@ -1,5 +1,6 @@
 mod files;
 mod layout;
+mod macos;
 mod native;
 mod package;
 mod process;
@@ -70,6 +71,7 @@ fn options() -> Result<Options> {
                 | "fetch"
                 | "verify"
                 | "release-notes"
+                | "macos-preview"
         ),
         "Unknown task: {}",
         options.action
@@ -195,7 +197,7 @@ fn run() -> Result<()> {
     match options.action.as_str() {
         "help" | "--help" | "-h" => {
             println!(
-                "cargo xtask <build|package|prepare|check|fmt|test|clippy|fetch|verify|release-notes>\n\
+                "cargo xtask <build|package|prepare|check|fmt|test|clippy|fetch|verify|release-notes|macos-preview>\n\
                 Options: --release --no-deploy --offline --check\n\
                 Inputs: --native-runtime-source <folder> --ct2-include <folder>\n\
                 Verify: cargo xtask verify --archive <zip>\n\
@@ -227,6 +229,13 @@ fn run() -> Result<()> {
             return Ok(());
         }
         "fmt" | "fetch" => return cargo_task(&runner, &options.action, &options),
+        "macos-preview" => {
+            ensure!(
+                !options.no_deploy && options.archive.is_none() && options.include.is_none(),
+                "macos-preview creates a complete launch-only bundle; no deploy/input overrides"
+            );
+            return macos::preview(&mut runner, options.release, options.offline);
+        }
         _ => (),
     }
     ensure!(

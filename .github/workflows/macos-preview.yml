@@ -1,0 +1,52 @@
+name: macOS Apple Silicon launch preview
+on:
+  push:
+    branches: [macOS-2]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  launch-preview:
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '26.0'
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      CARGO_BUILD_JOBS: '3'
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate native build host
+        run: |
+          test "$(uname -m)" = arm64
+          sw_vers
+          xcodebuild -version
+          xcrun --find metal
+          rustc --version
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            build/cache/target
+          key: macos-26-arm64-xcode-26.6-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+      - name: Format and portable contracts (not dictation qualification)
+        run: |
+          cargo xtask fmt
+          cargo test --locked -p xtask -p voicepaste-core -p voicepaste-application -p voicepaste-protocol
+          cargo clippy --locked -p xtask --all-targets -- -D warnings
+      - name: Build and package ad-hoc signed launch preview
+        run: cargo xtask macos-preview --release
+      - name: Lint macOS host
+        run: cargo clippy --locked -p voicepaste --bin voicepaste -- -D warnings
+      - uses: actions/upload-artifact@v5
+        with:
+          name: VoicePaste-macos-arm64-launch-preview-${{ github.sha }}
+          path: build/package/*
+          if-no-files-found: error
+          retention-days: 14

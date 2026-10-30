@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Added an Apple Silicon macOS launch preview for testing application launch before dictation support.
+
 ## [2.0.0]
 
 - Rewritten in Rust, replacing the Python/.NET application and transcription worker.
