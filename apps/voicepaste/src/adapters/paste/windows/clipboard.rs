@@ -168,6 +168,9 @@ fn input(key: u16, up: bool) -> INPUT {
 }
 fn inject(shortcut: PasteShortcut) -> Result<(), String> {
     let sequence = sequence(shortcut);
+    if sequence.is_empty() {
+        return Err("Unsupported Windows paste shortcut; no input was injected".into());
+    }
     let inputs: Vec<_> = sequence.iter().map(|&(key, up)| input(key, up)).collect();
     // SAFETY: valid contiguous INPUT array with correct ABI element size.
     let sent = unsafe {
@@ -209,6 +212,17 @@ fn inject(shortcut: PasteShortcut) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn macos_shortcut_is_rejected_before_any_clipboard_or_input_effect() {
+        let mut paste = ClipboardPaste {
+            shutdown: Arc::new(AtomicBool::new(true)),
+        };
+        let error = paste
+            .paste("Never copied", FocusTarget::current(), PasteShortcut::CmdV)
+            .unwrap_err();
+        assert!(error.contains("macOS paste shortcut"));
+        assert!(inject(PasteShortcut::CmdV).is_err());
+    }
     #[test]
     #[ignore = "Interactive: briefly focuses an owned edit window and exercises the real clipboard/SendInput"]
     fn shift_insert_reaches_a_real_edit_control() {

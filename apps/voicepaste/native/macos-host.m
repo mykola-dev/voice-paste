@@ -79,3 +79,15 @@ uint64_t vp_host_resident_bytes(void) {
     kern_return_t status = task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t)&info, &count);
     return status == KERN_SUCCESS ? info.resident_size : UINT64_MAX;
 }
+
+void vp_startup_error(const char *message) {
+    NSCAssert([NSThread isMainThread], @"startup alert must be on the main thread");
+    [NSApplication sharedApplication];
+    NSAlert *alert = [NSAlert new];
+    alert.alertStyle = NSAlertStyleCritical;
+    alert.messageText = @"VoicePaste could not start";
+    alert.informativeText = [NSString stringWithUTF8String:message];
+    [alert addButtonWithTitle:@"OK"];
+    [NSApp activate];
+    [alert runModal];
+}

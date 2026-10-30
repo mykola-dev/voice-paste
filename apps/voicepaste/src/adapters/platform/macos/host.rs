@@ -8,6 +8,22 @@ unsafe extern "C" {
     fn vp_menu_drain(host: *mut c_void) -> u32;
     fn vp_menu_destroy(host: *mut c_void);
     fn vp_host_resident_bytes() -> u64;
+    fn vp_startup_error(message: *const std::ffi::c_char);
+}
+
+pub(super) fn startup_error(message: &str) {
+    let message: String = message
+        .chars()
+        .filter(|character| *character != '\0')
+        .take(4096)
+        .collect();
+    if let Ok(message) = std::ffi::CString::new(message) {
+        // SAFETY: process entry point calls this on the main thread. AppKit
+        // copies the valid UTF-8 message for its startup-only modal alert.
+        unsafe {
+            vp_startup_error(message.as_ptr());
+        }
+    }
 }
 
 pub struct Host {

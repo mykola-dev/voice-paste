@@ -80,3 +80,49 @@ impl Drop for Preferences {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{fs, path::PathBuf};
+
+    #[test]
+    fn shutdown_finishes_an_accepted_save_without_an_event_consumer() {
+        let root =
+            std::env::temp_dir().join(format!("voicepaste-mac-preferences-{}", std::process::id()));
+        fs::create_dir(&root).unwrap();
+        struct Owned(PathBuf);
+        impl Drop for Owned {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let _owned = Owned(root.clone());
+        let storage = Arc::new(
+            Storage::open_at(
+                root.join("data"),
+                root.join("log"),
+                root.join("agent"),
+                root.join("exe"),
+            )
+            .unwrap(),
+        );
+        let preferences = Preferences::start(storage.clone()).unwrap();
+        let mut draft = storage.settings.clone();
+        draft.custom_initial_prompt = "Accepted Save\r\nЗберегти".into();
+        preferences.save(42, draft.clone()).unwrap();
+        drop(preferences);
+        let reopened = Storage::open_at(
+            root.join("data"),
+            root.join("log"),
+            root.join("agent"),
+            root.join("exe"),
+        )
+        .unwrap();
+        assert_eq!(reopened.settings, draft);
+        assert!(
+            !root.join("agent").exists(),
+            "disabled startup never creates a login item"
+        );
+    }
+}

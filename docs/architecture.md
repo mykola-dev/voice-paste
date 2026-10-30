@@ -17,6 +17,25 @@ Concrete adapters depend on inner contracts and are wired explicitly. Resource
 owners handle cancellation, stale completions, bounded queues and shutdown.
 See [engineering rules](engineering-principles.md).
 
+### macOS branch status
+
+On `macOS-2`, local compilation is the accepted test route after the user
+confirmed the Rust launch preview opens on the corporate Mac. Downloaded CI
+artifacts remain blocked there. The current slice connects the shared GPUI
+Settings view to explicit `SettingsPlatform` choices, Application Support
+persistence and a native menu-bar host. `native/macos-host.m` is a narrow AppKit
+C ABI adapter, not a Swift/Python application fork; menu commands/labels reuse
+the shared menu description. Native callbacks only coalesce intents; no Rust
+callback borrows or Settings IO run in menu tracking. A separately owned,
+bounded preference thread commits local saves and joins on shutdown. Startup
+errors use a native alert so Finder failures are visible.
+
+macOS recording, hotkeys, overlay lifecycle, model artifacts, Metal worker,
+paste and statistics are still unimplemented. The Settings preview states this
+and does not provide fake-success adapters or silently reuse CT2 artifacts.
+The existing Windows composition/runtime remains selected on Windows. See
+[current preview scope and acceptance](macos-preview.md).
+
 ## UI and platform boundaries
 
 GPUI Kit/component **0.8.1**, matching GPUI-pre **0.3.10**, owns the Settings host

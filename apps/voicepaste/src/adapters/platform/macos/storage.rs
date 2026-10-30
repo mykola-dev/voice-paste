@@ -35,7 +35,7 @@ impl Storage {
         )
     }
 
-    fn open_at(
+    pub(super) fn open_at(
         root: PathBuf,
         log_path: PathBuf,
         login_item: PathBuf,
@@ -257,6 +257,65 @@ impl SettingsRepository for Storage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn existing_incompatible_config_is_not_reseeded_or_imported() {
+        let root =
+            std::env::temp_dir().join(format!("voicepaste-mac-existing-{}", std::process::id()));
+        fs::create_dir(&root).unwrap();
+        struct Owned(PathBuf);
+        impl Drop for Owned {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let _owned = Owned(root.clone());
+        let config = root.join("config.json");
+        let windows = serde_json::to_vec(&Settings::initial().unwrap()).unwrap();
+        fs::write(&config, &windows).unwrap();
+        fs::write(root.join("mac.config.json"), "old Swift configuration").unwrap();
+        assert!(
+            Storage::open_at(
+                root.clone(),
+                root.join("log"),
+                root.join("agent"),
+                root.join("exe")
+            )
+            .is_err()
+        );
+        assert_eq!(fs::read(&config).unwrap(), windows);
+        assert_eq!(
+            fs::read_to_string(root.join("mac.config.json")).unwrap(),
+            "old Swift configuration"
+        );
+        fs::remove_file(&config).unwrap();
+        let lock = lock_config(&root).unwrap();
+        assert!(
+            Storage::open_at(
+                root.clone(),
+                root.join("log"),
+                root.join("agent"),
+                root.join("exe")
+            )
+            .is_err()
+        );
+        assert!(
+            !config.exists(),
+            "another initializer must not observe a partial seed"
+        );
+        drop(lock);
+        let storage = Storage::open_at(
+            root.clone(),
+            root.join("log"),
+            root.join("agent"),
+            root.join("exe"),
+        )
+        .unwrap();
+        assert_eq!(
+            storage.settings,
+            Settings::initial_for(SettingsPlatform::Macos).unwrap()
+        );
+    }
 
     #[test]
     fn save_is_local_preserves_prompts_and_login_changes_respect_ownership() {

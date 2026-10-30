@@ -117,7 +117,8 @@ fn main() -> std::process::ExitCode {
     match macos::run() {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("VoicePaste launch preview failed: {error}");
+            eprintln!("VoicePaste macOS preview failed: {error}");
+            macos::startup_error(&error);
             std::process::ExitCode::FAILURE
         }
     }
