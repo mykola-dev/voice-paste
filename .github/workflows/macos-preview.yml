@@ -114,6 +114,24 @@ jobs:
           policy=$?
           echo "syspolicy_check exit: $policy"
           set -e
+          # Bounded comparison for an internal XProtect error seen on hosted
+          # runners: does a trivial, locally compiled ad-hoc app also get it?
+          # This is diagnostic evidence only, never a replacement user package.
+          control=../policy-control/Control.app
+          mkdir -p "$control/Contents/MacOS"
+          cp "$app/Contents/Info.plist" "$control/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier dev.mykola.voicepaste.audit-control' "$control/Contents/Info.plist"
+          printf 'int main(void) { return 0; }\n' > ../policy-control/control.c
+          xcrun clang ../policy-control/control.c -o "$control/Contents/MacOS/VoicePaste"
+          codesign --force --sign - --timestamp=none "$control"
+          codesign --verify --deep --strict --verbose=2 "$control"
+          set +e
+          syspolicy_check distribution "$control" --verbose
+          echo "control syspolicy_check exit: $?"
+          pkgutil --pkg-info com.apple.pkg.XProtectPlistConfigData
+          pkgutil --pkg-info com.apple.pkg.XProtectPayloads
+          /usr/bin/log show --last 3m --style compact --predicate '(process == "syspolicyd" OR process CONTAINS "XProtect") AND (eventMessage CONTAINS[c] "VoicePaste" OR eventMessage CONTAINS[c] "Control.app" OR eventMessage CONTAINS[c] "error")' 2>&1
+          set -e
           echo 'Archive integrity/executable/plist/signature checks passed. Policy results above do not establish launch approval on the corporate Mac.'
       - name: Upload audit evidence even if a structural check fails
         if: always()

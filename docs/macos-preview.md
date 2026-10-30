@@ -100,3 +100,14 @@ checksum and extracted executable permissions/plist/signature, and records
 quarantine, trust rules or system security. A valid ad-hoc signature is integrity
 evidence, not Developer ID trust or notarization. Runner policy checks cannot
 reproduce this managed Mac's local approval state.
+
+Audit run `41072481772` on macOS 26.6.2 verified the original checksum,
+executable `0755` mode, arm64 / minimum macOS 26.0, system-only linked libraries,
+plist and intact ad-hoc signature after download/extraction. `spctl` rejected
+the app (exit 3). `syspolicy_check` exited 70 and reported **Adhoc Signed App**,
+**Notary Ticket Missing** and **Internal Xprotect Error**. The latter is not a
+named malware detection and must not be ignored or called proof of malware.
+The successful audit job means evidence collection succeeded, NOT distribution
+approval. The corporate Mac's failed override remains unexplained. A bounded
+follow-up compares policy results with a trivial locally compiled ad-hoc control
+app and records runner policy logs; no security controls are changed.
