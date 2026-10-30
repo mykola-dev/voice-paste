@@ -22,7 +22,11 @@ impl Storage {
         let home = std::env::var_os("HOME")
             .filter(|home| !home.is_empty())
             .ok_or("HOME is unavailable; refusing a fallback data location")?;
-        let library = PathBuf::from(home).join("Library");
+        let home = PathBuf::from(home);
+        if !home.is_absolute() {
+            return Err("HOME is not an absolute path; refusing a fallback data location".into());
+        }
+        let library = home.join("Library");
         Self::open_at(
             library.join("Application Support/VoicePaste"),
             library.join("Logs/VoicePaste/voicepaste.log"),
@@ -188,7 +192,10 @@ impl SettingsRepository for Storage {
         reject_link(&config)?;
         let previous = read_settings(&config)?;
         let bytes = serde_json::to_vec_pretty(settings).map_err(|e| e.to_string())?;
-        let change_login = previous.start_at_login != settings.start_at_login;
+        // Re-save the enabled item after a bundle move, even if the checkbox
+        // stayed on. A failed config publication still restores exact old bytes.
+        let change_login =
+            previous.start_at_login != settings.start_at_login || settings.start_at_login;
         let old_agent = if change_login {
             reject_link(&self.login_item)?;
             let previous = match fs::read(&self.login_item) {

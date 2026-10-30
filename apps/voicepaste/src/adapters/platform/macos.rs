@@ -10,7 +10,7 @@ mod preferences;
 mod storage;
 
 use crate::adapters::settings_window::SettingsWindow;
-use gpui_kit::{AppContext, QuitMode};
+use gpui_kit::QuitMode;
 use std::{
     cell::RefCell,
     rc::Rc,

@@ -20,7 +20,7 @@ pub mod overlay;
 pub mod paste;
 #[cfg(target_os = "windows")]
 pub mod platform;
-mod settings_theme;
+pub(crate) mod settings_theme;
 pub mod settings_window;
 #[cfg(target_os = "windows")]
 mod startup;
