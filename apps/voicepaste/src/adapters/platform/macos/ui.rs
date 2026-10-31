@@ -3,29 +3,50 @@ use crate::adapters::{
     overlay::{OverlayWindow, macos::Shell},
     settings_window::SettingsWindow,
 };
-use gpui_kit::{AnyWindowHandle, App, AsyncApp};
+use gpui_kit::{App, AsyncApp};
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use std::{ffi::c_void, ptr::NonNull};
+
+unsafe extern "C" {
+    fn vp_settings_activate(view: *mut c_void) -> bool;
+}
 
 pub(super) struct SettingsActivation {
-    window: AnyWindowHandle,
+    view: NonNull<c_void>,
     generation: u64,
 }
 impl SettingsActivation {
-    pub fn snapshot(settings: &SettingsWindow, _cx: &mut App) -> Result<Self, String> {
+    pub fn snapshot(settings: &SettingsWindow, cx: &mut App) -> Result<Self, String> {
+        let view = settings
+            .handle()
+            .update(cx, |_, window, _| {
+                match window
+                    .window_handle()
+                    .map_err(|error| error.to_string())?
+                    .as_raw()
+                {
+                    RawWindowHandle::AppKit(handle) => Ok(handle.ns_view),
+                    _ => Err("Settings does not have an AppKit view".to_owned()),
+                }
+            })
+            .map_err(|error| error.to_string())??;
         Ok(Self {
-            window: settings.handle(),
+            view,
             generation: settings.id,
         })
     }
-    pub fn apply(self, settings: Option<&SettingsWindow>, cx: &mut AsyncApp) -> Result<(), String> {
+    pub fn apply(
+        self,
+        settings: Option<&SettingsWindow>,
+        _cx: &mut AsyncApp,
+    ) -> Result<(), String> {
         if settings.is_some_and(|settings| settings.id == self.generation && !settings.is_closed())
         {
-            cx.update(|cx| {
-                self.window.update(cx, |_, window, cx| {
-                    window.activate_window();
-                    cx.activate(true);
-                })
-            })
-            .map_err(|error| error.to_string())?;
+            // SAFETY: main-thread snapshot of the same still-open GPUI Settings
+            // generation. Native activation occurs with no App/entity borrow.
+            if !unsafe { vp_settings_activate(self.view.as_ptr()) } {
+                return Err("Cannot activate the macOS Settings window".into());
+            }
         }
         Ok(())
     }

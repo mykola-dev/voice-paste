@@ -7,6 +7,17 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+bool vp_settings_activate(void *rawView) {
+    NSCAssert([NSThread isMainThread], @"Settings activation must be on the main thread");
+    NSView *view = (__bridge NSView *)rawView;
+    NSWindow *window = view.window;
+    if (!window) return false;
+    if (window.miniaturized) [window deminiaturize:nil];
+    [window makeKeyAndOrderFront:nil];
+    [NSApp activate];
+    return true;
+}
+
 @interface VPMenuHost : NSObject
 @property(nonatomic, strong) NSStatusItem *item;
 @property(nonatomic, strong) NSMenu *menu;

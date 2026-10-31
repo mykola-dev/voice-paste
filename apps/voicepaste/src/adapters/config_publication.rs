@@ -23,18 +23,28 @@ pub(crate) fn stage(
         ));
     // Ownership starts only after create_new succeeds. Never delete a colliding
     // path belonging to another operation when staging creation fails.
-    let mut file = open(&temporary)?;
-    struct Staging(PathBuf);
+    let file = open(&temporary)?;
+    struct Staging {
+        path: PathBuf,
+        file: Option<File>,
+    }
     impl Drop for Staging {
         fn drop(&mut self) {
-            let _ = fs::remove_file(&self.0);
+            // Exclusive Windows sharing must be released even on write/sync
+            // failure or unwinding, before removing the owned staging path.
+            self.file.take();
+            let _ = fs::remove_file(&self.path);
         }
     }
-    let _staging = Staging(temporary.clone());
+    let mut staging = Staging {
+        path: temporary.clone(),
+        file: Some(file),
+    };
+    let file = staging.file.as_mut().ok_or("Missing config staging file")?;
     file.write_all(bytes)
         .and_then(|()| file.sync_all())
         .map_err(|e| e.to_string())?;
-    drop(file);
+    staging.file.take();
     commit(&temporary)
 }
 
@@ -73,6 +83,23 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(fs::read(&config).unwrap(), b"previous config");
         assert_eq!(fs::read_dir(&root).unwrap().count(), 1);
+        assert!(
+            stage(
+                &config,
+                b"new config",
+                |path| {
+                    drop(File::create(path).unwrap());
+                    File::open(path).map_err(|e| e.to_string()) // Read-only: force write failure.
+                },
+                |_| panic!("failed write must not commit")
+            )
+            .is_err()
+        );
+        assert_eq!(
+            fs::read_dir(&root).unwrap().count(),
+            1,
+            "write failure must release the handle before cleanup"
+        );
         let mut collision = None;
         assert!(
             stage(
