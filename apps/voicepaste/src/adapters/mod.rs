@@ -21,6 +21,9 @@ pub mod overlay;
 pub mod paste;
 #[cfg(target_os = "windows")]
 pub mod platform;
+#[cfg(target_os = "macos")]
+#[path = "platform/macos.rs"]
+pub mod platform;
 pub(crate) mod settings_theme;
 pub mod settings_window;
 #[cfg(target_os = "windows")]
@@ -31,7 +34,7 @@ pub mod storage;
 pub(crate) mod ui_session;
 #[cfg(target_os = "macos")]
 pub mod storage {
-    pub use crate::macos::storage::Storage;
+    pub use super::platform::storage::Storage;
 }
 #[cfg(target_os = "windows")]
 pub mod tray_icons;

@@ -3,7 +3,7 @@
 #[path = "adapters/platform/windows/entry.rs"]
 mod native;
 #[cfg(target_os = "macos")]
-use crate::macos as native;
+use crate::adapters::platform as native;
 use crate::{
     adapters::{models::Preparation, storage::Storage, worker::Worker},
     runtime::Runtime,

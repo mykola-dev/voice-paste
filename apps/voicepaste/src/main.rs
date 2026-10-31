@@ -5,9 +5,6 @@ compile_error!("VoicePaste supports Windows and Apple Silicon macOS; Linux is no
 extern crate gpui_kit as gpui;
 mod adapters;
 mod bootstrap;
-#[cfg(target_os = "macos")]
-#[path = "adapters/platform/macos.rs"]
-mod macos;
 mod runtime;
 
 #[cfg(target_os = "windows")]
@@ -41,7 +38,7 @@ fn main() -> std::process::ExitCode {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("VoicePaste macOS preview failed: {error}");
-            macos::startup_error(&error);
+            adapters::platform::startup_error(&error);
             std::process::ExitCode::FAILURE
         }
     }
