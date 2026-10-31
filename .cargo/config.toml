@@ -3,3 +3,9 @@ xtask = "run --locked --package xtask --"
 
 [build]
 target-dir = "build/cache/target"
+
+# Only the target-scoped macOS whisper.cpp dependency consumes these. Do not
+# compile a portable package for the CI runner's newer Apple CPU instruction set.
+[env]
+GGML_NATIVE = { value = "OFF", force = true }
+GGML_CPU_ARM_ARCH = { value = "armv8.4-a+fp16+dotprod", force = true }

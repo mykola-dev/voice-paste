@@ -45,7 +45,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             build/cache/target
-          key: macos-26-arm64-xcode-26.6-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+            build/cache/macos-native-policy.sha256
+          key: macos-26-arm64-xcode-26.6-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '.cargo/config.toml') }}
           restore-keys: macos-26-arm64-xcode-26.6-
       - name: Format and portable contracts (not dictation qualification)
         run: |
@@ -72,7 +73,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             build/cache/target
-          key: macos-26-arm64-xcode-26.6-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+            build/cache/macos-native-policy.sha256
+          key: macos-26-arm64-xcode-26.6-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '.cargo/config.toml') }}
   audit-original-package:
     if: ${{ inputs.audit_original_artifact }}
     runs-on: macos-26

@@ -10,11 +10,18 @@ use voicepaste_core::settings::{Device, Language, TranscriptionOptions};
 use whisper_rs_sys as sys;
 static GPU_FAILED: AtomicBool = AtomicBool::new(false);
 unsafe extern "C" fn log(
-    _: sys::ggml_log_level,
+    level: sys::ggml_log_level,
     text: *const std::ffi::c_char,
     _: *mut std::ffi::c_void,
 ) {
-    if text.is_null() {
+    if text.is_null()
+        || !matches!(
+            level,
+            sys::ggml_log_level_GGML_LOG_LEVEL_INFO
+                | sys::ggml_log_level_GGML_LOG_LEVEL_WARN
+                | sys::ggml_log_level_GGML_LOG_LEVEL_ERROR
+        )
+    {
         return;
     }
     // SAFETY: native callback supplies valid text for the duration of the call.
@@ -24,7 +31,14 @@ unsafe extern "C" fn log(
     {
         GPU_FAILED.store(true, Ordering::Release);
     }
-    eprint!("{text}");
+    // Native DEBUG/CONT output can contain prompt tokens or decoded text; never
+    // forward it, even in a Debug build with the application's logging enabled.
+    if matches!(
+        level,
+        sys::ggml_log_level_GGML_LOG_LEVEL_WARN | sys::ggml_log_level_GGML_LOG_LEVEL_ERROR
+    ) {
+        eprint!("{text}");
+    }
 }
 pub struct Engine {
     pointer: NonNull<sys::whisper_context>,
@@ -49,6 +63,7 @@ impl Engine {
             pointer: NonNull::new(pointer).ok_or("Cannot load full-size GGML model")?,
             metal,
         };
+        engine.ensure_gpu()?;
         // SAFETY: live owned context; this is a metadata-only native query.
         if unsafe { sys::whisper_model_ftype(engine.pointer.as_ptr()) } != 1 {
             return Err(

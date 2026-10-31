@@ -278,12 +278,22 @@ fn prepare(
                 ])
                 .arg(&partial)
                 .arg(&url)
+                .arg("--max-filesize")
+                .arg(artifact.bytes.to_string())
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .spawn()
                 .map_err(|e| e.to_string())?;
             let result = loop {
+                if fs::metadata(&partial).is_ok_and(|m| m.len() > artifact.bytes) {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break Err(
+                        "Download exceeded the pinned artifact size; partial was not published"
+                            .into(),
+                    );
+                }
                 if stop.load(Ordering::Acquire) {
                     let _ = child.kill();
                     let _ = child.wait();

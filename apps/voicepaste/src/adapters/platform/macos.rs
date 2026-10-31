@@ -355,16 +355,16 @@ async fn session(
         if permission_target.is_some() {
             match host.microphone_permission(false) {
                 host::MicrophonePermission::Granted => {
-                    if let Some(target) = permission_target.take() {
-                        if !post(
+                    if let Some(target) = permission_target.take()
+                        && !post(
                             &commands,
                             Command::Toggle {
                                 now: clock.elapsed(),
                                 target,
                             },
-                        )? {
-                            message = "Command queue busy; press the recording key again.".into();
-                        }
+                        )?
+                    {
+                        message = "Command queue busy; press the recording key again.".into();
                     }
                 }
                 host::MicrophonePermission::Denied => {
@@ -414,35 +414,35 @@ async fn session(
                 return Ok(None);
             };
             window.backend_status(&saved.model, &message, cx);
-            if let Some(model) = window.model_query(cx) {
-                if post(
+            if let Some(model) = window.model_query(cx)
+                && post(
                     &commands,
                     Command::ModelAvailability {
                         id: window.id,
                         model,
                     },
-                )? {
-                    window.model_queried(cx);
-                }
+                )?
+            {
+                window.model_queried(cx);
             }
-            if let Some(filter) = window.statistics_query(false, cx) {
-                if post(
+            if let Some(filter) = window.statistics_query(false, cx)
+                && post(
                     &commands,
                     Command::Statistics {
                         id: window.id,
                         filter: filter.clone(),
                     },
-                )? {
-                    window.statistics_queried(filter, cx);
-                }
+                )?
+            {
+                window.statistics_queried(filter, cx);
             }
-            if window.take_statistics_reset(cx) {
-                if !post(&commands, Command::ResetStatistics { id: window.id })? {
-                    window.statistics_reset(
-                        &Err("Command queue busy; retry statistics reset".into()),
-                        cx,
-                    );
-                }
+            if window.take_statistics_reset(cx)
+                && !post(&commands, Command::ResetStatistics { id: window.id })?
+            {
+                window.statistics_reset(
+                    &Err("Command queue busy; retry statistics reset".into()),
+                    cx,
+                );
             }
             if last_memory.elapsed() >= Duration::from_secs(2) {
                 let _ = post(&commands, Command::Memory { id: window.id })?;

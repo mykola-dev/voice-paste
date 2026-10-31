@@ -41,6 +41,24 @@ pub fn preview(runner: &mut Runner, release: bool, offline: bool) -> Result<()> 
         "CARGO_TARGET_DIR".into(),
         runner.root.join(layout::TARGET).into_os_string(),
     );
+    // whisper-rs-sys 0.15.0 consumes GGML_* env vars but does not register
+    // rerun-if-env-changed for them. Invalidate only its compilation cache when
+    // our native policy changes; never reuse a newer-runner CPU-native binary.
+    let policy = files::hash(&runner.root.join(".cargo/config.toml"))?;
+    let stamp = runner.root.join("build/cache/macos-native-policy.sha256");
+    if fs::read_to_string(&stamp).ok().as_deref() != Some(policy.as_str()) {
+        runner.cargo(
+            &["clean", "--package", "whisper-rs-sys", "--locked"],
+            false,
+            offline,
+        )?;
+        fs::create_dir_all(
+            stamp
+                .parent()
+                .context("Native policy stamp has no parent")?,
+        )?;
+        fs::write(&stamp, policy)?;
+    }
     runner.cargo(
         &[
             "build",
@@ -219,6 +237,10 @@ mod tests {
         assert!(PLIST.contains("<string>VoicePaste</string>"));
         assert!(PLIST.contains(&format!("<string>{MINIMUM_OS}</string>")));
         assert!(PLIST.contains("NSMicrophoneUsageDescription"));
+        assert!(PLIST.contains("VoicePaste.icns"));
+        let cargo = include_str!("../../.cargo/config.toml");
+        assert!(cargo.contains("GGML_NATIVE = { value = \"OFF\", force = true }"));
+        assert!(cargo.contains("armv8.4-a+fp16+dotprod"));
         assert!(!PLIST.contains("NSCameraUsageDescription"));
         assert!(!PLIST.contains("NSAppleEventsUsageDescription"));
     }

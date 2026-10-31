@@ -31,6 +31,9 @@ work around company policy to launch a preview.
   an unagreed Auto policy. Initialization fallback diagnostics fail closed in
   Metal-only mode; the host validates reported device before accepting readiness.
   No models are loaded in the GUI process.
+  Cargo forces portable GGML CPU compilation (`GGML_NATIVE=OFF`, ARMv8.4-A with
+  FP16/dot-product support) rather than the CI runner's newer native instruction
+  set. M1 runtime/performance qualification is still required.
 - Silero v6.2.0 GGML runs before log-mel preparation, using the shared threshold,
   hysteresis, 2000-ms silence and 400-ms padding policy. VAD failure is an error,
   not an instruction to bypass VAD. Beam 1–10, decoder fallback/context/seek,
