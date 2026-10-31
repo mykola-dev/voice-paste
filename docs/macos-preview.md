@@ -69,6 +69,55 @@ have **not** been accepted on a Mac. User requested completing development and
 automatic checks first, then one combined manual pass. Do not ask for slice-by-slice
 manual tests or describe a green CI as hardware acceptance.
 
+## Combined local-device acceptance
+
+Run this once after the final automatic checks pass. CI does not exercise real
+microphone permissions, transcription weights, login startup or interactive UI.
+
+1. Quit VoicePaste explicitly, preserving any Settings edits first. Move the old
+   `build/release/VoicePaste.app` aside in Finder; do not remove Application Support.
+   From the existing repository on the Mac, update and build:
+
+   ```sh
+   git switch macOS-2
+   git pull --ff-only
+   bash build-macos-preview.sh
+   open build/release/VoicePaste.app
+   ```
+
+   Approve only the requested repository-local build tools. If Git reports local
+   changes, stop rather than resetting them. Do not change Gatekeeper/MDM rules.
+2. Record the tested commit (`git rev-parse --short HEAD`), macOS version, chip and
+   RAM. Confirm menu-bar residency, Settings text/resize/scroll, Save/Apply/Cancel,
+   prompt preservation and reopening after Quit. Existing legacy config stays intact.
+3. Save the intended model/device. Confirm startup does not download weights;
+   **Download selected model…** explicitly authorizes the full model and VAD.
+   Check progress, cancellation/resume and successful verified preparation.
+   A network failure is a failed delivery test, not permission to bypass TLS.
+4. Enable recording keys through the menu and grant Accessibility only if policy
+   permits. Start requests Microphone access. Check Right Control, Right Option,
+   F8 and F12 individually, held-key repeats, modifier chords, Escape cancellation
+   and changing the saved recording key. Denials must be visible and recoverable.
+5. In a disposable text document, record English/Ukrainian and stop: confirm real
+   transcription, original-app focus and exactly one Unicode Cmd+V. Check bilingual
+   and automatic modes, custom prompt, silence/VAD and a recording over 30 seconds.
+   Confirm Escape produces no transcription/paste and busy toggles do not restart.
+6. Check overlay entry/exit/reversal, live waveform and busy animation without
+   stealing focus; test blur/translucency and another display if available. Report
+   flicker/hangs even if final screenshots look correct.
+7. Confirm statistics and separate host/worker RAM update. Check keep-in-memory
+   on/off and settings changes at idle. Repeat inference with each approved full-size
+   model and CPU/Metal-only as practical; record latency and memory pressure, not
+   just a successful load. Metal initialization failure must never report CPU success.
+8. Exercise Quit while idle, recording and downloading; microphone/owned worker
+   must stop and accepted Saves must survive. Finally enable sign-in startup,
+   test a normal logout/login when convenient, then disable it if not wanted.
+
+Report failures with the step, exact message and log at
+`~/Library/Logs/VoicePaste/voicepaste.log`; avoid sharing private audio or prompts.
+Abrupt-crash temporary-file recovery and stable per-window focus identity remain
+known limitations; this checklist does not declare them implemented.
+
 ## First launch gate (historical `aa24bde`)
 
 The `macos-preview.yml` workflow builds on an ARM64 `macos-26` runner with
@@ -174,7 +223,7 @@ If the pinned Rust version is already available, it reuses it. Otherwise it
 reuses a repository-local toolchain or asks before downloading Rust into
 `build/cache/macos-rust/`. The official rustup installer is SHA-256 checked before
 execution; Rust does not modify shell profiles or install globally. `--yes`
-explicitly approves that toolchain download for noninteractive use. Missing
+explicitly approves that toolchain download for noninteractive use.
 If CMake is unavailable, it separately asks before downloading official Kitware
 CMake 4.4.5 into `build/cache/macos-tools/`, verified against its pinned SHA-256.
 It does not install system packages or change shell profiles. `--yes` explicitly
@@ -213,7 +262,7 @@ CI apps remain blocked there; local compilation is the next launch gate.
 | OS integration | Focus/paste, right-modifier hotkeys, login items, memory, launch errors, tray and blur require native implementations | No fake-success adapters or portable OS handles |
 | Packaging | Windows xtask path requires MSVC/native DLL preparation | Separate preview task; Windows production workflow unchanged |
 
-## Subsequent milestones
+## Original milestone plan (historical)
 
 - Connect shared Settings/menu/overlay through real macOS adapters and test
   required permissions and focus behavior early.
