@@ -43,9 +43,7 @@ pub enum Command {
     ResetStatistics {
         id: u64,
     },
-    #[cfg(target_os = "macos")]
     DownloadModel,
-    #[cfg(target_os = "macos")]
     CancelModelDownload,
     Quit,
 }
@@ -146,14 +144,12 @@ impl Runtime {
                     }
                     match receiver.recv_timeout(Duration::from_millis(100)) {
                         Ok(Command::Quit) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
-                        #[cfg(target_os = "macos")]
                         Ok(Command::CancelModelDownload) => {
                             if preparation.is_some(){
                                 drop(preparation.take());model_ready=false;
                                 let _=sender.try_send(Event::ModelStatus{message:"Model preparation cancelled; partial download retained".into(),preparing:false,downloading:false});
                             }
                         }
-                        #[cfg(target_os = "macos")]
                         Ok(Command::DownloadModel) => {
                             if app.state()!=State::Idle {report(&storage,&sender,"Wait until dictation is idle before downloading a model".into());continue;}
                             worker.release();drop(preparation.take());model_ready=false;
@@ -326,16 +322,6 @@ impl Runtime {
             levels,
             shutdown,
         })
-    }
-
-    #[cfg(target_os = "windows")]
-    pub fn send(&self, command: Command) -> Result<(), String> {
-        self.commands
-            .try_send(command)
-            .map_err(|error| match error {
-                TrySendError::Full(_) => "Command queue busy; try again".into(),
-                TrySendError::Disconnected(_) => "Dictation thread exited".into(),
-            })
     }
 
     pub fn shutdown(&mut self) {

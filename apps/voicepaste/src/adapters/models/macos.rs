@@ -1,22 +1,20 @@
 //! Pinned GGML provisioning. Only an explicit download command enables network.
+use crate::adapters::model_preparation::{
+    Job, Progress, check_cancel as check, prepare_artifact, publish, verify,
+};
+#[cfg(test)]
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, OpenOptions},
-    io::Read,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, AtomicU64, Ordering},
-        mpsc::{self, Receiver},
-    },
-    thread::{self, JoinHandle},
+    sync::atomic::{AtomicBool, Ordering},
+    thread,
     time::Duration,
 };
-use voicepaste_core::{
-    models::{Artifact, Model},
-    settings::SettingsPlatform,
-};
+#[cfg(test)]
+use voicepaste_core::models::Artifact;
+use voicepaste_core::{models::Model, settings::SettingsPlatform};
 
 fn selected(name: &str) -> Result<Model, String> {
     voicepaste_core::models::find_for(name, SettingsPlatform::Macos)
@@ -50,122 +48,18 @@ pub fn filter(
 ) -> Result<voicepaste_core::statistics::Filter, String> {
     voicepaste_core::statistics::Filter::for_platform(settings, SettingsPlatform::Macos)
 }
-pub struct Progress {
-    message: Mutex<String>,
-    downloading: AtomicBool,
-    partial: Mutex<Option<PathBuf>>,
-    total: AtomicU64,
-}
-impl Progress {
-    pub fn snapshot(&self) -> String {
-        let message = self
-            .message
-            .lock()
-            .map(|m| m.clone())
-            .unwrap_or_else(|_| "Preparing model".into());
-        if !self.downloading() {
-            return message;
-        }
-        let path = self.partial.lock().ok().and_then(|path| path.clone());
-        let bytes = path
-            .and_then(|path| fs::metadata(path).ok())
-            .map_or(0, |m| m.len());
-        format!(
-            "{message} — {:.1} / {:.1} MiB",
-            bytes as f64 / 1048576.,
-            self.total.load(Ordering::Relaxed) as f64 / 1048576.
-        )
-    }
-    pub fn downloading(&self) -> bool {
-        self.downloading.load(Ordering::Acquire)
-    }
-    fn set(&self, text: String) {
-        if let Ok(mut value) = self.message.lock() {
-            *value = text;
-        }
-    }
-}
-pub struct Preparation {
-    pub progress: Arc<Progress>,
-    cancel: Arc<AtomicBool>,
-    result: Receiver<Result<PathBuf, String>>,
-    thread: Option<JoinHandle<()>>,
-}
-impl Preparation {
+pub(crate) type Preparation = Job;
+impl Job {
     pub fn start(root: PathBuf, name: &str) -> Result<Self, String> {
         Self::start_with_download(root, name, false)
     }
     pub fn start_with_download(root: PathBuf, name: &str, download: bool) -> Result<Self, String> {
         let model = selected(name)?;
-        let progress = Arc::new(Progress {
-            message: Mutex::new(format!("Checking {}", model.name)),
-            downloading: AtomicBool::new(false),
-            partial: Mutex::new(None),
-            total: AtomicU64::new(0),
-        });
-        let cancel = Arc::new(AtomicBool::new(false));
-        let (sender, result) = mpsc::sync_channel(1);
-        let status = progress.clone();
-        let stop = cancel.clone();
-        let thread = thread::Builder::new()
-            .name("ggml-provisioning".into())
-            .spawn(move || {
-                let result = prepare(&root, &model, download, &stop, &status);
-                status.downloading.store(false, Ordering::Release);
-                let _ = sender.send(result);
-            })
-            .map_err(|e| e.to_string())?;
-        Ok(Self {
-            progress,
-            cancel,
-            result,
-            thread: Some(thread),
+        let progress = Progress::staging_file(format!("Checking {}", model.name));
+        Self::spawn(progress, move |stop, status| {
+            prepare(&root, &model, download, stop, status)
         })
     }
-    pub fn poll(&mut self) -> Option<Result<PathBuf, String>> {
-        match self.result.try_recv() {
-            Ok(result) => {
-                if let Some(thread) = self.thread.take() {
-                    let _ = thread.join();
-                }
-                Some(result)
-            }
-            Err(mpsc::TryRecvError::Empty) => None,
-            Err(_) => Some(Err("Model provisioning worker exited".into())),
-        }
-    }
-}
-impl Drop for Preparation {
-    fn drop(&mut self) {
-        self.cancel.store(true, Ordering::Release);
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
-    }
-}
-fn check(stop: &AtomicBool) -> Result<(), String> {
-    if stop.load(Ordering::Acquire) {
-        Err("Model preparation cancelled; partial retained".into())
-    } else {
-        Ok(())
-    }
-}
-fn verify(path: &Path, artifact: &Artifact, stop: &AtomicBool) -> Result<bool, String> {
-    if !fs::symlink_metadata(path).is_ok_and(|m| m.is_file() && m.len() == artifact.bytes) {
-        return Ok(false);
-    }
-    let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
-    let mut hash = Sha256::new();
-    let mut buffer = [0; 256 * 1024];
-    loop {
-        check(stop)?;
-        let n = file.read(&mut buffer).map_err(|e| e.to_string())?;
-        if n == 0 {
-            break;
-        }
-        hash.update(&buffer[..n]);
-    }
-    Ok(format!("{:x}", hash.finalize()).eq_ignore_ascii_case(&artifact.sha256))
 }
 fn prepare(
     root: &Path,
@@ -204,50 +98,24 @@ fn prepare(
     for artifact in &model.files {
         check(stop)?;
         let path = directory.join(&artifact.path);
-        status.set(format!("Verifying {} / {}", model.name, artifact.path));
+        status.message(format!("Verifying {} / {}", model.name, artifact.path));
         if verify(&path, artifact, stop)? {
             continue;
         }
-        if !download {
-            let partial = directory.join(format!("{}.partial", artifact.path));
-            if verify(&partial, artifact, stop)? {
-                fs::rename(partial, &path).map_err(|e| e.to_string())?;
-                continue;
-            }
-            return Err(format!(
-                "{} is missing or unverified. Use Download selected model in the menu.",
-                model.name
-            ));
-        }
         let partial = directory.join(format!("{}.partial", artifact.path));
-        if fs::symlink_metadata(&partial).is_ok_and(|m| !m.is_file()) {
-            return Err("Refusing non-file model staging path".into());
-        }
-        let file = OpenOptions::new()
+        prepare_artifact(
+            (&partial, &path), artifact, stop, download,
+            |path| OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(false)
             .mode(0o600)
-            .open(&partial)
-            .map_err(|e| e.to_string())?;
-        if file.metadata().map_err(|e| e.to_string())?.len() > artifact.bytes {
-            file.set_len(0).map_err(|e| e.to_string())?;
-        }
-        drop(file);
-        if !verify(&partial, artifact, stop)? {
-            if fs::metadata(&partial).is_ok_and(|m| m.len() == artifact.bytes) {
-                OpenOptions::new()
-                    .write(true)
-                    .truncate(true)
-                    .open(&partial)
-                    .map_err(|e| e.to_string())?;
-            }
-            status.downloading.store(true, Ordering::Release);
-            if let Ok(mut value) = status.partial.lock() {
-                *value = Some(partial.clone());
-            }
-            status.total.store(artifact.bytes, Ordering::Relaxed);
-            status.set(format!(
+            .open(path)
+            .map_err(|e| e.to_string()),
+            |_file, _offset| {
+            status.track_file(partial.clone(), artifact.bytes);
+            status.set_downloading(true);
+            status.message(format!(
                 "Downloading {} ({:.0} MiB); resumable",
                 model.name,
                 artifact.bytes as f64 / 1048576.
@@ -317,16 +185,12 @@ fn prepare(
                     }
                 }
             };
-            status.downloading.store(false, Ordering::Release);
+            status.set_downloading(false);
             result?;
-        }
-        status.set(format!("Verifying {} / {}", model.name, artifact.path));
-        if !verify(&partial, artifact, stop)? {
-            return Err(
-                "Downloaded model failed exact size/SHA-256 verification; not published".into(),
-            );
-        }
-        fs::rename(&partial, &path).map_err(|e| e.to_string())?;
+            status.message(format!("Verifying {} / {}", model.name, artifact.path));
+            Ok(())
+            },
+        ).map_err(|error| format!("{error} Use Download selected model in the menu to retry."))?;
     }
     // The worker expects the pinned VAD beside each model. Hard-linking is not
     // required; a subdirectory preserves the independent VAD manifest/revision.
@@ -341,10 +205,9 @@ fn prepare(
                 return Err("Refusing non-file VAD staging path".into());
             }
             fs::copy(source, &temp).map_err(|e| e.to_string())?;
-            if !verify(&temp, &vad.files[0], stop)? {
+            if !publish(&temp, &destination, &vad.files[0], stop)? {
                 return Err("VAD staging copy failed verification; not published".into());
             }
-            fs::rename(temp, destination).map_err(|e| e.to_string())?;
         }
     }
     Ok(directory)
@@ -381,12 +244,7 @@ mod tests {
         let path = directory.join("test.bin");
         let partial = directory.join("test.bin.partial");
         fs::write(&partial, bytes).unwrap();
-        let status = Progress {
-            message: Mutex::new(String::new()),
-            downloading: AtomicBool::new(false),
-            partial: Mutex::new(None),
-            total: AtomicU64::new(0),
-        };
+        let status = Progress::staging_file(String::new());
         let stop = AtomicBool::new(false);
         assert_eq!(
             prepare(&root, &model, false, &stop, &status).unwrap(),
@@ -411,7 +269,23 @@ mod tests {
             !partial.exists(),
             "offline misses must not create a network staging file"
         );
+        fs::write(&partial, bytes).unwrap();
         stop.store(true, Ordering::Release);
         assert!(prepare(&root, &model, false, &stop, &status).is_err());
+        assert_eq!(fs::read(&path).unwrap(), corrupt);
+        assert_eq!(fs::read(&partial).unwrap(), bytes);
+        stop.store(false, Ordering::Release);
+        prepare(&root, &model, false, &stop, &status).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        let backups: Vec<_> = fs::read_dir(&directory)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| {
+                p.extension()
+                    .is_some_and(|e| e.to_string_lossy().starts_with("corrupt-"))
+            })
+            .collect();
+        assert_eq!(backups.len(), 1);
+        assert_eq!(fs::read(&backups[0]).unwrap(), corrupt);
     }
 }

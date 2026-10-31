@@ -3,7 +3,6 @@ mod application_icon;
 pub mod audio;
 #[cfg(target_os = "windows")]
 mod diagnostics;
-#[cfg(target_os = "windows")]
 mod files;
 #[cfg(target_os = "windows")]
 mod hotkey;
@@ -11,6 +10,7 @@ mod hotkey;
 pub mod launch;
 #[cfg(target_os = "windows")]
 mod memory;
+mod model_preparation;
 #[cfg(target_os = "windows")]
 pub mod models;
 #[cfg(target_os = "macos")]
@@ -27,6 +27,7 @@ mod startup;
 pub mod statistics;
 #[cfg(target_os = "windows")]
 pub mod storage;
+pub(crate) mod ui_session;
 #[cfg(target_os = "macos")]
 pub mod storage {
     pub use crate::macos::storage::Storage;

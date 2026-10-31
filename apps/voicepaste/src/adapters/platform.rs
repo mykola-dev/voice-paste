@@ -7,7 +7,7 @@ mod windows;
 
 #[cfg(target_os = "windows")]
 use windows::{
-    Host,
+    session::SessionHost,
     ui::{OverlayLifecycle, SettingsActivation},
 };
 

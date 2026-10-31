@@ -148,7 +148,7 @@ impl Host {
             vp_dictation_menu_enable(self.pointer.as_ptr());
         }
     }
-    pub fn confirm_download(&self, model: &str) -> bool {
+    pub fn confirm_download(model: &str) -> bool {
         let Ok(model) = std::ffi::CString::new(model) else {
             return false;
         };

@@ -55,6 +55,50 @@ The Windows host/backend selection and defaults remain unchanged. See
 
 ## UI and platform boundaries
 
+`adapters/ui_session.rs` now owns GPUI initialization/platform lifetime and the
+outer runtime shutdown owner for both targets. Its `SettingsSession` owns the saved
+settings projection, draft generations, pending Save obligation, stale-completion
+filtering, Settings reply routing and bounded model/statistics/memory queries.
+Native hotkey staging/commit/rollback stays outside App/entity borrows; successful
+Save replies update the shared overlay appearance. A closed draft cannot release
+an accepted Save or reopen with old saved values while its completion is pending.
+The shared frame-wake wait preserves an independent 20-ms runtime deadline.
+`RuntimeSession` owns the bounded 64-event reply pump, state/model projection and
+shared overlay updates. Runtime borrows end before GPUI updates; native reply
+effects run after App borrows unwind. Buffered replies (including accepted Save
+completions) are delivered before a disconnect error. Model-status replies queue
+an availability refresh for the open draft's selection, retaining that query under
+command backpressure. macOS no longer overwrites this readiness hint every tick
+with menu/permission/backend status text.
+Both targets now execute the same `platform/session.rs` coordinator for native
+intents, permission handoff, Settings staging/completion, overlay lifecycle calls
+and orderly shutdown. Compile-time-selected session hosts own only native menus,
+event taps/hotkey registrations, permission queries, status and tray/DPI effects;
+they do not own a second application loop. `RecordingInput` retains the original
+permission target, rejects duplicate starts while permission is pending, gives
+Cancel precedence and retries it under command backpressure. Quit suppresses new
+work while delivering an accepted Save's native commit/rollback before teardown.
+Native overlay adapters retain their distinct surface/material primitives.
+The remaining cross-platform boundary audit is tracked in `TODO.md`.
+
+`adapters/model_preparation.rs` owns the shared provisioning thread, bounded
+terminal reply, cancellation/join, progress snapshots and cancellable chunked
+SHA-256 for both catalogs. Progress explicitly distinguishes cumulative stream
+bytes from an external transport's staging file, preserving the existing display
+policies without OS switches. Completion is consumed once; success, failure and
+unwinding clear download activity. Catalog selection, download approval, transport,
+cache locks and receipts stay in the model adapters. One shared artifact scenario
+recovers verified complete partials offline, preserves short resume offsets,
+resets complete corrupt/oversized staging only with network approval, and verifies
+and publishes successful transfers. Failed/interrupted transfers retain staging;
+a retry resets a complete corrupt partial instead of appending to it. Exact-size/SHA-256 verification
+and verified publication now share one policy: reject non-file paths, sync staged
+weights, recheck cancellation immediately before commit, and retain replaced
+completed artifacts under unique corrupt-backup paths. The narrow files adapters
+own Windows replacement versus macOS hard-link/rename and directory sync. Cache
+writer locks remain required; this is not a claim of hostile-writer race immunity
+or fully crash-atomic multi-file model publication.
+
 GPUI Kit/component **0.8.1**, matching GPUI-pre **0.3.10**, owns the Settings host
 loop/layout/input/rendering. One Dark and IBM Plex Sans assets are embedded;
 their provenance/licenses live with the assets. Settings reveal/restore/foreground

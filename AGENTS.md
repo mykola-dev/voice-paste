@@ -18,6 +18,45 @@
   merge related entries and avoid duplicates, internal refactors and unverified
   claims. Do not move entries into a numbered release until release is requested.
 
+## NON-NEGOTIABLE: ONE SHARED APPLICATION, NARROW PLATFORM ADAPTERS
+
+**DO NOT BUILD A SEPARATE APPLICATION FOR EACH OS. SHARE ALL DOMAIN,
+APPLICATION, ORCHESTRATION AND GPUI PRESENTATION LOGIC THAT CAN BE SHARED.
+PLATFORM-SPECIFIC CODE IS AN EXCEPTION FOR REAL NATIVE EFFECTS, NOT A SECOND
+IMPLEMENTATION OF THE SAME FEATURE. DUPLICATED SCENARIOS ARE ARCHITECTURAL DEBT,
+NOT AN ACCEPTABLE COMPLETED PORT.**
+
+- Follow the Kotlin Multiplatform `expect`/`actual` intent in Rust: common code
+  owns the scenario and consumer-owned contracts; narrowly scoped native modules
+  implement them. Select concrete adapters with `cfg` at module/composition
+  boundaries and use target-scoped dependencies. Prefer a small matching module
+  API or a justified trait, not a speculative platform framework.
+- **No `if platform == Windows ... else if platform == macOS ...` application
+  architecture.** Do not scatter platform tests, `cfg` branches or OS switches
+  through business rules, UI event coordination or shared GPUI rendering. Inject
+  explicit data/capabilities/policy where behavior genuinely differs; do not
+  disguise an OS switch as a capability or relocate two whole applications
+  behind a trait. Native OS identities/handles stay in adapters.
+- Keep one shared UI-session coordinator: GPUI initialization/lifetime,
+  runtime-event routing, Settings drafts/Save/completions, statistics/RAM queries,
+  overlay state/frame scheduling and command backpressure. Native callbacks
+  publish bounded intents; they do not implement parallel business state machines.
+- Share model preparation/download lifecycle, integrity/publication rules,
+  progress/cancellation and worker/IPC coordination. Separate artifact catalogs
+  and inference backends (CT2 versus whisper.cpp) do not justify duplicating
+  these scenarios. Keep truly different decoding/backend policies separate.
+- Native exceptions include hotkeys, permissions, focus/clipboard/input posting,
+  tray/menu integration, login startup, native placement/backdrop, filesystem and
+  process primitives, and native ML execution. GPUI layout/rendering and common
+  application decisions do not belong in those exceptions.
+- Before adding an OS-specific path, identify the exact native necessity and
+  reuse/extract the common scenario first. Review both platforms for duplication
+  and behavior drift. A green build does not waive this architecture requirement.
+- Refactoring must preserve defaults, saved prompts/data, cancellation, stale-result
+  rejection, bounded queues, native reentrancy safety and explicit shutdown owners.
+  Verify shared contracts plus each platform adapter; do not replace real effects
+  with fake success or claim unperformed device acceptance.
+
 ## Engineering rules
 
 - Domain/application stay independent of GUI, Win32, IO and native ML libraries.

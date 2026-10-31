@@ -123,6 +123,11 @@ impl SettingsWindow {
     pub fn model_queried(&self, cx: &mut App) {
         self.view.update(cx, |view, _| view.model_query = None);
     }
+    pub fn refresh_model_query(&self, cx: &mut App) {
+        self.view.update(cx, |view, _| {
+            view.model_query = Some(view.status_model.clone())
+        });
+    }
     pub fn availability(&self, model: &str, ready: bool, cx: &mut App) {
         self.view.update(cx, |view, cx| {
             if view.status_model == model {
@@ -132,15 +137,6 @@ impl SettingsWindow {
                     "The model needs to be downloaded"
                 }
                 .into();
-                cx.notify();
-            }
-        });
-    }
-    #[cfg(target_os = "macos")]
-    pub fn backend_status(&self, model: &str, message: &str, cx: &mut App) {
-        self.view.update(cx, |view, cx| {
-            if view.status_model == model && view.status != message {
-                view.status = message.into();
                 cx.notify();
             }
         });

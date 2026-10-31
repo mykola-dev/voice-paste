@@ -1,9 +1,90 @@
 # VoicePaste — відкриті задачі
 
 Канонічний backlog продукту, перенесений із `RustMigration/TODO.md`.
-Оновлено 2026-10-29 після повторного review і підтвердження користувача.
+Оновлено 2026-10-31: архітектурний review та залишок macOS-порту.
 Результати й межі перевірок: [verification](docs/verification-2026-10-29.md).
 Контракт: [behavior](docs/behavior.md); defaults і saved prompts не змінювати.
+
+## ПРІОРИТЕТ: один спільний застосунок, не окремий застосунок на кожну ОС
+
+**Обов'язкова архітектура — common domain/application/orchestration/GPUI та
+вузькі native adapters, аналог `expect`/`actual`. Не розмножувати сценарії й не
+розсипати `if Windows/macOS` або `cfg` по бізнес-логіці та UI. Правило закріплено
+в [AGENTS.md](AGENTS.md). Поточний порт ще не відповідає йому повністю.**
+
+- [ ] **Об'єднати UI-session coordination.** Прибрати дублювання між
+  `apps/voicepaste/src/adapters/platform/session.rs` і
+  `apps/voicepaste/src/adapters/platform/macos.rs`: GPUI bootstrap/lifetime,
+  runtime events, Settings open/Save/completion, statistics/RAM, overlay updates,
+  frame wake/polling, command backpressure та orderly shutdown мають одного
+  спільного власника. Залишити за native adapters лише необхідні OS effects;
+  не сховати два старі цикли за одним trait або великим platform switch.
+  - [x] Перший крок: `adapters/ui_session.rs` спільно володіє GPUI bootstrap,
+    platform/global teardown і runtime shutdown, Settings generations/saved state,
+    pending Save та stale completions, routing Settings replies, statistics/RAM
+    queries/backpressure і frame-wake deadline. Обидві ОС використовують цей код;
+    native hotkey staging/commit виконується поза App borrows.
+    Локальна Windows-перевірка 2026-10-31: fmt, 157 tests passed / 1 interactive
+    ignored, clippy та Debug build `--no-deploy`; runnable folders не оновлено.
+    Додано 5 shared regressions. macOS compilation/CI цього кроку ще не виконано.
+  - [x] `RuntimeSession`: спільні bounded runtime-event pump (64 replies),
+    state/model-status projection та overlay updates; native effects поза App
+    borrow. Buffered replies доставляються перед disconnect error. Model-status
+    refresh використовує open draft selection і не губиться на full command queue;
+    macOS не перезаписує readiness hint backend/menu status на кожному tick.
+    Додано 4 shared regressions. Windows: fmt, 173 tests passed / 1 interactive
+    ignored, clippy і Debug build `--offline --no-deploy` пройшли; runnable folders
+    не оновлено.
+    macOS compilation/contracts цього кроку ще не запускались.
+  - [x] Обидві ОС виконують один `platform/session.rs`: native intents,
+    permission handoff, overlay lifecycle та shutdown. Native hosts не мають
+    runtime/UI циклів; вони володіють menu/event tap/hotkey effects. `RecordingInput`
+    зберігає початковий permission target, не запускає дубльований Start після
+    grant, пріоритезує Cancel і повторює його після backpressure. Quit очікує
+    accepted Save completion/registration commit. Додано 5 shared input regressions.
+    macOS compilation/CI поточного кроку ще не виконано.
+- [ ] **Об'єднати lifecycle підготовки моделей.** Звірити `adapters/models.rs`
+  та `adapters/models/macos.rs`, винести спільні integrity/publication,
+  partial/resume, progress, cancellation/ownership і failure rules. HTTP/native
+  filesystem primitives та GGML/CT2 catalogs лишаються окремими там, де потрібно;
+  не уніфікувати різні моделі або backend policies штучно.
+  - [x] `adapters/model_preparation.rs`: один власник provisioning thread,
+    bounded terminal result, cancellation/join, progress snapshots та chunked
+    SHA-256. Обидва adapters використовують його; stream/file progress лишаються
+    явними transport policies. Terminal result одноразовий; network activity
+    скидається після success/error/panic. Додано 8 спільних регресій без мережі.
+    Windows 2026-10-31: fmt, 165 tests passed / 1 interactive ignored, clippy і
+    Debug build `--offline --no-deploy` пройшли; runnable folders не оновлено.
+    macOS compilation/CI цих змін ще не виконано.
+  - [x] Exact-size/SHA-256 verification і verified publication мають спільну
+    реалізацію: non-file rejection, sync staging, cancellation перед commit,
+    backup попереднього corrupt completed artifact. macOS offline promotion,
+    download publication і VAD copy використовують ті самі гарантії; native
+    hard-link/rename та directory sync ізольовано у files adapter. Додано 4 shared
+    publication regressions і 2 macOS-only contracts; розширено macOS offline test.
+    Windows 2026-10-31: fmt, 169 tests passed / 1 interactive ignored, clippy і
+    Debug build `--offline --no-deploy` пройшли; runnable folders не оновлено.
+    macOS compilation/contracts цього кроку ще не запускались.
+  - [x] Partial/resume має спільний сценарій: offline complete-partial recovery,
+    resume offset, reset corrupt complete/oversized staging лише за дозволеної
+    мережі, verification/publication після transport та retention після interruption.
+    Виправлено пропущену publication після macOS download у попередніх робочих
+    змінах; додано 5 shared regressions без мережі. Native staging permissions,
+    cache locking/receipts і download approval лишаються окремими boundaries.
+    Publication вимагає cache writer lock і не гарантує
+    crash-atomic transaction для всього multi-file model або захист від hostile writer.
+- [ ] **Аудит решти платформних розгалужень і дублів.** Перевірити Settings,
+  storage/config save, startup, CLI/composition, runtime та worker boundaries.
+  Спільні рішення/валідація/GPUI мають залишатися common; платформні відмінності
+  подавати через вузькі контракти й явні дані/політики. `cfg` для native modules
+  і dependencies дозволений; OS switches усередині сценаріїв — не заміна дизайну.
+- [ ] **Критерій завершення refactor.** Обидві ОС використовують один session
+  coordinator і спільні lifecycle policies; native/backend differences мають
+  конкретне обґрунтування. Додати спільні регресії Save/Cancel, stale completions,
+  queue saturation, shutdown та provisioning failures; перевірити адаптери обох
+  ОС, fmt/clippy/tests/build/package. Зберегти Windows behavior, prompts/data,
+  macOS permissions і заборону silent fallback. Оновити architecture docs та
+  перевірити код на дублювання, а не лише отримати зелений CI.
 
 ## Надійність: підтверджені залишкові ризики
 
@@ -80,28 +161,62 @@
 
 ## macOS: authorized development on `macOS-2`
 
-- [ ] Apple Silicon port: launch-only GPUI bundle passed CI and the user confirmed
-  a locally compiled build opens on the corporate Mac (macOS 26.7.1).
-  Downloaded CI artifacts remain blocked there; local builds are the test route.
-  Shared Settings, native menu-bar host and Application Support persistence are
-  now implemented; compilation and interaction acceptance are tracked separately.
-  `e21d25d` passed macOS Release/package/signature, clippy and host contracts.
-  Opt-in `--capture-preview` now connects real microphone recording using shared
-  CPAL/application policies, AVFoundation permission and menu Stop/Cancel; no STT
-  or paste. Capture CI and real-device qualification are tracked separately;
-  user requested continuing development before manual tests.
-  See [preview instructions and portability audit](docs/macos-preview.md).
-  Normal dictation is now wired through the shared runtime with macOS hotkeys/Escape,
-  shared overlay, pinned whisper.cpp/Metal worker, GGML/VAD provisioning, Cmd+V and
-  statistics. Source/build corrections and automatic checks are still in progress;
-  this is not a claim of real-device acceptance or a production release.
-  GGML metadata/Git fallback evidence: [model delivery](docs/macos-model-delivery.md).
-  Abrupt-crash recording-file recovery is not implemented. No Linux port.
-  Full-size model/Metal performance and memory on M1, TCC/corporate policy,
-  hotkey suppression, original-target paste, resize/DPI/animation and login launch
-  need the single combined manual pass requested by the user after development.
-  macOS material currently uses public AppKit system blur + white tint rather
-  than an identical programmable Windows Gaussian kernel; visual acceptance open.
+Поточний стан: recording/runtime, single-key controls/Escape, GPUI Settings/overlay,
+whisper.cpp/Metal worker, approved GGML/VAD provisioning, Cmd+V та statistics
+підключені. Для `dc90085` [CI 41187550557](https://github.com/mykola-dev/voice-paste/actions/runs/41187550557)
+пройшов macOS Release/package/signature, clippy та host contracts. Windows:
+152 tests passed, 1 interactive ignored, clippy/Debug compile; runnable folders
+не оновлювали (`--no-deploy`). Це **не** завершення архітектури або реальна
+inference/device acceptance. Користувач підтвердив лише запуск ранішого локально
+зібраного Rust preview на corporate macOS 26.7.1. Downloaded CI apps там заблоковані.
+
+- [ ] **Спочатку архітектурні виправлення вище**, потім фінальна автоматична
+  перевірка й один спільний ручний прогін, без проміжних slice-test прохань.
+- [ ] **Фінальні commits/CI.** Локальні `258c4f6` (ambiguous GGML rejection та
+  запуск worker contracts у CI) і `24e6dbb` (combined acceptance guide) ще не
+  pushed на момент цього запису. Включити їх у перевірену гілку; після refactor
+  отримати зелений fmt/clippy, portable contracts, macOS host **і worker** tests,
+  Release bundle/package/signatures та Windows regressions. Зафіксувати точний
+  перевірений commit; старий зелений CI не доводить коректність наступних змін.
+- [ ] **Повний локальний build/update на корпоративному Mac.** Зберегти Settings,
+  явно Quit і відкласти стару `.app`, оновити `macOS-2`, зібрати штатним script.
+  Не видаляти Application Support/legacy config, не змінювати Gatekeeper/MDM,
+  не вимагати платного Developer ID. Локальний запуск не доводить довіру до
+  downloaded ad-hoc artifacts; production distribution потребує окремого рішення.
+- [ ] **Реальна доставка моделей.** Лише після явного дозволу перевірити повні
+  FP16 large-v2/large-v3/large-v3-turbo та Silero: HTTPS, progress, cancel/resume,
+  hashes, corrupted partial/cache, offline restart і corporate-network failures.
+  Ваги асистент не завантажував. HF Git/LFS/Xet — не незалежне дзеркало й не
+  доведений обхід мережевих обмежень; Git fallback не реалізований.
+  Джерело доказів: [model delivery](docs/macos-model-delivery.md).
+- [ ] **Справжня inference і M1+ qualification.** Записати chip/RAM/macOS;
+  перевірити Metal-only без CPU fallback і явний CPU, усі погоджені моделі,
+  beam/VAD, English/Ukrainian/bilingual/auto, custom prompt, silence та >30 s audio.
+  Виміряти latency, окремий host/worker RAM і memory pressure, keep-in-memory
+  on/off та unload/reload. Не зменшувати модель/beam/VAD/precision заради RAM.
+  Поточна збірка на одному runner не кваліфікує M1 або обидві підтримувані macOS.
+- [ ] **TCC, recording keys та focus/paste.** Microphone/Accessibility allow,
+  deny/retry; Right Control/Right Option/F8/F12, repeats/chords, key replacement,
+  Escape/stale session, busy toggles. Перевірити Unicode, рівно один Cmd+V,
+  original-app restoration/current-focus fallback, manual clipboard on failure
+  та відсутність paste після shutdown. Target зараз app/PID, не стабільна AX
+  window identity; цю межу не видавати за гарантію повернення в те саме вікно.
+- [ ] **GPUI/native visual acceptance.** Settings resize/scroll/DPI/focus/IME,
+  draft identity, Save/Apply/Cancel, prompts та statistics reset; overlay
+  entry/exit/reversal/waveform/busy без focus theft/flicker, mixed displays,
+  placement/clipping і translucent fallback. Поточний macOS blur — public
+  `NSVisualEffectView` + white tint/16-DIP clipping, не доведений еквівалент
+  Windows Gaussian kernel. Потрібне візуальне підтвердження користувача.
+- [ ] **Lifecycle/startup/data.** Перевірити login enable/disable та реальний
+  logout/login; Quit під час recording/download/inference/pending Save,
+  microphone-first stop, owned-child cleanup, persistence і statistics migration.
+  **Abrupt-crash temporary-recording recovery не реалізовано**: окремо визначити
+  безпечне відновлення/прибирання без видалення активних файлів іншого instance.
+- [ ] **Підсумкова acceptance/evidence.** Пройти один
+  [combined local-device checklist](docs/macos-preview.md), записати результати
+  й залишкові дефекти, оновити docs відповідно до фактичної архітектури. Не
+  називати порт завершеним через CI. Не merge/push master і не публікувати macOS
+  release без окремого запиту. Linux лишається поза scope.
 
 ## Відкладено за рішенням користувача
 

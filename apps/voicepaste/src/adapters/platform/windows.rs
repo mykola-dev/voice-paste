@@ -1,6 +1,7 @@
 //! Native menu tracking and Settings activation. Call outside GPUI/state borrows.
 pub(super) mod events;
 mod host;
+pub(super) mod session;
 pub(super) mod ui;
 use super::menu::{self, MenuItem, TrayAction};
 use crate::adapters::paste::FocusTarget;

@@ -32,7 +32,11 @@ impl SettingsActivation {
     }
 
     /// Completion processing may have closed Settings since the snapshot.
-    pub fn apply(self, settings: Option<&SettingsWindow>) -> Result<(), String> {
+    pub fn apply(
+        self,
+        settings: Option<&SettingsWindow>,
+        _cx: &mut AsyncApp,
+    ) -> Result<(), String> {
         if settings.is_some_and(|settings| settings.id == self.generation && !settings.is_closed())
         {
             super::show_settings(self.hwnd)?;

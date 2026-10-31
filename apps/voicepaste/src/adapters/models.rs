@@ -3,17 +3,14 @@ mod verification;
 #[cfg(target_os = "windows")]
 mod windows;
 use super::files;
+use super::model_preparation::{Job, Progress, check_cancel, prepare_artifact, verify};
+#[cfg(test)]
 use sha2::{Digest, Sha256};
 use std::{
-    fs::{self, File},
+    fs,
     io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, AtomicU64, Ordering},
-        mpsc::{self, Receiver},
-    },
-    thread::{self, JoinHandle},
+    sync::atomic::AtomicBool,
 };
 use voicepaste_core::models::{Artifact, Model};
 pub fn filter(
@@ -44,116 +41,25 @@ fn directory(root: &Path, model: &Model) -> PathBuf {
         .join(&model.name)
         .join(&model.revision)
 }
-fn check_cancel(cancel: &AtomicBool) -> Result<(), String> {
-    if cancel.load(Ordering::Acquire) {
-        Err("Model preparation cancelled; partial download retained".into())
-    } else {
-        Ok(())
-    }
-}
-
-pub struct Progress {
-    bytes: AtomicU64,
-    total: u64,
-    message: Mutex<String>,
-    downloading: AtomicBool,
-}
-impl Progress {
-    pub fn downloading(&self) -> bool {
-        self.downloading.load(Ordering::Acquire)
-    }
-    fn message(&self, message: String) {
-        if let Ok(mut value) = self.message.lock() {
-            *value = message;
-        }
-    }
-    pub fn snapshot(&self) -> String {
-        let message = self
-            .message
-            .lock()
-            .map(|v| v.clone())
-            .unwrap_or_else(|_| "Preparing model".into());
-        format!(
-            "{message} — {:.1} / {:.1} MiB",
-            self.bytes.load(Ordering::Relaxed) as f64 / 1048576.0,
-            self.total as f64 / 1048576.0
-        )
-    }
-}
-
-pub struct Preparation {
-    pub progress: Arc<Progress>,
-    cancel: Arc<AtomicBool>,
-    result: Receiver<Result<PathBuf, String>>,
-    thread: Option<JoinHandle<()>>,
-}
-impl Preparation {
+pub(crate) type Preparation = Job;
+impl Job {
     pub fn start(root: PathBuf, selected: &str) -> Result<Self, String> {
+        Self::start_with_download(root, selected, true)
+    }
+    pub fn start_with_download(
+        root: PathBuf,
+        selected: &str,
+        allow_network: bool,
+    ) -> Result<Self, String> {
         let model = voicepaste_core::models::find(selected)?;
-        let progress = Arc::new(Progress {
-            bytes: AtomicU64::new(0),
-            total: model.files.iter().map(|f| f.bytes).sum(),
-            message: Mutex::new(format!("Checking {}", model.name)),
-            downloading: AtomicBool::new(false),
-        });
-        let cancel = Arc::new(AtomicBool::new(false));
-        let (sender, result) = mpsc::sync_channel(1);
-        let task_progress = progress.clone();
-        let task_cancel = cancel.clone();
-        let thread = thread::Builder::new()
-            .name("model-provisioning".into())
-            .spawn(move || {
-                let result = ensure(&root, &model, &task_cancel, &task_progress, true);
-                let _ = sender.send(result);
-            })
-            .map_err(|e| e.to_string())?;
-        Ok(Self {
-            progress,
-            cancel,
-            result,
-            thread: Some(thread),
+        let progress = Progress::cumulative(
+            format!("Checking {}", model.name),
+            model.files.iter().map(|f| f.bytes).sum(),
+        );
+        Self::spawn(progress, move |cancel, progress| {
+            ensure(&root, &model, cancel, progress, allow_network)
         })
     }
-    pub fn poll(&mut self) -> Option<Result<PathBuf, String>> {
-        match self.result.try_recv() {
-            Ok(result) => {
-                if let Some(thread) = self.thread.take() {
-                    let _ = thread.join();
-                }
-                Some(result)
-            }
-            Err(mpsc::TryRecvError::Empty) => None,
-            Err(mpsc::TryRecvError::Disconnected) => {
-                Some(Err("Model preparation thread exited".into()))
-            }
-        }
-    }
-    pub fn cancel(&self) {
-        self.cancel.store(true, Ordering::Release);
-    }
-}
-impl Drop for Preparation {
-    fn drop(&mut self) {
-        self.cancel();
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
-    }
-}
-
-fn hash(path: &Path, cancel: &AtomicBool) -> Result<String, String> {
-    let mut file = File::open(path).map_err(|e| e.to_string())?;
-    let mut hasher = Sha256::new();
-    let mut buffer = [0; 256 * 1024];
-    loop {
-        check_cancel(cancel)?;
-        let count = file.read(&mut buffer).map_err(|e| e.to_string())?;
-        if count == 0 {
-            break;
-        }
-        hasher.update(&buffer[..count]);
-    }
-    Ok(format!("{:X}", hasher.finalize()))
 }
 
 fn ensure(
@@ -178,7 +84,7 @@ fn ensure(
             "Using verified local {} (unchanged files)",
             model.name
         ));
-        progress.bytes.store(progress.total, Ordering::Relaxed);
+        progress.complete();
         return Ok(directory);
     }
     let mut completed = 0;
@@ -194,102 +100,64 @@ fn ensure(
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
             Err(error) => return Err(format!("Cannot read model artifact: {error}")),
         };
-        let valid = candidate
-            .as_ref()
-            .is_some_and(|file| file.metadata().is_ok_and(|m| m.len() == artifact.bytes))
-            && hash(&final_path, cancel)?.eq_ignore_ascii_case(&artifact.sha256);
+        let valid = candidate.is_some() && verify(&final_path, artifact, cancel)?;
         if valid {
             verified_files.push(candidate.ok_or("Missing verified model artifact")?);
         } else {
             drop(candidate);
             let partial_path = directory.join(format!("{}.partial", artifact.path));
-            let mut partial = files::exclusive_options()
-                .read(true)
-                .write(true)
-                .create(true)
-                .truncate(false)
-                .open(&partial_path)
-                .map_err(|e| e.to_string())?;
-            let mut offset = partial.metadata().map_err(|e| e.to_string())?.len();
-            if offset > artifact.bytes {
-                partial.set_len(0).map_err(|e| e.to_string())?;
-                offset = 0;
-            }
-            // A complete partial can have survived a crash immediately before
-            // publication. Verify it without making a network request.
-            let partial_complete = if offset == artifact.bytes {
-                drop(partial);
-                let valid = hash(&partial_path, cancel)?.eq_ignore_ascii_case(&artifact.sha256);
-                partial = files::exclusive_options()
-                    .read(true)
-                    .write(true)
-                    .open(&partial_path)
-                    .map_err(|e| e.to_string())?;
-                if !valid {
-                    partial.set_len(0).map_err(|e| e.to_string())?;
-                    offset = 0;
-                }
-                valid
-            } else {
-                false
-            };
-            if !partial_complete {
-                progress.message(format!("Downloading {} / {}", model.name, artifact.path));
-                progress.bytes.store(completed + offset, Ordering::Relaxed);
-                let object = format!(
-                    "/{}/resolve/{}/{}",
-                    model.repository, model.revision, artifact.path
-                );
-                check_cancel(cancel)?;
-                if !allow_network {
-                    return Err("Model is incomplete and networking is disabled".into());
-                }
-                progress.downloading.store(true, Ordering::Release);
-                let mut response =
-                    http::Response::get("huggingface.co", 443, &object, true, offset)?;
-                if response.status == 200 {
-                    offset = 0;
-                    partial.set_len(0).map_err(|e| e.to_string())?;
-                } else if response.status != 206 {
-                    return Err(format!(
-                        "Download HTTP {} for {}",
-                        response.status, artifact.path
-                    ));
-                }
-                if response.status == 206 {
-                    response.validate_range(offset, artifact.bytes)?;
-                }
-                partial
-                    .seek(SeekFrom::Start(offset))
-                    .map_err(|e| e.to_string())?;
-                transfer(
-                    &mut response,
-                    &mut partial,
-                    offset,
-                    artifact,
-                    cancel,
-                    |bytes| {
-                        progress.bytes.store(completed + bytes, Ordering::Relaxed);
-                    },
-                )?;
-            }
-            partial.sync_all().map_err(|e| e.to_string())?;
-            drop(partial);
-            progress.message(format!("Verifying {} / {}", model.name, artifact.path));
-            if !hash(&partial_path, cancel)?.eq_ignore_ascii_case(&artifact.sha256) {
-                // This is our own failed partial, not a user's completed model.
-                fs::remove_file(&partial_path).map_err(|e| e.to_string())?;
-                return Err(format!(
-                    "SHA-256 mismatch for {}; retry downloads a fresh copy",
-                    artifact.path
-                ));
-            }
-            check_cancel(cancel)?;
-            publish(&partial_path, &final_path)?;
+            prepare_artifact(
+                (&partial_path, &final_path),
+                artifact,
+                cancel,
+                allow_network,
+                |path| {
+                    files::exclusive_options()
+                        .read(true)
+                        .write(true)
+                        .create(true)
+                        .truncate(false)
+                        .open(path)
+                        .map_err(|e| e.to_string())
+                },
+                |partial, mut offset| {
+                    progress.message(format!("Downloading {} / {}", model.name, artifact.path));
+                    progress.bytes(completed + offset);
+                    let object = format!(
+                        "/{}/resolve/{}/{}",
+                        model.repository, model.revision, artifact.path
+                    );
+                    check_cancel(cancel)?;
+                    progress.set_downloading(true);
+                    let mut response =
+                        http::Response::get("huggingface.co", 443, &object, true, offset)?;
+                    if response.status == 200 {
+                        offset = 0;
+                        partial.set_len(0).map_err(|e| e.to_string())?;
+                    } else if response.status != 206 {
+                        return Err(format!(
+                            "Download HTTP {} for {}",
+                            response.status, artifact.path
+                        ));
+                    }
+                    if response.status == 206 {
+                        response.validate_range(offset, artifact.bytes)?;
+                    }
+                    partial
+                        .seek(SeekFrom::Start(offset))
+                        .map_err(|e| e.to_string())?;
+                    transfer(&mut response, partial, offset, artifact, cancel, |bytes| {
+                        progress.bytes(completed + bytes);
+                    })?;
+                    progress.set_downloading(false);
+                    progress.message(format!("Verifying {} / {}", model.name, artifact.path));
+                    Ok(())
+                },
+            )?;
             verified_files.push(files::stable_read(&final_path).map_err(|e| e.to_string())?);
         }
         completed += artifact.bytes;
-        progress.bytes.store(completed, Ordering::Relaxed);
+        progress.bytes(completed);
     }
     verification::Receipt::inspect(&directory, model)
         .ok_or("Model files changed during verification")?
@@ -330,30 +198,10 @@ fn transfer(
     Ok(())
 }
 
-fn publish(partial: &Path, final_path: &Path) -> Result<(), String> {
-    static NEXT: AtomicU64 = AtomicU64::new(0);
-    // Model policy retains a corrupt completed artifact rather than overwriting
-    // it blindly. Native replacement mechanics belong to the files adapter.
-    let backup = if final_path.exists() {
-        Some(loop {
-            let candidate = final_path.with_extension(format!(
-                "corrupt-{}-{}",
-                std::process::id(),
-                NEXT.fetch_add(1, Ordering::Relaxed)
-            ));
-            if !candidate.exists() {
-                break candidate;
-            }
-        })
-    } else {
-        None
-    };
-    files::replace_preserving(partial, final_path, backup.as_deref())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::Ordering;
     #[test]
     fn complete_partial_is_verified_and_published_without_network() {
         let root = std::env::current_exe()
@@ -383,12 +231,7 @@ mod tests {
         let target = directory(&root, &model);
         fs::create_dir_all(&target).unwrap();
         fs::write(target.join("model.bin.partial"), bytes).unwrap();
-        let progress = Progress {
-            bytes: AtomicU64::new(0),
-            total: bytes.len() as u64,
-            message: Mutex::new(String::new()),
-            downloading: AtomicBool::new(false),
-        };
+        let progress = Progress::cumulative(String::new(), bytes.len() as u64);
         let cancelled = AtomicBool::new(false);
         assert_eq!(
             ensure(&root, &model, &cancelled, &progress, false).unwrap(),
