@@ -59,8 +59,6 @@ impl Storage {
 
 impl voicepaste_application::settings::SettingsRepository for Storage {
     fn save(&self, settings: &Settings) -> Result<(), String> {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static NEXT: AtomicU64 = AtomicU64::new(0);
         settings.validate()?;
         let data = self.root.join("data");
         // Persistent lock file, exclusive handle: process exit releases ownership
@@ -75,43 +73,36 @@ impl voicepaste_application::settings::SettingsRepository for Storage {
         let previous = Settings::from_json(
             &fs::read_to_string(data.join("config.json")).map_err(|e| e.to_string())?,
         )?;
-        let temporary = data.join(format!(
-            ".config-{}-{}.tmp",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let mut file = files::exclusive_options()
-            .write(true)
-            .create_new(true)
-            .open(&temporary)
-            .map_err(|e| e.to_string())?;
-        let result = (|| {
-            let bytes = serde_json::to_vec_pretty(settings).map_err(|e| e.to_string())?;
-            file.write_all(&bytes)
-                .and_then(|()| file.sync_all())
-                .map_err(|e| e.to_string())?;
-            drop(file);
-            // Registry and config are committed as one Save operation. A failed
-            // file replacement restores the exact prior Run entry; hotkey rollback
-            // remains owned by the UI's existing save-completion path.
-            let startup = super::startup::StartupChange::apply(
-                previous.start_at_login,
-                settings.start_at_login,
-            )?;
-            if let Err(error) = files::replace(&temporary, &data.join("config.json")) {
-                if let Some(startup) = startup {
-                    startup.rollback().map_err(|rollback| {
-                        format!("{error}; startup rollback failed: {rollback}")
-                    })?;
-                }
-                return Err(error);
-            }
-            Ok(())
-        })();
-        if result.is_err() {
-            let _ = fs::remove_file(temporary);
-        }
-        result
+        let bytes = serde_json::to_vec_pretty(settings).map_err(|e| e.to_string())?;
+        super::config_publication::stage(
+            &data.join("config.json"),
+            &bytes,
+            |path| {
+                files::exclusive_options()
+                    .write(true)
+                    .create_new(true)
+                    .open(path)
+                    .map_err(|e| e.to_string())
+            },
+            |temporary| {
+                // Registry and config are committed as one Save operation. A failed
+                // file replacement restores the exact prior Run entry; hotkey rollback
+                // remains owned by the UI's existing save-completion path.
+                voicepaste_application::settings::commit_with_startup(
+                    || {
+                        super::startup::StartupChange::apply(
+                            previous.start_at_login,
+                            settings.start_at_login,
+                        )
+                    },
+                    || files::replace(temporary, &data.join("config.json")),
+                    |startup| match startup {
+                        Some(startup) => startup.rollback(),
+                        None => Ok(()),
+                    },
+                )
+            },
+        )
     }
 }
 

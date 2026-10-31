@@ -12,24 +12,26 @@ unsafe extern "C" {
     fn vp_host_resident_bytes() -> u64;
     fn vp_process_resident_bytes(pid: i32) -> u64;
 }
-pub(super) fn memory(process: Option<&Process>, ready: bool) -> String {
-    fn mib(bytes: u64) -> String {
-        if bytes == u64::MAX {
-            "unavailable".into()
-        } else {
-            format!("{:.1} MiB resident", bytes as f64 / 1048576.)
+impl Process {
+    pub(super) fn memory_status(process: Option<&Self>, ready: bool) -> String {
+        fn mib(bytes: u64) -> String {
+            if bytes == u64::MAX {
+                "unavailable".into()
+            } else {
+                format!("{:.1} MiB resident", bytes as f64 / 1048576.)
+            }
         }
+        // SAFETY: read-only native queries for this process and our owned child.
+        let host = unsafe { vp_host_resident_bytes() };
+        let child =
+            process.map(|process| unsafe { vp_process_resident_bytes(process.child.id() as i32) });
+        format!(
+            "Host RAM: {}\nSTT worker: {}{}",
+            mib(host),
+            child.map(mib).unwrap_or_else(|| "not running".into()),
+            if ready { " (model loaded)" } else { "" }
+        )
     }
-    // SAFETY: read-only native queries for this process and our owned child.
-    let host = unsafe { vp_host_resident_bytes() };
-    let child =
-        process.map(|process| unsafe { vp_process_resident_bytes(process.child.id() as i32) });
-    format!(
-        "Host RAM: {}\nSTT worker: {}{}",
-        mib(host),
-        child.map(mib).unwrap_or_else(|| "not running".into()),
-        if ready { " (model loaded)" } else { "" }
-    )
 }
 pub(super) struct Process {
     child: Child,

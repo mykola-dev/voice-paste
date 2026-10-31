@@ -5,6 +5,7 @@ fn shared_coordination_and_policies_do_not_import_native_apis() {
         ("main", include_str!("../main.rs")),
         ("runtime", include_str!("../runtime.rs")),
         ("storage", include_str!("storage.rs")),
+        ("config publication", include_str!("config_publication.rs")),
         ("diagnostics", include_str!("diagnostics.rs")),
         ("models", include_str!("models.rs")),
         ("model preparation", include_str!("model_preparation.rs")),
@@ -32,4 +33,19 @@ fn shared_coordination_and_policies_do_not_import_native_apis() {
             );
         }
     }
+}
+#[test]
+fn native_session_hosts_do_not_own_application_scenarios() {
+    for source in [
+        include_str!("platform/windows/session.rs"),
+        include_str!("platform/macos/session.rs"),
+    ] {
+        for forbidden in ["Command::", "SettingsSession", "OverlayWindow", "loop {"] {
+            assert!(
+                !source.contains(forbidden),
+                "native session host contains {forbidden}"
+            );
+        }
+    }
+    assert!(!include_str!("settings_window.rs").contains("PLATFORM =="));
 }

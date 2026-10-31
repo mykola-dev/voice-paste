@@ -2,7 +2,8 @@
 
 Канонічний backlog продукту, перенесений із `RustMigration/TODO.md`.
 Оновлено 2026-10-31: архітектурний review та залишок macOS-порту.
-Результати й межі перевірок: [verification](docs/verification-2026-10-29.md).
+Результати й межі перевірок: [shared verification](docs/verification-2026-10-31.md)
+та [earlier Windows verification](docs/verification-2026-10-29.md).
 Контракт: [behavior](docs/behavior.md); defaults і saved prompts не змінювати.
 
 ## ПРІОРИТЕТ: один спільний застосунок, не окремий застосунок на кожну ОС
@@ -12,7 +13,7 @@
 розсипати `if Windows/macOS` або `cfg` по бізнес-логіці та UI. Правило закріплено
 в [AGENTS.md](AGENTS.md). Поточний порт ще не відповідає йому повністю.**
 
-- [ ] **Об'єднати UI-session coordination.** Прибрати дублювання між
+- [x] **Об'єднати UI-session coordination.** Прибрати дублювання між
   `apps/voicepaste/src/adapters/platform/session.rs` і
   `apps/voicepaste/src/adapters/platform/macos.rs`: GPUI bootstrap/lifetime,
   runtime events, Settings open/Save/completion, statistics/RAM, overlay updates,
@@ -43,7 +44,7 @@
     grant, пріоритезує Cancel і повторює його після backpressure. Quit очікує
     accepted Save completion/registration commit. Додано 5 shared input regressions.
     macOS compilation/CI поточного кроку ще не виконано.
-- [ ] **Об'єднати lifecycle підготовки моделей.** Звірити `adapters/models.rs`
+- [x] **Об'єднати lifecycle підготовки моделей.** Звірити `adapters/models.rs`
   та `adapters/models/macos.rs`, винести спільні integrity/publication,
   partial/resume, progress, cancellation/ownership і failure rules. HTTP/native
   filesystem primitives та GGML/CT2 catalogs лишаються окремими там, де потрібно;
@@ -73,11 +74,29 @@
     cache locking/receipts і download approval лишаються окремими boundaries.
     Publication вимагає cache writer lock і не гарантує
     crash-atomic transaction для всього multi-file model або захист від hostile writer.
-- [ ] **Аудит решти платформних розгалужень і дублів.** Перевірити Settings,
+- [x] **Аудит решти платформних розгалужень і дублів.** Перевірити Settings,
   storage/config save, startup, CLI/composition, runtime та worker boundaries.
   Спільні рішення/валідація/GPUI мають залишатися common; платформні відмінності
   подавати через вузькі контракти й явні дані/політики. `cfg` для native modules
   і dependencies дозволений; OS switches усередині сценаріїв — не заміна дизайну.
+  - [x] Settings rendering більше не перемикає layout/text за OS: explicit profile
+    дані задають native permission notice, startup/memory/backend hints та ваговий
+    artifact для спільного GPUI. Додано catalog/profile contract на обох hosts.
+  - [x] Config staging/write/sync/cleanup та Save startup→publish→rollback мають
+    спільних власників; snapshots/Run value/LaunchAgent і native replacement
+    залишаються native. Failed staging creation не видаляє чужий colliding file.
+  - [x] Worker memory probing та private temp-file permissions вибрані на module
+    boundary; shared worker більше не містить цих OS branches.
+  - [x] `bootstrap.rs` володіє CLI routing, model preparation, offline file
+    transcription і runtime/session startup. Native composition визначає paths
+    та dependencies. Наявні --check/batch-WAV/stdout contracts задані даними;
+    file-mode на обох ОС перевіряє pinned artifacts offline, ніколи не завантажує.
+    Виявлений Windows integrity bypass не скопійовано; виправлення явно записано
+    в CHANGELOG. CLI parser regressions перевіряють обидва contracts і Unicode paths.
+  - [ ] Після наступного CI оновити точні verification evidence; старий CI
+    `b2664b6` зібрав Release/package і пройшов clippy, але 2 нові shared UI fixtures
+    використали Windows defaults на macOS (70 host tests passed / 2 failed).
+    Fixtures виправлено на host-selected defaults; повторна перевірка обов'язкова.
 - [ ] **Критерій завершення refactor.** Обидві ОС використовують один session
   coordinator і спільні lifecycle policies; native/backend differences мають
   конкретне обґрунтування. Додати спільні регресії Save/Cancel, stale completions,

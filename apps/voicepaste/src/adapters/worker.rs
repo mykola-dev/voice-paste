@@ -1,6 +1,5 @@
 use super::{audio::AudioFile, paste::FocusTarget, storage::Storage};
 use std::{
-    fs::OpenOptions,
     io::Write,
     sync::{Arc, mpsc},
     thread,
@@ -111,17 +110,7 @@ impl Worker {
     }
 
     pub fn memory_status(&self) -> String {
-        #[cfg(target_os = "windows")]
-        {
-            super::memory::status(
-                self.process.as_ref().map(Process::working_set).transpose(),
-                self.ready,
-            )
-        }
-        #[cfg(target_os = "macos")]
-        {
-            macos::memory(self.process.as_ref(), self.ready)
-        }
+        Process::memory_status(self.process.as_ref(), self.ready)
     }
 
     // No mic, clipboard or injection: an explicit file route through the same
@@ -137,13 +126,8 @@ impl Worker {
             self.next_request
         ));
         let mut input = std::fs::File::open(path).map_err(|e| e.to_string())?;
-        let mut options = OpenOptions::new();
+        let mut options = super::files::private_options();
         options.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
         let mut output = options.open(&destination).map_err(|e| e.to_string())?;
         let owned = AudioFile { path: destination };
         std::io::copy(&mut input, &mut output).map_err(|e| e.to_string())?;

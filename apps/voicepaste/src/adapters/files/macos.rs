@@ -1,5 +1,12 @@
 use std::{fs, path::Path};
 
+pub(in crate::adapters) fn private_options() -> fs::OpenOptions {
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut options = fs::OpenOptions::new();
+    options.mode(0o600);
+    options
+}
+
 /// Cache writers hold the model lock. Retain the old inode before atomic rename;
 /// a failed rename leaves both the completed artifact and staging bytes intact.
 pub(in crate::adapters) fn replace_preserving(

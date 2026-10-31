@@ -4,7 +4,6 @@ use std::{
     io::Write,
     os::unix::fs::{DirBuilderExt, OpenOptionsExt},
     path::{Path, PathBuf},
-    sync::atomic::{AtomicU64, Ordering},
 };
 use voicepaste_application::settings::SettingsRepository;
 use voicepaste_core::settings::{Settings, SettingsPlatform};
@@ -153,32 +152,20 @@ fn lock_config(root: &Path) -> Result<File, String> {
 }
 
 fn publish(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    static NEXT: AtomicU64 = AtomicU64::new(0);
     reject_link(path)?;
-    let parent = path.parent().ok_or("Missing settings parent directory")?;
-    let temporary = parent.join(format!(
-        ".voicepaste-{}-{}.tmp",
-        std::process::id(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
-    let result = (|| {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&temporary)
-            .map_err(|e| e.to_string())?;
-        file.write_all(bytes)
-            .and_then(|()| file.sync_all())
-            .map_err(|e| e.to_string())?;
-        drop(file);
-        fs::rename(&temporary, path).map_err(|e| e.to_string())?;
-        Ok(())
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(&temporary);
-    }
-    result
+    crate::adapters::config_publication::stage(
+        path,
+        bytes,
+        |temporary| {
+            OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(temporary)
+                .map_err(|e| e.to_string())
+        },
+        |temporary| fs::rename(temporary, path).map_err(|e| e.to_string()),
+    )
 }
 
 const AGENT_MARKER: &str = "<!-- VoicePaste Rust login item -->";
@@ -210,53 +197,57 @@ impl SettingsRepository for Storage {
         // stayed on. A failed config publication still restores exact old bytes.
         let change_login =
             previous.start_at_login != settings.start_at_login || settings.start_at_login;
-        let old_agent = if change_login {
-            reject_link(&self.login_item)?;
-            let previous = match fs::read(&self.login_item) {
-                Ok(bytes) => Some(bytes),
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-                Err(error) => return Err(format!("Cannot read login item: {error}")),
-            };
-            if previous
-                .as_ref()
-                .is_some_and(|bytes| !String::from_utf8_lossy(bytes).contains(AGENT_MARKER))
-            {
-                return Err(
+        voicepaste_application::settings::commit_with_startup(
+            || {
+                let old_agent = if change_login {
+                    reject_link(&self.login_item)?;
+                    let previous = match fs::read(&self.login_item) {
+                        Ok(bytes) => Some(bytes),
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+                        Err(error) => return Err(format!("Cannot read login item: {error}")),
+                    };
+                    if previous
+                        .as_ref()
+                        .is_some_and(|bytes| !String::from_utf8_lossy(bytes).contains(AGENT_MARKER))
+                    {
+                        return Err(
                     "An existing login item is not owned by VoicePaste Rust; it was not changed"
                         .into(),
                 );
-            }
-            if settings.start_at_login {
-                let parent = self.login_item.parent().ok_or("Login item has no parent")?;
-                fs::DirBuilder::new()
-                    .recursive(true)
-                    .mode(0o700)
-                    .create(parent)
-                    .map_err(|e| e.to_string())?;
-                publish(&self.login_item, login_plist(&self.executable)?.as_bytes())?;
-            } else if previous.is_some() {
-                fs::remove_file(&self.login_item).map_err(|e| e.to_string())?;
-            }
-            previous
-        } else {
-            None
-        };
-        if let Err(error) = publish(&config, &bytes) {
-            if change_login {
-                let rollback = match old_agent {
-                    Some(bytes) => publish(&self.login_item, &bytes),
-                    None => match fs::remove_file(&self.login_item) {
-                        Ok(()) => Ok(()),
-                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-                        Err(error) => Err(error.to_string()),
-                    },
+                    }
+                    if settings.start_at_login {
+                        let parent = self.login_item.parent().ok_or("Login item has no parent")?;
+                        fs::DirBuilder::new()
+                            .recursive(true)
+                            .mode(0o700)
+                            .create(parent)
+                            .map_err(|e| e.to_string())?;
+                        publish(&self.login_item, login_plist(&self.executable)?.as_bytes())?;
+                    } else if previous.is_some() {
+                        fs::remove_file(&self.login_item).map_err(|e| e.to_string())?;
+                    }
+                    previous
+                } else {
+                    None
                 };
-                rollback.map_err(|rollback| {
-                    format!("{error}; login-item rollback failed: {rollback}")
-                })?;
-            }
-            return Err(error);
-        }
+                Ok(old_agent)
+            },
+            || publish(&config, &bytes),
+            |old_agent| {
+                if change_login {
+                    match old_agent {
+                        Some(bytes) => publish(&self.login_item, &bytes),
+                        None => match fs::remove_file(&self.login_item) {
+                            Ok(()) => Ok(()),
+                            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                            Err(error) => Err(error.to_string()),
+                        },
+                    }
+                } else {
+                    Ok(())
+                }
+            },
+        )?;
         // Rename is the commit point. A directory-sync failure after it is a
         // durability warning, not a false Save failure with already-changed data.
         if let Err(error) = File::open(&self.root).and_then(|directory| directory.sync_all()) {

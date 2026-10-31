@@ -78,3 +78,6 @@ pub(in crate::adapters) fn replace_preserving(
         Ok(())
     }
 }
+pub(in crate::adapters) fn private_options() -> std::fs::OpenOptions {
+    std::fs::OpenOptions::new()
+}

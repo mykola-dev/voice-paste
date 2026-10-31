@@ -23,10 +23,9 @@ use voicepaste_core::statistics::{Filter as StatisticsFilter, Summary as Statist
 
 type Choice = Entity<SelectState<SearchableVec<String>>>;
 
-#[cfg(target_os = "windows")]
-const PLATFORM: SettingsPlatform = SettingsPlatform::Windows;
-#[cfg(target_os = "macos")]
-const PLATFORM: SettingsPlatform = SettingsPlatform::Macos;
+mod profile;
+use profile::CURRENT as PROFILE;
+const PLATFORM: SettingsPlatform = PROFILE.platform;
 
 pub struct SettingsWindow {
     handle: AnyWindowHandle,
@@ -654,15 +653,19 @@ impl Render for PromptResize {
 }
 
 fn model_size_label(selected: &str) -> String {
-    match voicepaste_core::models::find(selected)
+    match voicepaste_core::models::find_for(selected, PLATFORM)
         .ok()
         .and_then(|model| {
             model
                 .files
                 .into_iter()
-                .find(|file| file.path == "model.bin")
+                .find(|file| PROFILE.weight_path.is_none_or(|path| file.path == path))
         }) {
-        Some(file) => format!("Model size: {:.2} GiB", file.bytes as f64 / 1073741824.),
+        Some(file) => format!(
+            "Model size: {:.2} GiB{}",
+            file.bytes as f64 / 1073741824.,
+            PROFILE.weight_description
+        ),
         None => "Model size: unavailable".into(),
     }
 }
@@ -767,20 +770,7 @@ fn phase_time(average_ms: Option<f64>) -> String {
 
 impl Render for SettingsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let model_size = if PLATFORM == SettingsPlatform::Macos {
-            voicepaste_core::models::find_for(&self.status_model, PLATFORM)
-                .ok()
-                .and_then(|m| m.files.into_iter().next())
-                .map(|file| {
-                    format!(
-                        "Model size: {:.2} GiB (full FP16 GGML)",
-                        file.bytes as f64 / 1073741824.
-                    )
-                })
-                .unwrap_or_else(|| "Model size: unavailable".into())
-        } else {
-            model_size_label(&self.status_model)
-        };
+        let model_size = model_size_label(&self.status_model);
         let statistics_report = self.statistics_report(cx);
         let sidebar_width = if window.viewport_size().width < px(700.) {
             px(144.)
@@ -860,8 +850,7 @@ impl Render for SettingsView {
                                     Some(Device::CudaAuto) => "Prefer CUDA FP16; report CPU INT8 fallback.",
                                     Some(Device::CudaOnly) => "Requires NVIDIA CUDA; no CPU fallback.",
                                     Some(Device::MetalOnly) => "Requires Apple Metal; CPU fallback is forbidden.",
-                                    _ if PLATFORM == SettingsPlatform::Windows => "CPU INT8; GPU not used.",
-                                    _ => "CPU inference; full FP16 model weights, no GPU offload.",
+                                    _ => PROFILE.cpu_hint,
                                 },
                                 cx,
                             )),
@@ -1081,7 +1070,7 @@ impl Render for SettingsView {
                                 cx.notify();
                             }))
                             .into_any_element(),
-                        hint(if PLATFORM == SettingsPlatform::Macos { "Current macOS user only. Applied with OK or Apply; takes effect on next sign-in." } else { "Current Windows user only. Applied with OK or Apply." }, cx)
+                        hint(PROFILE.startup_hint, cx)
                             .into_any_element(),
                     ],
                     cx,
@@ -1106,7 +1095,7 @@ impl Render for SettingsView {
                             .gap(px(8.))
                             .children(self.memory.lines().chain(std::iter::once(model_size.as_str())).map(|line| report_line(line, cx)))
                             .into_any_element(),
-                        hint(if PLATFORM == SettingsPlatform::Macos { "Host and STT worker resident RAM are measured separately. GGML file size is not total RAM or Metal memory usage." } else { "Resident RAM is memory currently held in physical RAM. Model size is the selected model.bin file size, not RAM or VRAM usage; it is shown even before download." }, cx).into_any_element(),
+                        hint(PROFILE.memory_hint, cx).into_any_element(),
                     ],
                     cx,
                 ).into_any_element(),
@@ -1160,9 +1149,15 @@ impl Render for SettingsView {
                     .bg(cx.theme().title_bar)
                     .child("VoicePaste Settings"),
             )
-            .when(PLATFORM == SettingsPlatform::Macos, |root| root.child(
-                div().px(px(12.)).py(px(8.)).text_size(px(12.)).child("macOS — local transcription. Microphone and Accessibility access are required for recording keys and automatic Cmd+V. Model downloads require approval from the menu.")
-            ))
+            .when_some(PROFILE.permission_notice, |root, notice| {
+                root.child(
+                    div()
+                        .px(px(12.))
+                        .py(px(8.))
+                        .text_size(px(12.))
+                        .child(notice),
+                )
+            })
             .child(
                 div()
                     .flex()

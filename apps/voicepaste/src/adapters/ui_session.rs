@@ -452,6 +452,14 @@ impl SettingsSession {
 mod tests {
     use super::*;
 
+    fn initial() -> Settings {
+        #[cfg(target_os = "windows")]
+        let platform = voicepaste_core::settings::SettingsPlatform::Windows;
+        #[cfg(target_os = "macos")]
+        let platform = voicepaste_core::settings::SettingsPlatform::Macos;
+        Settings::initial_for(platform).unwrap()
+    }
+
     #[test]
     fn runtime_event_pump_is_bounded_and_preserves_order() {
         let (sender, receiver) = std::sync::mpsc::sync_channel(EVENT_BUDGET + 2);
@@ -519,7 +527,7 @@ mod tests {
         cx.update(|cx| {
             gpui_kit::init(cx);
             super::super::settings_theme::install(cx).unwrap();
-            let mut session = SettingsSession::new(Settings::initial().unwrap(), String::new());
+            let mut session = SettingsSession::new(initial(), String::new());
             let selected = session.saved.model.clone();
             let overlay = OverlayWindow::open(&session.saved.indicator_color, session.saved.overlay_appearance(), levels, Instant::now(), cx).unwrap();
             let mut open = true;
@@ -552,7 +560,7 @@ mod tests {
         cx.update(|cx| {
             gpui_kit::init(cx);
             super::super::settings_theme::install(cx).unwrap();
-            let mut session = SettingsSession::new(Settings::initial().unwrap(), String::new());
+            let mut session = SettingsSession::new(initial(), String::new());
             let overlay = OverlayWindow::open(&session.saved.indicator_color, session.saved.overlay_appearance(), levels, Instant::now(), cx).unwrap();
             let mut open = true;
             assert!(session.maintain(&mut open, cx).unwrap());
@@ -591,7 +599,7 @@ mod tests {
         cx.update(|cx| {
             gpui_kit::init(cx);
             super::super::settings_theme::install(cx).unwrap();
-            let initial = Settings::initial().unwrap();
+            let initial = initial();
             let mut session = SettingsSession::new(initial.clone(), String::new());
             let overlay = OverlayWindow::open(
                 &initial.indicator_color,
@@ -647,7 +655,7 @@ mod tests {
     fn full_queue_rejects_save_without_claiming_it_is_pending() {
         let (commands, receiver) = std::sync::mpsc::sync_channel(1);
         assert!(post(&commands, Command::Memory { id: 1 }).unwrap());
-        let mut settings = SettingsSession::new(Settings::initial().unwrap(), String::new());
+        let mut settings = SettingsSession::new(initial(), String::new());
         assert!(
             settings
                 .submit(1, settings.saved.clone(), &commands)

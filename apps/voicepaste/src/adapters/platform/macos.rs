@@ -13,64 +13,39 @@ mod session;
 pub(crate) mod storage;
 #[path = "macos/ui.rs"]
 mod ui;
+use crate::{adapters::ui_session, bootstrap::CliPolicy, runtime::Runtime};
 use native_session::SessionHost;
+use std::sync::Arc;
 use ui::{OverlayLifecycle, SettingsActivation};
 
-use crate::{adapters::ui_session, runtime::Runtime};
-use std::{sync::Arc, time::Duration};
-
+pub(crate) const CLI_POLICY: CliPolicy = CliPolicy {
+    check_message: None,
+    max_files: Some(1),
+    download_progress: false,
+};
+pub(crate) fn open_storage() -> Result<storage::Storage, String> {
+    storage::Storage::open()
+}
 pub fn startup_error(message: &str) {
     host::startup_error(message);
 }
 
-pub fn run() -> Result<(), String> {
-    let args: Vec<_> = std::env::args_os().skip(1).collect();
-    let file_mode = args.len() == 2 && args[0] == "--transcribe-file";
-    if !args.is_empty()
-        && args != ["--settings"]
-        && args != ["--capture-preview"]
-        && args != ["--download-model"]
-        && !file_mode
-    {
-        return Err("Usage: VoicePaste [--settings | --capture-preview | --download-model | --transcribe-file <wav>]".into());
-    }
-    let storage = Arc::new(storage::Storage::open()?);
-    if args == ["--download-model"] || file_mode {
-        let mut preparation = crate::adapters::models::Preparation::start_with_download(
-            storage.root.clone(),
-            &storage.settings.model,
-            !file_mode,
-        )?;
-        loop {
-            if let Some(result) = preparation.poll() {
-                result?;
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        if file_mode {
-            let mut worker = crate::adapters::worker::Worker::new(storage.clone());
-            println!(
-                "{}",
-                worker.transcribe_file(std::path::Path::new(&args[1]), &storage.settings)?
-            );
-        }
-        return Ok(());
-    }
-    let preview = args == ["--capture-preview"] || args == ["--settings"];
-    let settings_only = args == ["--settings"];
-    let runtime = Runtime::start(storage.clone(), preview)?;
-    let session_storage = storage.clone();
-    let result = ui_session::run(
+pub(crate) fn run_session(
+    runtime: Runtime,
+    storage: Arc<storage::Storage>,
+    capture: bool,
+    settings_only: bool,
+) -> Result<(), String> {
+    ui_session::run(
         runtime,
         storage.settings.clone(),
         storage.log_path.display().to_string(),
-        preview,
+        capture,
         settings_only,
         move |context, cx| {
             Box::pin(async move {
                 let host = SessionHost::new(
-                    session_storage,
+                    storage,
                     &context.initial,
                     context.capture_preview,
                     context.settings_only,
@@ -78,9 +53,5 @@ pub fn run() -> Result<(), String> {
                 session::ui_session(context, host, cx).await
             })
         },
-    );
-    if let Err(error) = &result {
-        storage.log(error);
-    }
-    result
+    )
 }

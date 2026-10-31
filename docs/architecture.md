@@ -80,6 +80,16 @@ Cancel precedence and retries it under command backpressure. Quit suppresses new
 work while delivering an accepted Save's native commit/rollback before teardown.
 Native overlay adapters retain their distinct surface/material primitives.
 The remaining cross-platform boundary audit is tracked in `TODO.md`.
+Settings presentation uses a selected data profile for native permission/startup
+explanations and backend/catalog weight descriptions, not OS switches in rendering.
+`config_publication.rs` owns staged write/sync/cleanup; application Settings owns
+startup apply → config commit → rollback ordering. Run-value and LaunchAgent
+snapshots/ownership and replacement primitives remain native. A failed staging
+creation never authorizes removal of an existing colliding temporary file.
+`bootstrap.rs` shares CLI routing, provisioning, offline file transcription and
+runtime/session startup. Native entry modules select paths/dependencies; data
+preserves the existing check-command, batch-WAV and stdout contracts. File mode
+verifies pinned local artifacts on both backends and never enables downloads.
 
 `adapters/model_preparation.rs` owns the shared provisioning thread, bounded
 terminal reply, cancellation/join, progress snapshots and cancellable chunked

@@ -3,8 +3,10 @@
 #[cfg(target_os = "windows")]
 mod windows;
 #[cfg(target_os = "windows")]
-pub(super) use windows::{exclusive_options, replace, replace_preserving, stable_read};
+pub(super) use windows::{
+    exclusive_options, private_options, replace, replace_preserving, stable_read,
+};
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]
-pub(super) use macos::replace_preserving;
+pub(super) use macos::{private_options, replace_preserving};

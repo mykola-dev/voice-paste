@@ -56,6 +56,9 @@ pub(super) struct Process {
     readers: Vec<JoinHandle<()>>,
 }
 impl Process {
+    pub(super) fn memory_status(process: Option<&Self>, ready: bool) -> String {
+        crate::adapters::memory::status(process.map(Self::working_set).transpose(), ready)
+    }
     pub(super) fn spawn(root: &Path) -> Result<Self, String> {
         let runtime = root.join("runtime");
         let job = Job::new()?;
