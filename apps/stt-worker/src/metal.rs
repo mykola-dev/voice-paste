@@ -31,11 +31,21 @@ impl Pipeline {
         let catalog = voicepaste_core::models::catalog_for(
             voicepaste_core::settings::SettingsPlatform::Macos,
         )?;
-        let artifact = catalog
+        let candidates: Vec<_> = catalog
             .iter()
             .flat_map(|m| &m.files)
-            .find(|file| model.join(&file.path).is_file())
-            .ok_or("No supported full-size GGML artifact in model directory")?;
+            .filter(|file| model.join(&file.path).is_file())
+            .collect();
+        let artifact = match candidates.as_slice() {
+            [artifact] => *artifact,
+            [] => return Err("No supported full-size GGML artifact in model directory".into()),
+            _ => {
+                return Err(
+                    "Ambiguous GGML model directory; refusing to substitute a different model"
+                        .into(),
+                );
+            }
+        };
         let started = Instant::now();
         let engine = engine::Engine::open(&model.join(&artifact.path), options.device)?;
         Ok(Self {
@@ -120,5 +130,41 @@ impl Pipeline {
                 preparation_us: Some(preparation_us),
             },
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn ambiguous_model_directory_is_rejected_before_any_native_load() {
+        let root =
+            std::env::temp_dir().join(format!("voicepaste-ambiguous-ggml-{}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        struct Owned(PathBuf);
+        impl Drop for Owned {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let _owner = Owned(root.clone());
+        std::fs::write(
+            root.join("ggml-large-v2.bin"),
+            b"metadata fixture, not weights",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("ggml-large-v3.bin"),
+            b"metadata fixture, not weights",
+        )
+        .unwrap();
+        let settings = voicepaste_core::settings::Settings::initial_for(
+            voicepaste_core::settings::SettingsPlatform::Macos,
+        )
+        .unwrap();
+        let error = Pipeline::open(&root, &root, TranscriptionOptions::from(&settings))
+            .err()
+            .expect("ambiguous models must fail");
+        assert!(error.contains("Ambiguous GGML"));
     }
 }
