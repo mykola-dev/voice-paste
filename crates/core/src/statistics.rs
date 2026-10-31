@@ -52,7 +52,7 @@ pub struct Sample {
 impl Sample {
     pub fn new(filter: Filter, device: &str, measurement: Measurement, text: &str) -> Option<Self> {
         if text.trim().is_empty()
-            || !matches!(device, "cpu" | "cuda")
+            || !matches!(device, "cpu" | "cuda" | "metal")
             || measurement.audio_samples == 0
         {
             return None;

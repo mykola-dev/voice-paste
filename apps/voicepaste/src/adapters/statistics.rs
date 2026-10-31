@@ -36,7 +36,7 @@ impl Statistics {
                 beam_size INTEGER NOT NULL CHECK(beam_size BETWEEN 1 AND 10),
                 vad INTEGER NOT NULL CHECK(vad IN (0,1)),
                 language TEXT NOT NULL,
-                device TEXT NOT NULL CHECK(device IN ('cpu','cuda')),
+                device TEXT NOT NULL CHECK(device IN ('cpu','cuda','metal')),
                 inference_us INTEGER NOT NULL CHECK(inference_us >= 0),
                 audio_samples INTEGER NOT NULL CHECK(audio_samples > 0),
                 words INTEGER NOT NULL CHECK(words >= 0),
@@ -52,7 +52,7 @@ impl Statistics {
                 beam_size INTEGER NOT NULL CHECK(beam_size BETWEEN 1 AND 10),
                 vad INTEGER NOT NULL CHECK(vad IN (0,1)),
                 language TEXT NOT NULL,
-                device TEXT NOT NULL CHECK(device IN ('cpu','cuda')),
+                 device TEXT NOT NULL CHECK(device IN ('cpu','cuda','metal')),
                 loading_us INTEGER NOT NULL CHECK(loading_us >= 0)
              );
              CREATE INDEX IF NOT EXISTS model_load_filter_v1 ON model_load_samples_v1
@@ -72,6 +72,29 @@ impl Statistics {
                 transaction.execute_batch(&format!("ALTER TABLE transcription_samples_v1 ADD COLUMN {column} INTEGER CHECK({column} >= 0)"))?;
             }
         }
+        // SQLite cannot alter CHECK constraints in place. Migrate only the
+        // application-owned legacy device constraint, transactionally preserving
+        // every id/timestamp/measurement and recreating its lookup indexes.
+        for table in ["transcription_samples_v1", "model_load_samples_v1"] {
+            let sql: String = transaction.query_row(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name=?1",
+                [table],
+                |row| row.get(0),
+            )?;
+            if !sql.contains("'metal'") {
+                let temporary = format!("{table}_metal_migration");
+                let widened = sql.replace(
+                    "CHECK(device IN ('cpu','cuda'))",
+                    "CHECK(device IN ('cpu','cuda','metal'))",
+                );
+                if widened == sql {
+                    return Err(rusqlite::Error::InvalidQuery);
+                }
+                transaction.execute_batch(&widened.replacen(table, &temporary, 1))?;
+                transaction.execute_batch(&format!("INSERT INTO {temporary} SELECT * FROM {table}; DROP TABLE {table}; ALTER TABLE {temporary} RENAME TO {table};"))?;
+            }
+        }
+        transaction.execute_batch("CREATE INDEX IF NOT EXISTS transcription_filter_v1 ON transcription_samples_v1 (model, revision, beam_size, vad, language, device); CREATE INDEX IF NOT EXISTS model_load_filter_v1 ON model_load_samples_v1 (model, revision, beam_size, vad, language, device);")?;
         transaction.commit()?;
         Ok(Self(connection))
     }
@@ -405,5 +428,69 @@ mod tests {
         assert_eq!(result[0].average_preparation_ms, Some(12.0));
         let db = Statistics::initialize(db.0).unwrap();
         assert_eq!(db.query(&old.filter).unwrap(), result);
+    }
+
+    #[test]
+    fn metal_device_migration_preserves_legacy_history_and_accepts_new_phases() {
+        let db = Statistics::initialize(Connection::open_in_memory().unwrap()).unwrap();
+        let mut old = sample("cpu", 100_000, 16000, "legacy words");
+        old.filter.device = Device::Cpu;
+        db.record(&old).unwrap();
+        db.record_load(&ModelLoad {
+            filter: old.filter.clone(),
+            device: "cpu".into(),
+            loading_us: 2_000_000,
+        })
+        .unwrap();
+        let before = db.query(&old.filter).unwrap();
+        // Reconstruct the released CPU/CUDA-only CHECK constraints, retaining
+        // real rows and phase columns, before exercising the production migration.
+        for table in ["transcription_samples_v1", "model_load_samples_v1"] {
+            let sql: String =
+                db.0.query_row(
+                    "SELECT sql FROM sqlite_master WHERE name=?1",
+                    [table],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            let temporary = format!("{table}_legacy_fixture");
+            let legacy = sql
+                .replace("('cpu','cuda','metal')", "('cpu','cuda')")
+                .replacen(table, &temporary, 1);
+            db.0.execute_batch(&legacy).unwrap();
+            db.0.execute_batch(&format!("INSERT INTO {temporary} SELECT * FROM {table};DROP TABLE {table};ALTER TABLE {temporary} RENAME TO {table};")).unwrap();
+        }
+        let mut db = Statistics::initialize(db.0).unwrap();
+        assert_eq!(db.query(&old.filter).unwrap(), before);
+        let settings = voicepaste_core::settings::Settings::initial_for(
+            voicepaste_core::settings::SettingsPlatform::Macos,
+        )
+        .unwrap();
+        let mut metal = sample("metal", 200_000, 32000, "нові слова");
+        metal.filter = Filter::for_platform(
+            &settings,
+            voicepaste_core::settings::SettingsPlatform::Macos,
+        )
+        .unwrap();
+        metal.measurement.vad_us = Some(20_000);
+        metal.measurement.preparation_us = Some(30_000);
+        db.record(&metal).unwrap();
+        db.record_load(&ModelLoad {
+            filter: metal.filter.clone(),
+            device: "metal".into(),
+            loading_us: 1_000_000,
+        })
+        .unwrap();
+        let rows = db.query(&metal.filter).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].device, "metal");
+        assert_eq!(rows[0].count, 1);
+        assert_eq!(rows[0].average_vad_ms, Some(20.0));
+        assert_eq!(db.query(&old.filter).unwrap(), before);
+        db = Statistics::initialize(db.0).unwrap();
+        assert_eq!(db.query(&metal.filter).unwrap(), rows);
+        db.reset().unwrap();
+        assert!(db.query(&metal.filter).unwrap().is_empty());
+        assert!(db.query(&old.filter).unwrap().is_empty());
     }
 }

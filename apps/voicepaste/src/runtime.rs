@@ -119,6 +119,9 @@ impl Runtime {
                 let mut last_progress = Instant::now();
                 loop {
                     if thread_shutdown.load(Ordering::Acquire) {
+                        // Stop capture before disk commits or native-child waits;
+                        // quitting must not keep the microphone live behind UI teardown.
+                        if let Err(error)=app.shutdown(){storage.log(&error);}
                         // An accepted Save remains a persistence obligation even
                         // when OS Quit ends the UI before its completion arrives.
                         while let Ok(command)=receiver.try_recv(){
@@ -308,11 +311,11 @@ impl Runtime {
                         }
                     }
                 }
-                drop(preparation);
-                worker.release();
                 if let Err(error) = app.shutdown() {
                     storage.log(&error);
                 }
+                drop(preparation);
+                worker.release();
             })
             .map_err(|e| e.to_string())?;
         Ok(Self {
