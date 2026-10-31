@@ -11,7 +11,8 @@ use voicepaste_core::settings::{Settings, SettingsPlatform};
 
 pub struct Storage {
     pub settings: Settings,
-    root: PathBuf,
+    pub root: PathBuf,
+    pub temp: PathBuf,
     pub log_path: PathBuf,
     login_item: PathBuf,
     executable: PathBuf,
@@ -35,7 +36,7 @@ impl Storage {
         )
     }
 
-    pub(super) fn open_at(
+    pub(crate) fn open_at(
         root: PathBuf,
         log_path: PathBuf,
         login_item: PathBuf,
@@ -68,9 +69,22 @@ impl Storage {
             Err(error) => return Err(format!("Cannot open config: {error}")),
         }
         let settings = read_settings(&config)?;
+        let temp = root.join("temp");
+        reject_link(&temp)?;
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&temp)
+            .map_err(|e| e.to_string())?;
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(root.join("data"))
+            .map_err(|e| e.to_string())?;
         Ok(Self {
             settings,
             root,
+            temp,
             log_path,
             login_item,
             executable,
@@ -101,17 +115,6 @@ impl Storage {
         {
             let _ = writeln!(file, "{message}");
         }
-    }
-
-    pub fn capture_directory(&self) -> Result<PathBuf, String> {
-        let directory = self.root.join("temp");
-        reject_link(&directory)?;
-        fs::DirBuilder::new()
-            .recursive(true)
-            .mode(0o700)
-            .create(&directory)
-            .map_err(|error| format!("Cannot create recording directory: {error}"))?;
-        Ok(directory)
     }
 }
 

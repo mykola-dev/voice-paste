@@ -17,6 +17,10 @@ mod transport;
 mod windows;
 #[cfg(target_os = "windows")]
 use windows::Process;
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_os = "macos")]
+use macos::Process;
 
 pub struct Worker {
     storage: Arc<Storage>,
@@ -60,7 +64,7 @@ impl Worker {
         }
         self.release();
         let model = super::models::local_path(&self.storage.root, &settings.model)?;
-        let statistics_filter = voicepaste_core::statistics::Filter::from_settings(settings)?;
+        let statistics_filter = super::models::filter(settings)?;
         self.generation.0 = self
             .generation
             .0
@@ -107,10 +111,17 @@ impl Worker {
     }
 
     pub fn memory_status(&self) -> String {
-        super::memory::status(
-            self.process.as_ref().map(Process::working_set).transpose(),
-            self.ready,
-        )
+        #[cfg(target_os = "windows")]
+        {
+            super::memory::status(
+                self.process.as_ref().map(Process::working_set).transpose(),
+                self.ready,
+            )
+        }
+        #[cfg(target_os = "macos")]
+        {
+            macos::memory(self.process.as_ref(), self.ready)
+        }
     }
 
     // No mic, clipboard or injection: an explicit file route through the same
@@ -220,7 +231,7 @@ impl Worker {
                 {
                     return Some(self.failed("Invalid native worker readiness message".into()));
                 }
-                if !matches!(device.as_str(), "cpu" | "cuda")
+                if !valid_device(self.options.as_ref().map(|o| o.device), &device)
                     || (self
                         .options
                         .as_ref()
@@ -265,10 +276,7 @@ impl Worker {
                 self.deadline = None;
                 // Export numeric metadata only. The session owner decides whether
                 // this completion is still current before persisting a sample.
-                let statistics = voicepaste_core::statistics::Filter::from_settings(
-                    &submission.settings,
-                )
-                .map(|filter| {
+                let statistics = super::models::filter(&submission.settings).map(|filter| {
                     voicepaste_core::statistics::Sample::new(
                         filter,
                         &self.actual_device,
@@ -311,6 +319,17 @@ impl Worker {
         }
     }
 }
+
+fn valid_device(policy: Option<voicepaste_core::settings::Device>, actual: &str) -> bool {
+    use voicepaste_core::settings::Device;
+    match policy {
+        Some(Device::MetalOnly) => actual == "metal",
+        Some(Device::Cpu) => actual == "cpu",
+        Some(Device::CudaOnly) => actual == "cuda",
+        Some(Device::CudaAuto) => matches!(actual, "cpu" | "cuda"),
+        None => false,
+    }
+}
 impl Drop for Worker {
     fn drop(&mut self) {
         self.release();
@@ -326,6 +345,15 @@ mod tests {
         sync::atomic::{AtomicU64, Ordering},
     };
     use voicepaste_core::{settings::Device, statistics::Measurement};
+    #[test]
+    fn readiness_enforces_exact_device_policy_including_no_metal_fallback() {
+        assert!(valid_device(Some(Device::MetalOnly), "metal"));
+        for device in ["cpu", "cuda", ""] {
+            assert!(!valid_device(Some(Device::MetalOnly), device));
+        }
+        assert!(!valid_device(Some(Device::Cpu), "metal"));
+        assert!(!valid_device(Some(Device::CudaAuto), "metal"));
+    }
 
     struct Fixture {
         worker: Worker,
@@ -344,7 +372,18 @@ mod tests {
                     NEXT.fetch_add(1, Ordering::Relaxed)
                 ));
             fs::create_dir(&root).unwrap();
+            #[cfg(target_os = "windows")]
             let storage = Arc::new(Storage::open(&root).unwrap());
+            #[cfg(target_os = "macos")]
+            let storage = Arc::new(
+                Storage::open_at(
+                    root.join("data"),
+                    root.join("test.log"),
+                    root.join("agent.plist"),
+                    root.join("app"),
+                )
+                .unwrap(),
+            );
             let mut worker = Worker::new(storage);
             worker.generation = Generation(7);
             worker.options = Some(TranscriptionOptions::from(&worker.storage.settings));

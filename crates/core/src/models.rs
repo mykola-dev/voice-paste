@@ -16,12 +16,37 @@ pub struct Model {
 #[derive(Deserialize)]
 struct Catalog {
     models: Vec<Model>,
+    #[serde(default)]
+    vad: Option<Model>,
 }
 
 pub fn catalog() -> Result<Vec<Model>, String> {
     let catalog: Catalog = serde_json::from_str(include_str!("../assets/model-artifacts.json"))
         .map_err(|e| e.to_string())?;
     Ok(catalog.models)
+}
+pub fn catalog_for(platform: crate::settings::SettingsPlatform) -> Result<Vec<Model>, String> {
+    if platform == crate::settings::SettingsPlatform::Windows {
+        return catalog();
+    }
+    let catalog: Catalog =
+        serde_json::from_str(include_str!("../assets/macos-model-artifacts.json"))
+            .map_err(|e| e.to_string())?;
+    Ok(catalog.models)
+}
+pub fn find_for(name: &str, platform: crate::settings::SettingsPlatform) -> Result<Model, String> {
+    catalog_for(platform)?
+        .into_iter()
+        .find(|model| model.name == name)
+        .ok_or_else(|| format!("Unsupported model: {name}"))
+}
+pub fn macos_vad() -> Result<Model, String> {
+    let catalog: Catalog =
+        serde_json::from_str(include_str!("../assets/macos-model-artifacts.json"))
+            .map_err(|e| e.to_string())?;
+    catalog
+        .vad
+        .ok_or("Missing pinned macOS VAD artifact".into())
 }
 pub fn find(name: &str) -> Result<Model, String> {
     catalog()?
@@ -52,6 +77,27 @@ pub fn id_from_display(label: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn macos_catalog_has_only_full_size_pinned_ggml_models_and_independent_vad() {
+        let models = catalog_for(crate::settings::SettingsPlatform::Macos).unwrap();
+        assert_eq!(
+            models.iter().map(|m| m.name.as_str()).collect::<Vec<_>>(),
+            ["large-v2", "large-v3", "large-v3-turbo"]
+        );
+        for model in &models {
+            assert_eq!(model.revision.len(), 40);
+            assert_eq!(model.files.len(), 1);
+            assert_eq!(model.files[0].path, format!("ggml-{}.bin", model.name));
+            assert!(model.files[0].bytes > 1_500_000_000);
+            assert_eq!(model.files[0].sha256.len(), 64);
+            assert!(model.files[0].sha256.bytes().all(|b| b.is_ascii_hexdigit()));
+        }
+        let vad = macos_vad().unwrap();
+        assert_eq!(vad.name, "silero-v6.2.0");
+        assert_eq!(vad.files[0].bytes, 885098);
+        assert_eq!(vad.files[0].sha256.len(), 64);
+        assert_ne!(find("large-v2").unwrap().revision, models[0].revision);
+    }
 
     #[test]
     fn display_labels_round_trip_through_catalog_ids() {

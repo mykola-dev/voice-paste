@@ -1,4 +1,7 @@
 fn main() {
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+        return;
+    }
     println!("cargo:rerun-if-changed=native/bridge.cpp");
     println!("cargo:rerun-if-env-changed=VOICEPASTE_CT2_INCLUDE");
     println!("cargo:rerun-if-env-changed=VOICEPASTE_CT2_LIB");

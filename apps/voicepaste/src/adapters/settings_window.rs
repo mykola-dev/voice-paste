@@ -137,10 +137,9 @@ impl SettingsWindow {
         });
     }
     #[cfg(target_os = "macos")]
-    pub fn backend_pending(&self, cx: &mut App) {
+    pub fn backend_status(&self, message: &str, cx: &mut App) {
         self.view.update(cx, |view, cx| {
             view.model_query = None;
-            let message = "Metal transcription and GGML model provisioning are not connected yet. No model downloads occur in this preview.";
             if view.status != message {
                 view.status = message.into();
                 cx.notify();
@@ -687,7 +686,9 @@ impl SettingsView {
             _ => Language::Bilingual,
         };
         Some(StatisticsFilter {
-            revision: voicepaste_core::models::find(&model).ok()?.revision,
+            revision: voicepaste_core::models::find_for(&model, PLATFORM)
+                .ok()?
+                .revision,
             model,
             device,
             language,
@@ -697,9 +698,6 @@ impl SettingsView {
     }
 
     fn statistics_report(&self, cx: &App) -> String {
-        if PLATFORM == SettingsPlatform::Macos {
-            return "Transcription statistics will be available when the Metal backend is connected.".into();
-        }
         let Some(filter) = self.statistics_filter(cx) else {
             return "Select a transcription configuration.".into();
         };
@@ -775,7 +773,16 @@ fn phase_time(average_ms: Option<f64>) -> String {
 impl Render for SettingsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let model_size = if PLATFORM == SettingsPlatform::Macos {
-            "Model size: pending GGML artifact catalog (Windows CT2 sizes do not apply)".into()
+            voicepaste_core::models::find_for(&self.status_model, PLATFORM)
+                .ok()
+                .and_then(|m| m.files.into_iter().next())
+                .map(|file| {
+                    format!(
+                        "Model size: {:.2} GiB (full FP16 GGML)",
+                        file.bytes as f64 / 1073741824.
+                    )
+                })
+                .unwrap_or_else(|| "Model size: unavailable".into())
         } else {
             model_size_label(&self.status_model)
         };
@@ -857,9 +864,9 @@ impl Render for SettingsView {
                                 match PLATFORM.devices().get(device).map(|(_, value)| value) {
                                     Some(Device::CudaAuto) => "Prefer CUDA FP16; report CPU INT8 fallback.",
                                     Some(Device::CudaOnly) => "Requires NVIDIA CUDA; no CPU fallback.",
-                                    Some(Device::MetalOnly) => "Requires Apple Metal; no silent CPU fallback. Backend not connected yet.",
+                                    Some(Device::MetalOnly) => "Requires Apple Metal; CPU fallback is forbidden.",
                                     _ if PLATFORM == SettingsPlatform::Windows => "CPU INT8; GPU not used.",
-                                    _ => "CPU inference selected; backend not connected yet.",
+                                    _ => "CPU inference; full FP16 model weights, no GPU offload.",
                                 },
                                 cx,
                             )),
@@ -1132,7 +1139,7 @@ impl Render for SettingsView {
                     div().flex().child(
                         Button::new("reset-statistics")
                             .label("Reset Stats")
-                            .disabled(self.statistics_reset_pending || PLATFORM == SettingsPlatform::Macos)
+                            .disabled(self.statistics_reset_pending)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.reset_statistics(cx);
                             }))
@@ -1159,7 +1166,7 @@ impl Render for SettingsView {
                     .child("VoicePaste Settings"),
             )
             .when(PLATFORM == SettingsPlatform::Macos, |root| root.child(
-                div().px(px(12.)).py(px(8.)).text_size(px(12.)).child("macOS settings preview — settings are saved; recording, hotkeys, overlay, transcription and paste are not connected yet.")
+                div().px(px(12.)).py(px(8.)).text_size(px(12.)).child("macOS — local transcription. Microphone and Accessibility access are required for recording keys and automatic Cmd+V. Model downloads require approval from the menu.")
             ))
             .child(
                 div()

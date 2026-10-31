@@ -4,7 +4,7 @@
 
 - Added an Apple Silicon macOS launch preview with a local build script that handles Rosetta terminals and downloads Rust only when needed, with approval.
 - Added shared Settings, a native menu-bar icon and opt-in sign-in startup to the macOS preview, with configuration stored in Application Support.
-- Added opt-in macOS microphone capture preview with explicit permission, recording status and temporary-audio cleanup, without transcription or paste.
+- Connected macOS dictation to the shared recording/runtime, single-key controls, animated overlay, local Metal/CPU worker, approved full-size model downloads, Cmd+V and statistics.
 
 ## [2.0.0]
 

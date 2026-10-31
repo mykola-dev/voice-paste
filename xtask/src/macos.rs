@@ -53,6 +53,18 @@ pub fn preview(runner: &mut Runner, release: bool, offline: bool) -> Result<()> 
         release,
         offline,
     )?;
+    runner.cargo(
+        &[
+            "build",
+            "--locked",
+            "--package",
+            "voicepaste-stt-worker",
+            "--bin",
+            "voicepaste-stt-worker",
+        ],
+        release,
+        offline,
+    )?;
 
     let stage = runner
         .root
@@ -73,9 +85,24 @@ pub fn preview(runner: &mut Runner, release: bool, offline: bool) -> Result<()> 
             .join("voicepaste"),
         &executable,
     )?;
+    let worker = contents.join("MacOS/voicepaste-stt-worker");
+    files::copy(
+        &runner
+            .root
+            .join(layout::TARGET)
+            .join(profile)
+            .join("voicepaste-stt-worker"),
+        &worker,
+    )?;
+    runner.run(
+        runner
+            .command("codesign")
+            .args(["--force", "--sign", "-", "--timestamp=none"])
+            .arg(&worker),
+    )?;
     fs::write(contents.join("Info.plist"), PLIST)?;
     let report = format!(
-        "VoicePaste macOS preview\nCommit: {sha}\nArchitecture: arm64\nMinimum macOS: {MINIMUM_OS}\nSigning: ad-hoc, NOT Developer ID signed, NOT notarized\nUI: GPUI Kit 0.8.1 / GPUI-pre 0.3.10\nConnected: shared Settings, native menu bar, local config and opt-in current-user login item.\nOpt-in --capture-preview: real microphone capture; stop/cancel discards audio, no transcription/paste.\nNo STT backend/worker/models; hotkeys, overlay and paste are not connected yet.\nNo model downloads. Microphone permission requested only after Start in capture-preview; no accessibility request. Config: ~/Library/Application Support/VoicePaste/config.json.\n"
+        "VoicePaste macOS development build\nCommit: {sha}\nArchitecture: arm64\nMinimum macOS: {MINIMUM_OS}\nSigning: ad-hoc, NOT Developer ID signed, NOT notarized\nUI: GPUI Kit 0.8.1 / GPUI-pre 0.3.10\nShared dictation runtime, CPAL capture, Settings and statistics. Native menu, global single-key recording/Escape, nonactivating overlay and Cmd+V adapters.\nBundled whisper-rs 0.16.0 / whisper-rs-sys 0.15.0 worker, Metal-only or CPU; full-size pinned GGML large-v2, large-v3 and turbo plus Silero VAD. Models are NOT bundled or downloaded by builds.\nDownload selected model requires menu confirmation. Microphone access is requested on explicit Start; Accessibility prompt only through Enable recording keys.\nConfig: ~/Library/Application Support/VoicePaste/config.json. End-to-end hardware/permissions/paste/visual acceptance remains unperformed.\n"
     );
     fs::write(contents.join("Resources/preview.txt"), &report)?;
     let architectures = runner.output(runner.command("lipo").arg("-archs").arg(&executable))?;

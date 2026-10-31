@@ -16,6 +16,11 @@ use std::{
     thread::{self, JoinHandle},
 };
 use voicepaste_core::models::{Artifact, Model};
+pub fn filter(
+    settings: &voicepaste_core::settings::Settings,
+) -> Result<voicepaste_core::statistics::Filter, String> {
+    voicepaste_core::statistics::Filter::from_settings(settings)
+}
 #[cfg(target_os = "windows")]
 use windows::times as receipt_times;
 

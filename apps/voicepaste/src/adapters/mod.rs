@@ -13,9 +13,10 @@ pub mod launch;
 mod memory;
 #[cfg(target_os = "windows")]
 pub mod models;
-#[cfg(target_os = "windows")]
+#[cfg(target_os = "macos")]
+#[path = "models/macos.rs"]
+pub mod models;
 pub mod overlay;
-#[cfg(target_os = "windows")]
 pub mod paste;
 #[cfg(target_os = "windows")]
 pub mod platform;
@@ -23,13 +24,15 @@ pub(crate) mod settings_theme;
 pub mod settings_window;
 #[cfg(target_os = "windows")]
 mod startup;
-#[cfg(target_os = "windows")]
 pub mod statistics;
 #[cfg(target_os = "windows")]
 pub mod storage;
+#[cfg(target_os = "macos")]
+pub mod storage {
+    pub use crate::macos::storage::Storage;
+}
 #[cfg(target_os = "windows")]
 pub mod tray_icons;
-#[cfg(target_os = "windows")]
 pub mod worker;
 
 #[cfg(all(test, target_os = "windows"))]

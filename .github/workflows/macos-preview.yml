@@ -53,7 +53,7 @@ jobs:
       - name: Build and package ad-hoc signed launch preview
         run: cargo xtask macos-preview --release
       - name: Lint macOS host
-        run: cargo clippy --locked -p voicepaste --bin voicepaste -- -D warnings
+        run: cargo clippy --locked -p voicepaste -p voicepaste-stt-worker --all-targets -- -D warnings
       - name: Test macOS host contracts (no GUI interaction or personal data)
         run: cargo test --locked -p voicepaste --bin voicepaste
       - uses: actions/upload-artifact@v5

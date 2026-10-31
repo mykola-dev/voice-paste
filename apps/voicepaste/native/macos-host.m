@@ -3,6 +3,7 @@
 #import <AppKit/AppKit.h>
 #import <mach/mach.h>
 #import <AVFoundation/AVFoundation.h>
+#include <libproc.h>
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -14,6 +15,7 @@
 @property(nonatomic, strong) NSMenuItem *captureItem;
 @property(nonatomic, strong) NSMenuItem *cancelItem;
 @property(nonatomic, strong) NSMenuItem *captureStatus;
+@property(nonatomic, strong) NSMenuItem *dictationItem;
 @end
 
 @implementation VPMenuHost
@@ -21,6 +23,8 @@
 - (void)quit:(id)sender { (void)sender; self.pending |= 2; }
 - (void)toggle:(id)sender { (void)sender; self.pending |= 4; }
 - (void)cancel:(id)sender { (void)sender; self.pending |= 8; }
+- (void)download:(id)sender { (void)sender; self.pending |= 16; }
+- (void)enableKeys:(id)sender { (void)sender; self.pending |= 32; }
 - (void)clicked:(id)sender {
     (void)sender;
     if (NSApp.currentEvent.type == NSEventTypeRightMouseUp) {
@@ -96,10 +100,32 @@ void vp_capture_menu_enable(void *raw) {
     host.item.button.toolTip = host.captureStatus.title;
 }
 
+void vp_dictation_menu_enable(void *raw) {
+    VPMenuHost *host = (__bridge VPMenuHost *)raw;
+    vp_capture_menu_enable(raw);
+    host.captureItem.title = @"Start recording";
+    host.captureStatus.title = @"Preparing dictation";
+    NSMenuItem *download = [[NSMenuItem alloc] initWithTitle:@"Download selected model…" action:@selector(download:) keyEquivalent:@""];
+    download.target = host;
+    [host.menu addItem:download];
+    NSMenuItem *keys = [[NSMenuItem alloc] initWithTitle:@"Enable recording keys…" action:@selector(enableKeys:) keyEquivalent:@""];
+    keys.target = host;
+    [host.menu addItem:keys];
+    host.dictationItem = host.captureItem;
+}
+
+bool vp_confirm_download(const char *model) {
+    NSAlert *alert = [NSAlert new];
+    alert.messageText = @"Download selected Whisper model?";
+    alert.informativeText = [NSString stringWithFormat:@"Download %@ and Silero VAD from Hugging Face? Full-size weights need approximately 1.6–3.1 GB plus temporary disk space. No smaller or quantized model will be substituted.", [NSString stringWithUTF8String:model]];
+    [alert addButtonWithTitle:@"Download"]; [alert addButtonWithTitle:@"Cancel"];
+    return [alert runModal] == NSAlertFirstButtonReturn;
+}
+
 void vp_capture_menu_update(void *raw, bool recording, bool busy, const char *status) {
     NSCAssert([NSThread isMainThread], @"capture menu must be on the main thread");
     VPMenuHost *host = (__bridge VPMenuHost *)raw;
-    host.captureItem.title = recording ? @"Stop and discard capture" : @"Start microphone capture (no transcription)";
+    host.captureItem.title = host.dictationItem ? (recording ? @"Stop recording" : @"Start recording") : (recording ? @"Stop and discard capture" : @"Start microphone capture (no transcription)");
     host.captureItem.enabled = !busy;
     host.cancelItem.enabled = recording && !busy;
     host.captureStatus.title = [NSString stringWithUTF8String:status];
@@ -131,6 +157,11 @@ uint64_t vp_host_resident_bytes(void) {
     mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
     kern_return_t status = task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t)&info, &count);
     return status == KERN_SUCCESS ? info.resident_size : UINT64_MAX;
+}
+uint64_t vp_process_resident_bytes(int32_t pid) {
+    struct proc_taskinfo info;
+    int count = proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &info, sizeof(info));
+    return count == sizeof(info) ? info.pti_resident_size : UINT64_MAX;
 }
 
 void vp_startup_error(const char *message) {

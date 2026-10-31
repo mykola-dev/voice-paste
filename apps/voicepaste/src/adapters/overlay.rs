@@ -1,5 +1,7 @@
 //! Shared GPUI foreground. Native window policy/material stay in OS adapters.
 mod frames;
+#[cfg(target_os = "macos")]
+pub mod macos;
 mod motion;
 mod state;
 #[cfg(test)]

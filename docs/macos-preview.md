@@ -78,6 +78,10 @@ a second dictation state machine. Host contract tests do not request TCC access
 or use a live microphone. Real-device permission, capture and audio-device-loss
 acceptance remain pending; tests on the Mac will be requested after development.
 
+Model-delivery metadata and the limits of an official Hugging Face Git fallback
+are recorded in [macos-model-delivery.md](macos-model-delivery.md); no weights
+or optional Git extensions were downloaded/installed for that investigation.
+
 For an update, quit the old preview explicitly and **move the existing
 `build/release/VoicePaste.app` aside** before running the build script again.
 Do not delete Application Support data. The script does not stop the old app

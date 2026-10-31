@@ -43,6 +43,8 @@ pub enum Command {
     ResetStatistics {
         id: u64,
     },
+    #[cfg(target_os = "macos")]
+    DownloadModel,
     Quit,
 }
 pub enum Event {
@@ -115,6 +117,12 @@ impl Runtime {
                 let mut last_progress = Instant::now();
                 loop {
                     if thread_shutdown.load(Ordering::Acquire) {
+                        // An accepted Save remains a persistence obligation even
+                        // when OS Quit ends the UI before its completion arrives.
+                        while let Ok(command)=receiver.try_recv(){
+                            if let Command::SaveSettings{settings,..}=command
+                                && let Err(error)=voicepaste_application::settings::save(&*storage,settings){storage.log(&format!("Settings save during shutdown failed: {error}"));}
+                        }
                         break;
                     }
                     // Commit deferred preferences before accepting another Start,
@@ -133,6 +141,14 @@ impl Runtime {
                     }
                     match receiver.recv_timeout(Duration::from_millis(100)) {
                         Ok(Command::Quit) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                        #[cfg(target_os = "macos")]
+                        Ok(Command::DownloadModel) => {
+                            if app.state()!=State::Idle {report(&storage,&sender,"Wait until dictation is idle before downloading a model".into());continue;}
+                            worker.release();drop(preparation.take());model_ready=false;
+                            match crate::adapters::models::Preparation::start_with_download(storage.root.clone(),&preferences.current().model,true) {
+                                Ok(task)=>preparation=Some(task),Err(error)=>report(&storage,&sender,error),
+                            }
+                        }
                         Err(mpsc::RecvTimeoutError::Timeout) => (),
                         Ok(Command::SaveSettings { id, settings }) => {
                             let result = voicepaste_application::settings::save(&*storage, settings);

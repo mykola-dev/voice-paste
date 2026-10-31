@@ -85,9 +85,16 @@
   Downloaded CI artifacts remain blocked there; local builds are the test route.
   Shared Settings, native menu-bar host and Application Support persistence are
   now implemented; compilation and interaction acceptance are tracked separately.
+  `e21d25d` passed macOS Release/package/signature, clippy and host contracts.
+  Opt-in `--capture-preview` now connects real microphone recording using shared
+  CPAL/application policies, AVFoundation permission and menu Stop/Cancel; no STT
+  or paste. Capture CI and real-device qualification are tracked separately;
+  user requested continuing development before manual tests.
   See [preview instructions and portability audit](docs/macos-preview.md).
-  Full native adapters, shared Settings/overlay integration, whisper.cpp + Metal,
-  pinned model artifacts and end-to-end dictation remain open. No Linux port.
+  Global single-key hotkeys/Escape, shared overlay integration, whisper.cpp + Metal,
+  VAD/model provisioning, paste/statistics and end-to-end dictation remain open.
+  GGML metadata/Git fallback evidence: [model delivery](docs/macos-model-delivery.md).
+  Abrupt-crash recording-file recovery is not implemented. No Linux port.
 
 ## Відкладено за рішенням користувача
 

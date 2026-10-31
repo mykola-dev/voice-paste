@@ -23,9 +23,15 @@ pub struct Filter {
 
 impl Filter {
     pub fn from_settings(settings: &Settings) -> Result<Self, String> {
+        Self::for_platform(settings, crate::settings::SettingsPlatform::Windows)
+    }
+    pub fn for_platform(
+        settings: &Settings,
+        platform: crate::settings::SettingsPlatform,
+    ) -> Result<Self, String> {
         Ok(Self {
             model: settings.model.clone(),
-            revision: crate::models::find(&settings.model)?.revision,
+            revision: crate::models::find_for(&settings.model, platform)?.revision,
             beam_size: settings.beam_size,
             vad: settings.enable_vad,
             language: settings.language_mode,

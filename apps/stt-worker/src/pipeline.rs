@@ -23,6 +23,12 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
+    pub fn device(&self) -> &'static str {
+        self.engine.device
+    }
+    pub fn mels(&self) -> usize {
+        self.engine.mels
+    }
     pub fn open(
         model: &Path,
         runtime: &Path,

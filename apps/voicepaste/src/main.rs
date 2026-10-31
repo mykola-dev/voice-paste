@@ -9,7 +9,6 @@ mod adapters;
 #[cfg(target_os = "macos")]
 #[path = "adapters/platform/macos.rs"]
 mod macos;
-#[cfg(target_os = "windows")]
 mod runtime;
 
 #[cfg(target_os = "windows")]

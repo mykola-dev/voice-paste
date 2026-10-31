@@ -1,7 +1,15 @@
+#[cfg(target_os = "windows")]
 mod engine;
+#[cfg(target_os = "windows")]
 mod frontend;
+#[cfg(target_os = "windows")]
 mod pipeline;
+#[cfg(target_os = "macos")]
+#[path = "metal.rs"]
+mod pipeline;
+#[cfg(target_os = "windows")]
 mod vad;
+mod vad_policy;
 use std::{io, path::PathBuf};
 use voicepaste_protocol::{Request, Response, VERSION, read, write};
 
@@ -46,8 +54,8 @@ fn run() -> Result<(), String> {
         &Response::Ready {
             version: VERSION,
             generation,
-            device: pipeline.engine.device.into(),
-            mels: pipeline.engine.mels,
+            device: pipeline.device().into(),
+            mels: pipeline.mels(),
             model_loading_us: pipeline.model_loading_us,
         },
     )?;

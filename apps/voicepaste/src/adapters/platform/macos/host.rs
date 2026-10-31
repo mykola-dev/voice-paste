@@ -7,7 +7,6 @@ unsafe extern "C" {
     fn vp_menu_add(host: *mut c_void, title: *const std::ffi::c_char, action: u32, enabled: bool);
     fn vp_menu_drain(host: *mut c_void) -> u32;
     fn vp_menu_destroy(host: *mut c_void);
-    fn vp_host_resident_bytes() -> u64;
     fn vp_startup_error(message: *const std::ffi::c_char);
     fn vp_capture_menu_enable(host: *mut c_void);
     fn vp_capture_menu_update(
@@ -17,6 +16,8 @@ unsafe extern "C" {
         status: *const std::ffi::c_char,
     );
     fn vp_microphone_permission(host: *mut c_void, request: bool) -> u32;
+    fn vp_dictation_menu_enable(host: *mut c_void);
+    fn vp_confirm_download(model: *const std::ffi::c_char) -> bool;
 }
 
 pub(super) fn startup_error(message: &str) {
@@ -45,6 +46,8 @@ pub struct Intents {
     pub quit: bool,
     pub toggle: bool,
     pub cancel: bool,
+    pub download: bool,
+    pub enable_keys: bool,
 }
 
 #[derive(PartialEq, Eq)]
@@ -108,6 +111,8 @@ impl Host {
             quit: flags & 2 != 0,
             toggle: flags & 4 != 0,
             cancel: flags & 8 != 0,
+            download: flags & 16 != 0,
+            enable_keys: flags & 32 != 0,
         }
     }
 
@@ -116,6 +121,19 @@ impl Host {
         unsafe {
             vp_capture_menu_enable(self.pointer.as_ptr());
         }
+    }
+    pub fn enable_dictation(&self) {
+        // SAFETY: main-thread live menu owner; menu changes never enter Rust.
+        unsafe {
+            vp_dictation_menu_enable(self.pointer.as_ptr());
+        }
+    }
+    pub fn confirm_download(&self, model: &str) -> bool {
+        let Ok(model) = std::ffi::CString::new(model) else {
+            return false;
+        };
+        // SAFETY: synchronous main-thread native alert; no framework borrow held.
+        unsafe { vp_confirm_download(model.as_ptr()) }
     }
 
     pub fn capture_status(&self, recording: bool, busy: bool, message: &str) {
@@ -137,17 +155,6 @@ impl Host {
             3 => MicrophonePermission::Pending,
             _ => MicrophonePermission::Undecided,
         }
-    }
-
-    pub fn memory_status(&self) -> String {
-        // SAFETY: read-only task_info query for this process; no native pointer.
-        let bytes = unsafe { vp_host_resident_bytes() };
-        let host = if bytes == u64::MAX {
-            "unavailable".into()
-        } else {
-            format!("{:.1} MiB resident", bytes as f64 / 1048576.)
-        };
-        format!("Host RAM: {host}\nSTT worker: not connected yet")
     }
 }
 

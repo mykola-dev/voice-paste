@@ -1,0 +1,8 @@
+{
+  "models": [
+    {"name":"large-v2","repository":"ggerganov/whisper.cpp","revision":"5359861c739e955e79d9a303bcbc70fb988958b1","files":[{"path":"ggml-large-v2.bin","bytes":3094623691,"sha256":"9a423fe4d40c82774b6af34115b8b935f34152246eb19e80e376071d3f999487"}]},
+    {"name":"large-v3","repository":"ggerganov/whisper.cpp","revision":"5359861c739e955e79d9a303bcbc70fb988958b1","files":[{"path":"ggml-large-v3.bin","bytes":3095033483,"sha256":"64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2"}]},
+    {"name":"large-v3-turbo","repository":"ggerganov/whisper.cpp","revision":"5359861c739e955e79d9a303bcbc70fb988958b1","files":[{"path":"ggml-large-v3-turbo.bin","bytes":1624555275,"sha256":"1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69"}]}
+  ],
+  "vad": {"name":"silero-v6.2.0","repository":"ggml-org/whisper-vad","revision":"9ffd54a1e1ee413ddf265af9913beaf518d1639b","files":[{"path":"ggml-silero-v6.2.0.bin","bytes":885098,"sha256":"2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987"}]}
+}
