@@ -23,11 +23,20 @@ Scope: `macOS-2` architecture consolidation; no production release or master mer
   1 interactive ignored**), `cargo xtask clippy --offline`, and
   `cargo xtask build --offline --no-deploy` passed. `git diff --check` passed.
 - Windows runnable `build/debug/` and `build/release/` were **not updated**.
+- Windows `cargo xtask package --offline --no-deploy --release` also passed:
+  optimized host/worker build and verified ZIP with **40 files, no user data**.
+  Archive/checksum are in `build/package/`; this did not deploy or publish a release.
 - First macOS CI for `b2664b6e378abef0739c8928ea1e8b3c0e9229ca`:
   [41225393925](https://github.com/mykola-dev/voice-paste/actions/runs/41225393925).
   Release build/package/signature and clippy passed; host contracts had 70 passes
   and 2 failures. The new UI fixtures used Windows CUDA defaults on macOS. The
-  fixtures now select host defaults; final CI remains required for the new code.
+  fixtures were corrected to select host defaults before the final validation below.
+- Final code commit `30df76d792cfc3d931c3958ba732dc2b0fdf6fe5` passed
+  [macOS CI 41226390965](https://github.com/mykola-dev/voice-paste/actions/runs/41226390965):
+  fmt/portable contracts, Release build/package, app/worker ad-hoc signature
+  verification, host/worker clippy, **75 host tests and 3 worker tests**. The prior
+  failed fixtures are now passing. Native Settings activation is performed outside
+  GPUI borrows; staging cleanup releases file handles before removal.
 
 ## Not established
 

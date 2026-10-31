@@ -93,17 +93,21 @@
     file-mode на обох ОС перевіряє pinned artifacts offline, ніколи не завантажує.
     Виявлений Windows integrity bypass не скопійовано; виправлення явно записано
     в CHANGELOG. CLI parser regressions перевіряють обидва contracts і Unicode paths.
-  - [ ] Після наступного CI оновити точні verification evidence; старий CI
+  - [x] Оновлено [verification evidence](docs/verification-2026-10-31.md); старий CI
     `b2664b6` зібрав Release/package і пройшов clippy, але 2 нові shared UI fixtures
     використали Windows defaults на macOS (70 host tests passed / 2 failed).
-    Fixtures виправлено на host-selected defaults; повторна перевірка обов'язкова.
-- [ ] **Критерій завершення refactor.** Обидві ОС використовують один session
+    Fixtures виправлено на host-selected defaults. `30df76d` пройшов macOS
+    Release/package/signatures, clippy, 75 host і 3 worker tests у CI 41226390965.
+- [x] **Критерій завершення refactor.** Обидві ОС використовують один session
   coordinator і спільні lifecycle policies; native/backend differences мають
   конкретне обґрунтування. Додати спільні регресії Save/Cancel, stale completions,
   queue saturation, shutdown та provisioning failures; перевірити адаптери обох
   ОС, fmt/clippy/tests/build/package. Зберегти Windows behavior, prompts/data,
   macOS permissions і заборону silent fallback. Оновити architecture docs та
   перевірити код на дублювання, а не лише отримати зелений CI.
+  Source consolidation і автоматичні contracts виконано; Windows Release package
+  `--offline --no-deploy` verified (40 files, no user data). Device acceptance
+  нижче залишається відкритим і не випливає з цих перевірок.
 
 ## Надійність: підтверджені залишкові ризики
 
@@ -191,12 +195,15 @@ inference/device acceptance. Користувач підтвердив лише 
 
 - [ ] **Спочатку архітектурні виправлення вище**, потім фінальна автоматична
   перевірка й один спільний ручний прогін, без проміжних slice-test прохань.
-- [ ] **Фінальні commits/CI.** Локальні `258c4f6` (ambiguous GGML rejection та
-  запуск worker contracts у CI) і `24e6dbb` (combined acceptance guide) ще не
-  pushed на момент цього запису. Включити їх у перевірену гілку; після refactor
-  отримати зелений fmt/clippy, portable contracts, macOS host **і worker** tests,
-  Release bundle/package/signatures та Windows regressions. Зафіксувати точний
-  перевірений commit; старий зелений CI не доводить коректність наступних змін.
+- [x] **Фінальні commits/CI.** Локальні `258c4f6` (ambiguous GGML rejection та
+  запуск worker contracts у CI) і `24e6dbb` (combined acceptance guide) pushed
+  разом зі shared-session/provisioning/bootstrap refactor. Windows: 189 tests
+  passed / 1 interactive ignored, fmt/clippy і Debug build `--offline --no-deploy`.
+  Runnable folders не оновлено. Фінальний code commit `30df76d` пройшов
+  [CI 41226390965](https://github.com/mykola-dev/voice-paste/actions/runs/41226390965):
+  portable contracts, 75 macOS host **і 3 worker** tests, Release bundle/package/signatures
+  та clippy.
+  Старий зелений CI не доводить коректність наступних змін.
 - [ ] **Повний локальний build/update на корпоративному Mac.** Зберегти Settings,
   явно Quit і відкласти стару `.app`, оновити `macOS-2`, зібрати штатним script.
   Не видаляти Application Support/legacy config, не змінювати Gatekeeper/MDM,

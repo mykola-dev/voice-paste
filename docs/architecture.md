@@ -79,7 +79,7 @@ permission target, rejects duplicate starts while permission is pending, gives
 Cancel precedence and retries it under command backpressure. Quit suppresses new
 work while delivering an accepted Save's native commit/rollback before teardown.
 Native overlay adapters retain their distinct surface/material primitives.
-The remaining cross-platform boundary audit is tracked in `TODO.md`.
+Boundary-audit details and remaining hardware qualification are tracked in `TODO.md`.
 Settings presentation uses a selected data profile for native permission/startup
 explanations and backend/catalog weight descriptions, not OS switches in rendering.
 `config_publication.rs` owns staged write/sync/cleanup; application Settings owns
@@ -198,9 +198,9 @@ Overflow still rejects excess toggles explicitly. No callback performs IO or UI
 activation. Detach clears its inbox and Escape state. This remains a single-host,
 single-UI-thread callback bridge, not multi-instance process-global coordination.
 
-`platform.rs` is now the small compile-time composition module selecting the
-Windows host and UI lifecycle adapters. `platform/session.rs` coordinates the GPUI session
-through those selected adapters, with no concrete Windows module paths, Win32
+`adapters/mod.rs` selects Windows or macOS native composition at the module
+boundary. `platform/session.rs` coordinates the same GPUI session through either
+selected host/UI lifecycle adapter, with no concrete Windows module paths, Win32
 API calls or binding-field access. Native menu IDs are decoded in the Windows adapter;
 the host validates hotkey registration IDs. Host Drop preserves the existing
 detach → unhook → release registrations → kill timer/remove tray/destroy HWND →
@@ -210,8 +210,8 @@ is committed only after both replacement icons exist, so a failed allocation is
 eligible for retry. Native menu construction uses RAII and reports Create/Append/
 cursor failures instead of treating them as dismissal; regular labels, commands,
 capture-before-activation and dismissal behavior stay unchanged. The GPUI platform still outlives app globals and runtime
-shutdown remains outside the UI task. These compile-time aliases do not implement
-other platforms or make the rest of the host independently portable.
+shutdown remains outside the UI task. Shared source/CI contracts do not establish
+native-device acceptance; Linux remains unimplemented.
 
 `platform/windows/ui.rs` now owns the GPUI/native lifecycle seam. Settings exposes
 only its GPUI `AnyWindowHandle`; Windows `SettingsActivation` privately snapshots
@@ -219,7 +219,9 @@ the HWND under App, then reveals/restores/requests foreground outside App borrow
 The one-poll intent is consumed only for the same, still-open Settings generation,
 so a Save completion that closed the draft does not reactivate it. No synthetic
 Alt activation is introduced. Native identity representation is absent from both
-shared Settings and session coordination.
+shared Settings and session coordination. macOS snapshots its AppKit view under
+GPUI and performs restore/reveal/activation in the native adapter after releasing
+framework borrows, with the same generation check.
 
 `OverlayLifecycle` owns the native shell and indicator-enabled flag. Attach
 snapshots under App and configures the hidden foreground after releasing it.
@@ -281,7 +283,7 @@ qualification remains open, not proved by the owned child test fixture.
 process. `diagnostics.rs` owns existing best-effort temp-path log rotation;
 Storage's logging methods delegate for existing consumers. `launch/windows.rs`
 owns parent-console/redirection handling and GUI startup-error dialogs; main
-retains CLI routing but no native API calls. Artwork/state/AND-mask calculation
+delegates CLI routing to shared bootstrap and contains no native API calls. Artwork/state/AND-mask calculation
 stays in `tray_icons.rs`; native HICON allocation and monitor DPI probing live in
 `tray_icons/windows.rs`, resource icons in `application_icon/windows.rs`.
 
@@ -297,8 +299,9 @@ publication through a small compile-time-selected `files.rs` boundary. Storage
 owns validation, portable paths, lock/temporary-file lifetime and Save ordering;
 `startup/windows.rs` owns the exact prior Run-value snapshot/rollback. Config
 replacement and model replacement-with-backup remain distinct operations, not a
-universal retry/publication policy. `models.rs` retains provisioning, pinned
-hashes, partial/resume/cancel and backup-name policy. `models/http/windows.rs`
+universal retry/publication policy. Model adapters retain catalogs/receipts/cache
+locks; `model_preparation.rs` owns artifact recovery/resume, cancellation,
+verification and publication/backup policy. `models/http/windows.rs`
 owns synchronous WinHTTP handles/TLS/timeouts on the provisioning thread;
 Content-Range validation is shared in `models/http.rs`. Receipt JSON and v1 native
 timestamp values are unchanged; `models/windows.rs` extracts the Windows stamps.
@@ -307,9 +310,10 @@ Future ports must invalidate/reverify incompatible receipts, not reinterpret the
 All host Win32/Windows/raw-window-handle API imports now reside in Windows-selected
 modules, with native dependencies target-scoped. Shared policy/UI modules have a
 source-level regression guard (`adapters/boundaries.rs`); it is not a non-Windows
-build test. The host explicitly rejects unsupported OS builds rather than providing
-successful no-op adapters. GPUI/CPAL/SQLite and the ML/native build/packaging still
-require real target qualification; this architecture is not implemented ports.
+build test. macOS compilation/contracts use the feature-branch preview workflow.
+The host explicitly rejects unsupported OS builds rather than providing successful
+no-op adapters. GPUI/CPAL/SQLite and ML/native build/packaging still require
+real-device qualification; compilation alone does not complete the port.
 
 Transcription measurements are pure core types. The resident worker separately
 measures engine loading, VAD filtering, log-mel preparation and the prepared-input-
