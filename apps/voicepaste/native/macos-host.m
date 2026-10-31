@@ -16,15 +16,21 @@
 @property(nonatomic, strong) NSMenuItem *cancelItem;
 @property(nonatomic, strong) NSMenuItem *captureStatus;
 @property(nonatomic, strong) NSMenuItem *dictationItem;
+@property(nonatomic, strong) NSImage *idleImage;
+@property(nonatomic, strong) NSImage *recordingImage;
+@property(nonatomic) bool recording;
+@property(nonatomic) uint64_t recordingSession;
+@property(nonatomic) uint64_t pendingCancelSession;
 @end
 
 @implementation VPMenuHost
 - (void)showSettings:(id)sender { (void)sender; self.pending |= 1; }
 - (void)quit:(id)sender { (void)sender; self.pending |= 2; }
 - (void)toggle:(id)sender { (void)sender; self.pending |= 4; }
-- (void)cancel:(id)sender { (void)sender; self.pending |= 8; }
+- (void)cancel:(id)sender { (void)sender; self.pendingCancelSession = self.recordingSession; }
 - (void)download:(id)sender { (void)sender; self.pending |= 16; }
 - (void)enableKeys:(id)sender { (void)sender; self.pending |= 32; }
+- (void)cancelDownload:(id)sender { (void)sender; self.pending |= 64; }
 - (void)clicked:(id)sender {
     (void)sender;
     if (NSApp.currentEvent.type == NSEventTypeRightMouseUp) {
@@ -37,7 +43,7 @@
 }
 @end
 
-void *vp_menu_create(const uint8_t *png, size_t length) {
+void *vp_menu_create(const uint8_t *png, size_t length, const uint8_t *openPng, size_t openLength) {
     NSCAssert([NSThread isMainThread], @"menu creation must be on the main thread");
     VPMenuHost *host = [VPMenuHost new];
     host.item = [NSStatusBar.systemStatusBar statusItemWithLength:NSSquareStatusItemLength];
@@ -46,8 +52,12 @@ void *vp_menu_create(const uint8_t *png, size_t length) {
     if (!image) { [NSStatusBar.systemStatusBar removeStatusItem:host.item]; return NULL; }
     image.size = NSMakeSize(18, 18);
     image.template = NO;
+    NSImage *recordingImage = [[NSImage alloc] initWithData:[NSData dataWithBytes:openPng length:openLength]];
+    if (!recordingImage) { [NSStatusBar.systemStatusBar removeStatusItem:host.item]; return NULL; }
+    recordingImage.size = NSMakeSize(18,18); recordingImage.template = NO;
+    host.idleImage = image; host.recordingImage = recordingImage;
     host.item.button.image = image;
-    host.item.button.toolTip = @"VoicePaste — Settings preview (dictation not connected)";
+    host.item.button.toolTip = @"VoicePaste — local dictation";
     host.item.button.target = host;
     host.item.button.action = @selector(clicked:);
     [host.item.button sendActionOn:(NSEventMaskLeftMouseUp | NSEventMaskRightMouseUp)];
@@ -67,11 +77,12 @@ void vp_menu_add(void *raw, const char *title, uint32_t action, bool enabled) {
     [host.menu addItem:item];
 }
 
-uint32_t vp_menu_drain(void *raw) {
+uint32_t vp_menu_drain(void *raw, uint64_t *cancelSession) {
     NSCAssert([NSThread isMainThread], @"menu drain must be on the main thread");
     VPMenuHost *host = (__bridge VPMenuHost *)raw;
     uint32_t pending = host.pending;
     host.pending = 0;
+    *cancelSession = host.pendingCancelSession;host.pendingCancelSession = 0;
     return pending;
 }
 
@@ -108,6 +119,9 @@ void vp_dictation_menu_enable(void *raw) {
     NSMenuItem *download = [[NSMenuItem alloc] initWithTitle:@"Download selected model…" action:@selector(download:) keyEquivalent:@""];
     download.target = host;
     [host.menu addItem:download];
+    NSMenuItem *cancelDownload = [[NSMenuItem alloc] initWithTitle:@"Cancel model download" action:@selector(cancelDownload:) keyEquivalent:@""];
+    cancelDownload.target = host;
+    [host.menu addItem:cancelDownload];
     NSMenuItem *keys = [[NSMenuItem alloc] initWithTitle:@"Enable recording keys…" action:@selector(enableKeys:) keyEquivalent:@""];
     keys.target = host;
     [host.menu addItem:keys];
@@ -122,10 +136,12 @@ bool vp_confirm_download(const char *model) {
     return [alert runModal] == NSAlertFirstButtonReturn;
 }
 
-void vp_capture_menu_update(void *raw, bool recording, bool busy, const char *status) {
+void vp_capture_menu_update(void *raw, bool recording, bool busy, bool active, uint64_t session, const char *status) {
     NSCAssert([NSThread isMainThread], @"capture menu must be on the main thread");
     VPMenuHost *host = (__bridge VPMenuHost *)raw;
     host.captureItem.title = host.dictationItem ? (recording ? @"Stop recording" : @"Start recording") : (recording ? @"Stop and discard capture" : @"Start microphone capture (no transcription)");
+    host.recordingSession = session;
+    if (host.recording != active) {host.recording = active;host.item.button.image = active ? host.recordingImage : host.idleImage;}
     host.captureItem.enabled = !busy;
     host.cancelItem.enabled = recording && !busy;
     host.captureStatus.title = [NSString stringWithUTF8String:status];
@@ -161,7 +177,7 @@ uint64_t vp_host_resident_bytes(void) {
 uint64_t vp_process_resident_bytes(int32_t pid) {
     struct proc_taskinfo info;
     int count = proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &info, sizeof(info));
-    return count == sizeof(info) ? info.pti_resident_size : UINT64_MAX;
+    return count == (int)sizeof(info) ? info.pti_resident_size : UINT64_MAX;
 }
 
 void vp_startup_error(const char *message) {

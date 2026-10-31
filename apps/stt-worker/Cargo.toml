@@ -11,7 +11,7 @@ voicepaste-protocol = { path = "../../crates/protocol" }
 hound = "=3.5.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-whisper-rs = { version = "=0.16.0", default-features = false, features = ["metal", "raw-api"] }
+whisper-rs = { version = "=0.16.0", default-features = false, features = ["metal"] }
 whisper-rs-sys = "=0.15.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]

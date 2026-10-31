@@ -1,8 +1,6 @@
 #![cfg_attr(all(not(test), target_os = "windows"), windows_subsystem = "windows")]
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-compile_error!(
-    "VoicePaste supports Windows and the macOS launch preview; Linux is not implemented"
-);
+compile_error!("VoicePaste supports Windows and Apple Silicon macOS; Linux is not implemented");
 #[cfg(test)]
 extern crate gpui_kit as gpui;
 mod adapters;

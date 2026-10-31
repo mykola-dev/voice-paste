@@ -7,6 +7,7 @@ mod pipeline;
 #[cfg(target_os = "macos")]
 #[path = "metal.rs"]
 mod pipeline;
+mod text;
 #[cfg(target_os = "windows")]
 mod vad;
 mod vad_policy;

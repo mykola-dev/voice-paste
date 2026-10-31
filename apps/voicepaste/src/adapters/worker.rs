@@ -137,11 +137,14 @@ impl Worker {
             self.next_request
         ));
         let mut input = std::fs::File::open(path).map_err(|e| e.to_string())?;
-        let mut output = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&destination)
-            .map_err(|e| e.to_string())?;
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut output = options.open(&destination).map_err(|e| e.to_string())?;
         let owned = AudioFile { path: destination };
         std::io::copy(&mut input, &mut output).map_err(|e| e.to_string())?;
         output.flush().map_err(|e| e.to_string())?;

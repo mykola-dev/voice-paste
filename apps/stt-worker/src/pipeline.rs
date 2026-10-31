@@ -1,3 +1,4 @@
+use crate::text::{initial_prompt, ukrainian_cleanup};
 use crate::{
     engine::{Encoded, Engine, Generation},
     frontend,
@@ -222,38 +223,6 @@ fn compression_ratio(text: &str) -> Result<f32, String> {
         .map_err(|e| e.to_string())?;
     let length = encoder.finish().map_err(|e| e.to_string())?.len();
     Ok(text.len() as f32 / length as f32)
-}
-
-fn initial_prompt(options: &TranscriptionOptions) -> String {
-    let custom = options.custom_initial_prompt.trim();
-    let bilingual = "English and Ukrainian. Transcribe in these languages. Англійська та українська мови. ґ, є, і, ї.";
-    let combined = if options.language_mode == Language::Bilingual {
-        if custom.is_empty() {
-            bilingual.to_owned()
-        } else {
-            format!("{bilingual} {custom}")
-        }
-    } else {
-        custom.to_owned()
-    };
-    if combined.is_empty() {
-        combined
-    } else {
-        format!(" {combined}")
-    }
-}
-
-fn ukrainian_cleanup(text: &str) -> String {
-    text.chars()
-        .map(|c| match c {
-            'ы' => 'и',
-            'Ы' => 'И',
-            'э' | 'ё' => 'е',
-            'Э' | 'Ё' => 'Е',
-            'ъ' | 'Ъ' => '\'',
-            c => c,
-        })
-        .collect()
 }
 
 fn split_timestamps(

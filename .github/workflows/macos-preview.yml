@@ -39,12 +39,14 @@ jobs:
           mkdir -p build/cache/tmp
           echo "TMPDIR=$(cd build/cache/tmp && pwd -P)/" >> "$GITHUB_ENV"
       - uses: actions/cache@v4
+        id: cargo-cache
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             build/cache/target
           key: macos-26-arm64-xcode-26.6-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: macos-26-arm64-xcode-26.6-
       - name: Format and portable contracts (not dictation qualification)
         run: |
           cargo xtask fmt
@@ -62,6 +64,15 @@ jobs:
           path: build/package/*
           if-no-files-found: error
           retention-days: 14
+      - name: Retain compiler cache even after a source compilation failure
+        if: ${{ always() && steps.cargo-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            build/cache/target
+          key: macos-26-arm64-xcode-26.6-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
   audit-original-package:
     if: ${{ inputs.audit_original_artifact }}
     runs-on: macos-26

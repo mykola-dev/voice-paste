@@ -76,6 +76,37 @@ pub fn preview(runner: &mut Runner, release: bool, offline: bool) -> Result<()> 
     let contents = bundle.join("Contents");
     fs::create_dir_all(contents.join("MacOS"))?;
     fs::create_dir_all(contents.join("Resources"))?;
+    let iconset = stage.join("VoicePaste.iconset");
+    fs::create_dir(&iconset)?;
+    let source = runner
+        .root
+        .join("apps/voicepaste/assets/tray/masters/lips-open.png");
+    for logical in [16, 32, 128, 256, 512] {
+        for scale in [1, 2] {
+            let pixels = (logical * scale).to_string();
+            let suffix = if scale == 2 { "@2x" } else { "" };
+            runner.run(
+                runner
+                    .command("sips")
+                    .args(["-z", &pixels, &pixels])
+                    .arg(&source)
+                    .arg("--out")
+                    .arg(iconset.join(format!("icon_{logical}x{logical}{suffix}.png"))),
+            )?;
+        }
+    }
+    runner.run(
+        runner
+            .command("iconutil")
+            .args(["-c", "icns"])
+            .arg(&iconset)
+            .arg("-o")
+            .arg(contents.join("Resources/VoicePaste.icns")),
+    )?;
+    fs::write(
+        contents.join("Resources/worker-third-party-notices.md"),
+        include_str!("../../apps/stt-worker/THIRD_PARTY_NOTICES.md"),
+    )?;
     let executable = contents.join("MacOS/VoicePaste");
     files::copy(
         &runner
@@ -105,22 +136,26 @@ pub fn preview(runner: &mut Runner, release: bool, offline: bool) -> Result<()> 
         "VoicePaste macOS development build\nCommit: {sha}\nArchitecture: arm64\nMinimum macOS: {MINIMUM_OS}\nSigning: ad-hoc, NOT Developer ID signed, NOT notarized\nUI: GPUI Kit 0.8.1 / GPUI-pre 0.3.10\nShared dictation runtime, CPAL capture, Settings and statistics. Native menu, global single-key recording/Escape, nonactivating overlay and Cmd+V adapters.\nBundled whisper-rs 0.16.0 / whisper-rs-sys 0.15.0 worker, Metal-only or CPU; full-size pinned GGML large-v2, large-v3 and turbo plus Silero VAD. Models are NOT bundled or downloaded by builds.\nDownload selected model requires menu confirmation. Microphone access is requested on explicit Start; Accessibility prompt only through Enable recording keys.\nConfig: ~/Library/Application Support/VoicePaste/config.json. End-to-end hardware/permissions/paste/visual acceptance remains unperformed.\n"
     );
     fs::write(contents.join("Resources/preview.txt"), &report)?;
-    let architectures = runner.output(runner.command("lipo").arg("-archs").arg(&executable))?;
-    ensure!(
-        architectures.trim() == "arm64",
-        "Expected arm64 only: {architectures}"
-    );
-    let linked = runner.output(runner.command("otool").arg("-L").arg(&executable))?;
-    for line in linked.lines().skip(1) {
-        let library = line
-            .trim()
-            .split(" (compatibility")
-            .next()
-            .unwrap_or_default();
+    let mut linked = String::new();
+    for binary in [&executable, &worker] {
+        let architectures = runner.output(runner.command("lipo").arg("-archs").arg(binary))?;
         ensure!(
-            library.starts_with("/System/Library/") || library.starts_with("/usr/lib/"),
-            "Unbundled dependency: {library}"
+            architectures.trim() == "arm64",
+            "Expected arm64 only: {architectures}"
         );
+        let libraries = runner.output(runner.command("otool").arg("-L").arg(binary))?;
+        for line in libraries.lines().skip(1) {
+            let library = line
+                .trim()
+                .split(" (compatibility")
+                .next()
+                .unwrap_or_default();
+            ensure!(
+                library.starts_with("/System/Library/") || library.starts_with("/usr/lib/"),
+                "Unbundled dependency: {library}"
+            );
+        }
+        linked.push_str(&libraries);
     }
     runner.run(
         runner

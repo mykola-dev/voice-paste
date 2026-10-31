@@ -54,5 +54,12 @@ obtain reconstructed file URLs through an LFS bridge. Consequently:
   pointers as completed weights, verify exact size/SHA-256, and atomically publish
   into the same model cache as the primary download path.
 
-No Git fallback or model download is connected in the macOS preview yet. VAD
-artifact selection and worker/native-source pinning remain separate open work.
+Current implementation: an explicit approved curl download/resume path is now
+connected, with these full-size GGML artifacts and pinned Silero v6.2.0 from
+`ggml-org/whisper-vad`, revision `9ffd54a1e1ee413ddf265af9913beaf518d1639b`.
+Its 885098-byte `ggml-silero-v6.2.0.bin` has SHA-256
+`2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987`.
+The canonical runtime metadata is now `crates/core/assets/macos-model-artifacts.json`.
+No Git fallback is connected or claimed to solve corporate-network delivery.
+The assistant has not downloaded model/VAD weights. Worker source is locked by
+Cargo: whisper-rs 0.16.0 / whisper-rs-sys 0.15.0, including whisper.cpp 1.8.3.

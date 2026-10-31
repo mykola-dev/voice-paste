@@ -2,13 +2,71 @@
 
 Development branch: `macOS-2`, based on `ab6c864` from `master`.
 The launch-only milestone is complete: the user confirmed a locally compiled
-Rust preview opens on the corporate Mac. The current slice adds **Settings and
-menu-bar lifecycle**, not a working dictation port.
+Rust preview opens on the corporate Mac. The current development build wires
+the complete dictation path described below; automated compilation/contracts
+and real-device acceptance are tracked separately. It is not a production release.
 No Developer ID membership is available: previews are ad-hoc signed and **not
 notarized**. Managed Macs may block them. Do not disable security controls or
 work around company policy to launch a preview.
 
-## First launch gate
+## Current development implementation
+
+- Normal launch is a resident menu-bar app (no Dock window); left-click opens
+  shared GPUI Settings and right-click opens recording/Settings/Quit commands.
+  `--settings` opens Settings without loading a model or enabling capture.
+- The existing shared Rust runtime/application state machine now owns macOS
+  recording, debounce, session cancellation, stale worker results, settings-at-idle,
+  model residency and statistics. The capture-only worker fork was removed.
+- Use **Download selected model…** for the **saved** selection. Its native
+  confirmation explicitly approves Hugging Face weight/VAD downloads. Initial
+  startup, draft dropdown queries and builds do not download model weights.
+  **Cancel model download** retains the partial; a later approved request resumes.
+  Exact size/SHA-256 verification precedes publication. A complete verified partial
+  can be published offline. Source manifest: `crates/core/assets/macos-model-artifacts.json`.
+- Full FP16 GGML large-v2, large-v3 and large-v3-turbo use separate pinned artifacts,
+  never Windows CT2 files or silent smaller/quantized replacements. Model storage
+  is `~/Library/Application Support/VoicePaste/data/models-ggml/`.
+- The bundled worker pins whisper-rs 0.16.0 / whisper-rs-sys 0.15.0 / whisper.cpp
+  1.8.3 with embedded Metal shaders. It supports Metal-only (default) or CPU, not
+  an unagreed Auto policy. Initialization fallback diagnostics fail closed in
+  Metal-only mode; the host validates reported device before accepting readiness.
+  No models are loaded in the GUI process.
+- Silero v6.2.0 GGML runs before log-mel preparation, using the shared threshold,
+  hysteresis, 2000-ms silence and 400-ms padding policy. VAD failure is an error,
+  not an instruction to bypass VAD. Beam 1–10, decoder fallback/context/seek,
+  combined initial prompt and Ukrainian cleanup remain enabled. Native backend
+  output is not claimed to be byte-identical to CTranslate2.
+- Microphone permission is requested only on Start. **Enable recording keys…**
+  explicitly requests Accessibility access and retries tap creation. Denied or
+  corporate-restricted access is reported, not bypassed. With permission granted,
+  Right Control (default), Right Option, F8 and F12 are standalone recording keys;
+  repeat/chords do not create extra toggles. Escape consumes its recording-cancel
+  sequence and carries the original session identity through the bounded inbox.
+- Shared GPUI draws the animated waveform/busy indicator. Native NSPanel policy
+  handles nonactivation, work-area placement and a separately owned backdrop.
+  The public AppKit backdrop uses **NSVisualEffectView system blur plus white
+  tint**, clipped at 16 DIP, not a claim of an identical Windows Gaussian kernel.
+  Reduce Transparency or unavailable blur retains the shared translucent body.
+  Visual/nonactivation/mixed-display acceptance remains unperformed.
+- Cmd+V copies Unicode, attempts original-app restoration and falls back to
+  current focus if restoration is unavailable. Posting permission/allocation
+  failures leave text for manual paste. Posting events does not prove the target
+  accepted them; clipboard contents are not restored. Shutdown is checked again
+  after asynchronous focus restoration before posting input.
+- Menu artwork changes with recording. SQLite statistics distinguish the GGML
+  revision and actual Metal/CPU device, VAD/log-mel/decode/load phases; RAM queries
+  measure the host and owned worker separately. Logs retain no transcript/prompt.
+- Settings/prompt persistence, atomic Save/Apply/Cancel and owned current-user
+  LaunchAgent behavior remain as documented in the historical Settings milestone.
+  Temp recording ownership removes files on completion/cancel/orderly shutdown;
+  abrupt-crash recovery is still an open task, not an implemented guarantee.
+
+Real microphone/TCC/hotkey/paste/Metal performance, M1 memory and visual behavior
+have **not** been accepted on a Mac. User requested completing development and
+automatic checks first, then one combined manual pass. Do not ask for slice-by-slice
+manual tests or describe a green CI as hardware acceptance.
+
+## First launch gate (historical `aa24bde`)
 
 The `macos-preview.yml` workflow builds on an ARM64 `macos-26` runner with
 Xcode 26.6. The deployment minimum is macOS 26; current/previous stable versions
@@ -27,7 +85,9 @@ family without data/permission effects. The current preview uses the **same
 Settings view** as Windows, with macOS-specific choices, and a real AppKit
 menu-bar icon. Existing Windows public defaults remain unchanged.
 
-## Current local Settings/menu milestone
+## Historical Settings/menu milestone (`e21d25d`)
+
+The following describes that earlier slice, not current feature limitations.
 
 - Left-click the lips icon to open/reveal Settings; right-click for the shared
   menu description and Quit. Start recording remains disabled until connected.
@@ -54,7 +114,7 @@ menu-bar icon. Existing Windows public defaults remain unchanged.
 - Normal launch makes no model downloads or microphone/accessibility requests.
   Dictation, hotkeys, overlay, transcription and paste remain pending.
 
-## Capture integration slice
+## Historical capture integration slice (`dc5a857`)
 
 `VoicePaste.app/Contents/MacOS/VoicePaste --capture-preview` selects the same
 explicit capture-only mode already available on Windows. Only in this mode,
@@ -105,16 +165,19 @@ When started from a Rosetta-translated Terminal on Apple Silicon, the script
 restarts itself in native ARM64 mode without changing Terminal settings. Intel
 Macs remain unsupported.
 
-The script checks Xcode (including the Metal compiler) before downloading
+The script checks Xcode (including the Metal compiler and libclang) before downloading
 anything. It never installs/selects Xcode, accepts its license or requests sudo.
 If the pinned Rust version is already available, it reuses it. Otherwise it
 reuses a repository-local toolchain or asks before downloading Rust into
 `build/cache/macos-rust/`. The official rustup installer is SHA-256 checked before
 execution; Rust does not modify shell profiles or install globally. `--yes`
 explicitly approves that toolchain download for noninteractive use. Missing
-Cargo dependencies are fetched according to `Cargo.lock`; subsequent builds
+If CMake is unavailable, it separately asks before downloading official Kitware
+CMake 4.4.5 into `build/cache/macos-tools/`, verified against its pinned SHA-256.
+It does not install system packages or change shell profiles. `--yes` explicitly
+approves these local build-tool downloads. Cargo dependencies are fetched according to `Cargo.lock`; subsequent builds
 reuse the caches. A network restriction produces an error, not a TLS bypass.
-No models, Python, Homebrew or transcription runtimes are installed.
+No models, Python, Homebrew or system transcription runtimes are installed.
 
 With Rust already prepared, the underlying command remains
 `cargo xtask macos-preview --release`. Developer tools are required for local

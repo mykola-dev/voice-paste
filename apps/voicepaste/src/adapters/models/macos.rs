@@ -7,7 +7,7 @@ use std::{
     process::{Command, Stdio},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc::{self, Receiver},
     },
     thread::{self, JoinHandle},
@@ -53,13 +53,28 @@ pub fn filter(
 pub struct Progress {
     message: Mutex<String>,
     downloading: AtomicBool,
+    partial: Mutex<Option<PathBuf>>,
+    total: AtomicU64,
 }
 impl Progress {
     pub fn snapshot(&self) -> String {
-        self.message
+        let message = self
+            .message
             .lock()
             .map(|m| m.clone())
-            .unwrap_or_else(|_| "Preparing model".into())
+            .unwrap_or_else(|_| "Preparing model".into());
+        if !self.downloading() {
+            return message;
+        }
+        let path = self.partial.lock().ok().and_then(|path| path.clone());
+        let bytes = path
+            .and_then(|path| fs::metadata(path).ok())
+            .map_or(0, |m| m.len());
+        format!(
+            "{message} — {:.1} / {:.1} MiB",
+            bytes as f64 / 1048576.,
+            self.total.load(Ordering::Relaxed) as f64 / 1048576.
+        )
     }
     pub fn downloading(&self) -> bool {
         self.downloading.load(Ordering::Acquire)
@@ -85,6 +100,8 @@ impl Preparation {
         let progress = Arc::new(Progress {
             message: Mutex::new(format!("Checking {}", model.name)),
             downloading: AtomicBool::new(false),
+            partial: Mutex::new(None),
+            total: AtomicU64::new(0),
         });
         let cancel = Arc::new(AtomicBool::new(false));
         let (sender, result) = mpsc::sync_channel(1);
@@ -192,6 +209,11 @@ fn prepare(
             continue;
         }
         if !download {
+            let partial = directory.join(format!("{}.partial", artifact.path));
+            if verify(&partial, artifact, stop)? {
+                fs::rename(partial, &path).map_err(|e| e.to_string())?;
+                continue;
+            }
             return Err(format!(
                 "{} is missing or unverified. Use Download selected model in the menu.",
                 model.name
@@ -221,6 +243,10 @@ fn prepare(
                     .map_err(|e| e.to_string())?;
             }
             status.downloading.store(true, Ordering::Release);
+            if let Ok(mut value) = status.partial.lock() {
+                *value = Some(partial.clone());
+            }
+            status.total.store(artifact.bytes, Ordering::Relaxed);
             status.set(format!(
                 "Downloading {} ({:.0} MiB); resumable",
                 model.name,
@@ -284,6 +310,7 @@ fn prepare(
             status.downloading.store(false, Ordering::Release);
             result?;
         }
+        status.set(format!("Verifying {} / {}", model.name, artifact.path));
         if !verify(&partial, artifact, stop)? {
             return Err(
                 "Downloaded model failed exact size/SHA-256 verification; not published".into(),
@@ -304,8 +331,77 @@ fn prepare(
                 return Err("Refusing non-file VAD staging path".into());
             }
             fs::copy(source, &temp).map_err(|e| e.to_string())?;
+            if !verify(&temp, &vad.files[0], stop)? {
+                return Err("VAD staging copy failed verification; not published".into());
+            }
             fs::rename(temp, destination).map_err(|e| e.to_string())?;
         }
     }
     Ok(directory)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn offline_preparation_verifies_complete_partials_rejects_corruption_and_respects_lock() {
+        let root =
+            std::env::temp_dir().join(format!("voicepaste-ggml-offline-{}", std::process::id()));
+        fs::create_dir(&root).unwrap();
+        struct Owned(PathBuf);
+        impl Drop for Owned {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let _owner = Owned(root.clone());
+        let bytes = b"fixture weights, not an actual model";
+        let model = Model {
+            name: "silero-v6.2.0".into(),
+            repository: "never/requested".into(),
+            revision: "fixture".into(),
+            files: vec![Artifact {
+                path: "test.bin".into(),
+                bytes: bytes.len() as u64,
+                sha256: format!("{:x}", Sha256::digest(bytes)),
+            }],
+        };
+        let directory = directory(&root, &model);
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("test.bin");
+        let partial = directory.join("test.bin.partial");
+        fs::write(&partial, bytes).unwrap();
+        let status = Progress {
+            message: Mutex::new(String::new()),
+            downloading: AtomicBool::new(false),
+            partial: Mutex::new(None),
+            total: AtomicU64::new(0),
+        };
+        let stop = AtomicBool::new(false);
+        assert_eq!(
+            prepare(&root, &model, false, &stop, &status).unwrap(),
+            directory
+        );
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        assert!(!partial.exists());
+        assert!(!status.downloading());
+        let lock = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(directory.join(".download.lock"))
+            .unwrap();
+        lock.try_lock().unwrap();
+        assert!(prepare(&root, &model, false, &stop, &status).is_err());
+        drop(lock);
+        let corrupt = vec![0; bytes.len()];
+        fs::write(&path, &corrupt).unwrap();
+        assert!(prepare(&root, &model, false, &stop, &status).is_err());
+        assert_eq!(fs::read(&path).unwrap(), corrupt);
+        assert!(
+            !partial.exists(),
+            "offline misses must not create a network staging file"
+        );
+        stop.store(true, Ordering::Release);
+        assert!(prepare(&root, &model, false, &stop, &status).is_err());
+    }
 }

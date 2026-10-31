@@ -91,10 +91,17 @@
   or paste. Capture CI and real-device qualification are tracked separately;
   user requested continuing development before manual tests.
   See [preview instructions and portability audit](docs/macos-preview.md).
-  Global single-key hotkeys/Escape, shared overlay integration, whisper.cpp + Metal,
-  VAD/model provisioning, paste/statistics and end-to-end dictation remain open.
+  Normal dictation is now wired through the shared runtime with macOS hotkeys/Escape,
+  shared overlay, pinned whisper.cpp/Metal worker, GGML/VAD provisioning, Cmd+V and
+  statistics. Source/build corrections and automatic checks are still in progress;
+  this is not a claim of real-device acceptance or a production release.
   GGML metadata/Git fallback evidence: [model delivery](docs/macos-model-delivery.md).
   Abrupt-crash recording-file recovery is not implemented. No Linux port.
+  Full-size model/Metal performance and memory on M1, TCC/corporate policy,
+  hotkey suppression, original-target paste, resize/DPI/animation and login launch
+  need the single combined manual pass requested by the user after development.
+  macOS material currently uses public AppKit system blur + white tint rather
+  than an identical programmable Windows Gaussian kernel; visual acceptance open.
 
 ## Відкладено за рішенням користувача
 

@@ -137,10 +137,9 @@ impl SettingsWindow {
         });
     }
     #[cfg(target_os = "macos")]
-    pub fn backend_status(&self, message: &str, cx: &mut App) {
+    pub fn backend_status(&self, model: &str, message: &str, cx: &mut App) {
         self.view.update(cx, |view, cx| {
-            view.model_query = None;
-            if view.status != message {
+            if view.status_model == model && view.status != message {
                 view.status = message.into();
                 cx.notify();
             }
@@ -1111,7 +1110,7 @@ impl Render for SettingsView {
                             .gap(px(8.))
                             .children(self.memory.lines().chain(std::iter::once(model_size.as_str())).map(|line| report_line(line, cx)))
                             .into_any_element(),
-                        hint(if PLATFORM == SettingsPlatform::Macos { "Resident RAM belongs to the UI host. STT worker and model residency are not connected yet." } else { "Resident RAM is memory currently held in physical RAM. Model size is the selected model.bin file size, not RAM or VRAM usage; it is shown even before download." }, cx).into_any_element(),
+                        hint(if PLATFORM == SettingsPlatform::Macos { "Host and STT worker resident RAM are measured separately. GGML file size is not total RAM or Metal memory usage." } else { "Resident RAM is memory currently held in physical RAM. Model size is the selected model.bin file size, not RAM or VRAM usage; it is shown even before download." }, cx).into_any_element(),
                     ],
                     cx,
                 ).into_any_element(),

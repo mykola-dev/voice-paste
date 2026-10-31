@@ -12,9 +12,9 @@ typedef struct { int32_t pid; } VPToggle;
 @property(nonatomic) bool held;
 @property(nonatomic) bool contaminated;
 @property(nonatomic) bool functionConsumed;
-@property(nonatomic) bool cancelArmed;
+@property(nonatomic) uint64_t armedSession;
 @property(nonatomic) bool escapeHeld;
-@property(nonatomic) bool cancel;
+@property(nonatomic) uint64_t cancelSession;
 @property(nonatomic) bool overflow;
 @property(nonatomic) bool disabled;
 @property(nonatomic) uint32_t count;
@@ -53,7 +53,7 @@ static CGEventRef vp_key_event(CGEventTapProxy proxy, CGEventType type, CGEventR
     }
     if (key == 53) {
         if (down && input.escapeHeld) return NULL;
-        if (down && input.cancelArmed) { input.escapeHeld = YES; input.cancel = YES; return NULL; }
+        if (down && input.armedSession) { input.escapeHeld = YES; input.cancelSession = input.armedSession; return NULL; }
         if (type == kCGEventKeyUp && input.escapeHeld) { input.escapeHeld = NO; return NULL; }
     }
     if (type == kCGEventFlagsChanged && key == input.key) {
@@ -108,21 +108,22 @@ void *vp_input_create(uint16_t key, bool prompt) {
     return (__bridge_retained void *)input;
 }
 
-void vp_input_arm(void *raw, bool recording) {
+void vp_input_arm(void *raw, uint64_t session) {
     VPInput *input = (__bridge VPInput *)raw;
-    input.cancelArmed = recording;
+    input.armedSession = session;
 }
 void vp_input_active(void *raw, bool active) {
     VPInput *input = (__bridge VPInput *)raw;
     CGEventTapEnable(input.tap, active);
 }
 
-uint32_t vp_input_drain(void *raw, int32_t *pids, uint32_t *flags) {
+uint32_t vp_input_drain(void *raw, int32_t *pids, uint32_t *flags, uint64_t *cancelSession) {
     VPInput *input = (__bridge VPInput *)raw;
     uint32_t count = input.count;
     for (uint32_t i = 0; i < count; i++) pids[i] = input.queue[i].pid;
-    *flags = (input.cancel ? 1 : 0) | (input.overflow ? 2 : 0) | (input.disabled ? 4 : 0);
-    input.count = 0; input.cancel = NO; input.overflow = NO; input.disabled = NO;
+    *cancelSession = input.cancelSession;
+    *flags = (input.overflow ? 2 : 0) | (input.disabled ? 4 : 0);
+    input.count = 0; input.cancelSession = 0; input.overflow = NO; input.disabled = NO;
     return count;
 }
 
@@ -138,7 +139,7 @@ int32_t vp_focus_capture(void) { return NSWorkspace.sharedWorkspace.frontmostApp
 
 // Called only on the dictation owner thread, never while holding GPUI borrows.
 // Failure to restore deliberately retains current focus, matching Windows policy.
-bool vp_paste(const uint8_t *bytes, size_t length, int32_t pid, uint32_t *error) {
+bool vp_paste_prepare(const uint8_t *bytes, size_t length, int32_t pid, uint32_t *error) {
     @autoreleasepool {
         *error = 0;
         NSString *text = [[NSString alloc] initWithBytes:bytes length:length encoding:NSUTF8StringEncoding];
@@ -146,7 +147,7 @@ bool vp_paste(const uint8_t *bytes, size_t length, int32_t pid, uint32_t *error)
         NSPasteboard *clipboard = NSPasteboard.generalPasteboard;
         [clipboard clearContents];
         if (![clipboard setString:text forType:NSPasteboardTypeString]) { *error = 2; return false; }
-        if (!AXIsProcessTrusted()) { *error = 3; return false; }
+        if (!AXIsProcessTrusted() || !CGPreflightPostEventAccess()) { *error = 3; return false; }
         if (pid > 0 && pid != NSRunningApplication.currentApplication.processIdentifier) {
             NSRunningApplication *target = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
             if (target && !target.terminated) {
@@ -155,6 +156,14 @@ bool vp_paste(const uint8_t *bytes, size_t length, int32_t pid, uint32_t *error)
                 for (int i = 0; i < 50 && !target.active; i++) [NSThread sleepForTimeInterval:0.01];
             }
         }
+        return true;
+    }
+}
+
+bool vp_paste_post(uint32_t *error) {
+    @autoreleasepool {
+        *error = 0;
+        if (!CGPreflightPostEventAccess()) { *error = 3; return false; }
         CGEventRef down = CGEventCreateKeyboardEvent(NULL, 9, true);
         CGEventRef up = CGEventCreateKeyboardEvent(NULL, 9, false);
         if (!down || !up) { if (down) CFRelease(down); if (up) CFRelease(up); *error = 4; return false; }

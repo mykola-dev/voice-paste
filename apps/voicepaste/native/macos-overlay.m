@@ -31,6 +31,7 @@ void *vp_overlay_create(void *view) {
     VPOverlay *owner = [VPOverlay new]; owner.foreground = foreground;
     owner.backdrop = [[VPBackdropPanel alloc] initWithContentRect:NSMakeRect(0,0,244,100) styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel backing:NSBackingStoreBuffered defer:NO];
     owner.backdrop.opaque = NO; owner.backdrop.backgroundColor = NSColor.clearColor;
+    owner.backdrop.releasedWhenClosed = NO;
     owner.backdrop.hasShadow = NO; owner.backdrop.ignoresMouseEvents = YES;
     owner.backdrop.level = NSStatusWindowLevel; owner.backdrop.hidesOnDeactivate = NO;
     owner.backdrop.collectionBehavior = foreground.collectionBehavior;

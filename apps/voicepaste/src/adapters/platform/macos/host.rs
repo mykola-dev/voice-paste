@@ -1,11 +1,16 @@
 //! Owns one native menu-bar item; callback delivery never enters GPUI/Rust.
 use super::menu::{self, MenuItem, TrayAction};
-use std::{ffi::c_void, marker::PhantomData, ptr::NonNull, rc::Rc};
+use std::{cell::RefCell, ffi::c_void, marker::PhantomData, ptr::NonNull, rc::Rc};
 
 unsafe extern "C" {
-    fn vp_menu_create(png: *const u8, length: usize) -> *mut c_void;
+    fn vp_menu_create(
+        png: *const u8,
+        length: usize,
+        recording: *const u8,
+        recording_length: usize,
+    ) -> *mut c_void;
     fn vp_menu_add(host: *mut c_void, title: *const std::ffi::c_char, action: u32, enabled: bool);
-    fn vp_menu_drain(host: *mut c_void) -> u32;
+    fn vp_menu_drain(host: *mut c_void, session: *mut u64) -> u32;
     fn vp_menu_destroy(host: *mut c_void);
     fn vp_startup_error(message: *const std::ffi::c_char);
     fn vp_capture_menu_enable(host: *mut c_void);
@@ -13,6 +18,8 @@ unsafe extern "C" {
         host: *mut c_void,
         recording: bool,
         busy: bool,
+        active: bool,
+        session: u64,
         status: *const std::ffi::c_char,
     );
     fn vp_microphone_permission(host: *mut c_void, request: bool) -> u32;
@@ -39,15 +46,17 @@ pub struct Host {
     pointer: NonNull<c_void>,
     // AppKit owns UI-thread callbacks; never transfer this handle to a worker.
     _main_thread: PhantomData<Rc<()>>,
+    last_status: RefCell<Option<(voicepaste_core::State, bool, bool, String)>>,
 }
 
 pub struct Intents {
     pub settings: bool,
     pub quit: bool,
     pub toggle: bool,
-    pub cancel: bool,
+    pub cancel: Option<voicepaste_core::SessionId>,
     pub download: bool,
     pub enable_keys: bool,
+    pub cancel_download: bool,
 }
 
 #[derive(PartialEq, Eq)]
@@ -61,12 +70,21 @@ pub enum MicrophonePermission {
 impl Host {
     pub fn new() -> Result<Self, String> {
         let icon = include_bytes!("../../../../assets/tray/masters/lips-bitten.png");
+        let recording = include_bytes!("../../../../assets/tray/masters/lips-open.png");
         // SAFETY: called from GPUI's main-thread session; native adapter copies
         // the static PNG bytes and returns one retained object owned by Host.
-        let pointer = unsafe { vp_menu_create(icon.as_ptr(), icon.len()) };
+        let pointer = unsafe {
+            vp_menu_create(
+                icon.as_ptr(),
+                icon.len(),
+                recording.as_ptr(),
+                recording.len(),
+            )
+        };
         let host = Self {
             pointer: NonNull::new(pointer).ok_or("Cannot create the macOS menu-bar icon")?,
             _main_thread: PhantomData,
+            last_status: RefCell::new(None),
         };
         for item in menu::items(voicepaste_core::State::Idle) {
             match item {
@@ -105,14 +123,16 @@ impl Host {
 
     pub fn drain(&self) -> Intents {
         // SAFETY: the retained native host is live and this is its UI thread.
-        let flags = unsafe { vp_menu_drain(self.pointer.as_ptr()) };
+        let mut session = 0;
+        let flags = unsafe { vp_menu_drain(self.pointer.as_ptr(), &mut session) };
         Intents {
             settings: flags & 1 != 0,
             quit: flags & 2 != 0,
             toggle: flags & 4 != 0,
-            cancel: flags & 8 != 0,
+            cancel: (session != 0).then_some(voicepaste_core::SessionId(session)),
             download: flags & 16 != 0,
             enable_keys: flags & 32 != 0,
+            cancel_download: flags & 64 != 0,
         }
     }
 
@@ -136,13 +156,44 @@ impl Host {
         unsafe { vp_confirm_download(model.as_ptr()) }
     }
 
-    pub fn capture_status(&self, recording: bool, busy: bool, message: &str) {
-        let message = message.replace('\0', "");
-        if let Ok(message) = std::ffi::CString::new(message) {
+    pub fn capture_status(
+        &self,
+        state: voicepaste_core::State,
+        busy: bool,
+        active: bool,
+        message: &str,
+    ) {
+        let session = if let voicepaste_core::State::Recording(id) = state {
+            id.0
+        } else {
+            0
+        };
+        let status = (
+            state,
+            busy,
+            active,
+            message
+                .chars()
+                .filter(|c| *c != '\0')
+                .take(512)
+                .collect::<String>(),
+        );
+        if self.last_status.borrow().as_ref() == Some(&status) {
+            return;
+        }
+        if let Ok(message) = std::ffi::CString::new(status.3.as_str()) {
             // SAFETY: native adapter copies the string during this UI-thread call.
             unsafe {
-                vp_capture_menu_update(self.pointer.as_ptr(), recording, busy, message.as_ptr());
+                vp_capture_menu_update(
+                    self.pointer.as_ptr(),
+                    session != 0,
+                    busy,
+                    active,
+                    session,
+                    message.as_ptr(),
+                );
             }
+            self.last_status.replace(Some(status));
         }
     }
 

@@ -21,25 +21,36 @@ See [engineering rules](engineering-principles.md).
 
 On `macOS-2`, local compilation is the accepted test route after the user
 confirmed the Rust launch preview opens on the corporate Mac. Downloaded CI
-artifacts remain blocked there. The current slice connects the shared GPUI
-Settings view to explicit `SettingsPlatform` choices, Application Support
-persistence and a native menu-bar host. `native/macos-host.m` is a narrow AppKit
+artifacts remain blocked there. The current implementation connects the shared
+dictation runtime/application, GPUI Settings/overlay, statistics and explicit
+`SettingsPlatform` choices to Application Support persistence and native adapters.
+`native/macos-host.m` is a narrow AppKit
 C ABI adapter, not a Swift/Python application fork; menu commands/labels reuse
 the shared menu description. Native callbacks only coalesce intents; no Rust
 callback borrows or Settings IO run in menu tracking. A separately owned,
-bounded preference thread commits local saves and joins on shutdown. Startup
+bounded dictation thread commits local saves and joins outside GPUI on shutdown.
+Accepted queued saves are flushed without a dead UI consumer. Startup
 errors use a native alert so Finder failures are visible.
 
-macOS normal-use recording, hotkeys, overlay lifecycle, model artifacts, Metal worker,
-paste and statistics are still unimplemented. Opt-in `--capture-preview` now
-wires the shared CPAL audio adapter and application state machine on an owned
-capture thread. AVFoundation permission is requested only on explicit Start;
-native completion owns native state and never reenters Rust/GPUI. The bounded
-command/event/meter handoffs keep UI callbacks free of capture/writer IO.
-Stop/cancel/Quit discard temporary audio; no STT or paste is faked.
-The Settings preview states the normal-use limit
-and does not provide fake-success adapters or silently reuse CT2 artifacts.
-The existing Windows composition/runtime remains selected on Windows. See
+`macos-input.m` owns a bounded global event tap, session-tagged Escape cancellation,
+foreground snapshot and clipboard/Cmd+V effects. `macos-overlay.m` owns only the
+nonactivating foreground policy and separate system-blur/white-tint backdrop;
+shared GPUI still owns presentation, waveform and frame sampling. Its material is
+AppKit NSVisualEffectView, not an identical Windows Gaussian kernel. Native window
+mutations run after App/entity borrows unwind. AVFoundation permission is requested
+only on explicit Start; native completion retains native state, never borrowed Rust.
+
+The macOS worker uses target-scoped whisper-rs 0.16.0 / whisper-rs-sys 0.15.0 with
+vendored whisper.cpp 1.8.3, embedded Metal shaders and an isolated RAII native
+engine boundary. Precomputed-log-mel decoding separates VAD/preparation/inference
+measurements. CPU and Metal-only remain distinct; pinned native GPU fallback
+diagnostics fail closed before Ready/results. The host validates actual device,
+request/session/generation and deadline through the same worker coordinator as
+Windows. Shared text/VAD policies preserve prompts, cleanup and segmentation.
+GGML and VAD have a separate pinned artifact manifest; startup verifies offline,
+and only explicit menu confirmation or `--download-model` enables HTTPS downloads.
+No fake-success adapters or CT2 artifact reuse are provided.
+The Windows host/backend selection and defaults remain unchanged. See
 [current preview scope and acceptance](macos-preview.md).
 
 ## UI and platform boundaries
@@ -106,14 +117,15 @@ The effect is not an exact recreation of system Acrylic noise, nor replaced with
 GPUI's visually different accent blur.
 Unsupported effects use the same-alpha shared translucent body without an extra
 tint over supported material. Composition visuals/dispatcher belong to the host
-UI thread and outlive neither the shell nor its window. Windows is the only
-implemented target; its remaining qualification is tracked separately. Shared
-rendering is not a claim of working ports.
+UI thread and outlive neither the shell nor its window. macOS selects its own
+AppKit shell/material described above; hardware qualification of each platform
+remains separate from shared-rendering contracts.
 
 Keep shared UI state/layout and domain/application free of native handles. Isolate
 OS behavior in compile-time-selected modules with target-scoped dependencies and
-narrow consumer-owned boundaries. Linux/macOS are future targets: no implemented
-port, fake-success adapter or speculative platform/plugin framework is intended.
+narrow consumer-owned boundaries. Apple Silicon macOS implementation is authorized
+on `macOS-2`; Linux remains a future target. No fake-success adapter or speculative
+platform/plugin framework is intended.
 Remaining reliability/release qualification is tracked in [TODO](../TODO.md).
 Feature inventory and staged platform isolation are in
 [cross-platform readiness](cross-platform-roadmap.md). `platform/menu.rs` owns
