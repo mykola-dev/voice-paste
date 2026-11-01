@@ -1,5 +1,23 @@
 # macOS model delivery: evidence and pending integration
 
+## Current delivery revision: GitHub Models assets
+
+The approved replacement for the historical Hugging Face/Git delivery below is
+the separate `Models` GitHub release (`models` tag). It is not an application
+release and does not change the application version. The original full-size
+GGML and Silero files retain their existing pinned sizes and SHA-256 identities.
+Release files are raw ordered parts, not compressed archives; concatenating them
+reconstructs the original bytes. Each part and the complete artifact must pass
+size/SHA-256 validation before publication to the application cache.
+
+macOS selects this source; Windows keeps its original HTTPS source without a
+Git LFS fallback. The part lifecycle is shared code, while curl/WinHTTP are native
+transport effects. No Git LFS installation is required. Actual corporate-Mac
+large-asset delivery and inference remain device acceptance, not CI claims.
+
+The following sections document historical investigation and are not the new
+source-selection policy.
+
 Metadata reviewed 2026-10-30; Git LFS weight delivery tested locally on Windows
 on 2026-11-01 with user approval (see below). macOS uses
 use whisper.cpp + Metal, not Windows CTranslate2 artifacts. No smaller-model,

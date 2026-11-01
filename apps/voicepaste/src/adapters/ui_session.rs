@@ -25,7 +25,6 @@ pub(crate) struct NativeIntents {
     pub cancel: Option<voicepaste_core::SessionId>,
     pub warning: Option<String>,
     pub download: Option<fn(&str) -> bool>,
-    pub cancel_download: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -43,7 +42,17 @@ pub(crate) enum RecordingPermission {
 
 /// Only non-Settings work leaves the shared reply router.
 pub(crate) enum SessionEvent {
+    ModelPreparationFailed {
+        model: String,
+        message: String,
+    },
+    ModelPreparationCancelled {
+        model: String,
+    },
     StartupModelUnavailable {
+        model: String,
+    },
+    ModelReady {
         model: String,
     },
     State(State),
@@ -139,7 +148,12 @@ impl RuntimeSession {
                     continue;
                 };
                 if self.project(&event) && overlay_enabled {
-                    overlay.update(self.state, self.downloading, cx);
+                    overlay.update_status(
+                        self.state,
+                        self.preparing || self.downloading,
+                        &self.model_message,
+                        cx,
+                    );
                 }
                 native.push(event);
             }
@@ -311,8 +325,19 @@ impl SettingsSession {
         cx: &mut App,
     ) -> Option<SessionEvent> {
         match event {
+            Event::ModelPreparationFailed { model, message } => {
+                return Some(SessionEvent::ModelPreparationFailed { model, message });
+            }
+            Event::ModelPreparationCancelled { model } => {
+                return Some(SessionEvent::ModelPreparationCancelled { model });
+            }
             Event::StartupModelUnavailable { model } => {
                 return Some(SessionEvent::StartupModelUnavailable { model });
+            }
+            Event::ModelReady { model } => return Some(SessionEvent::ModelReady { model }),
+            Event::PreparationStarted { generation } => {
+                overlay.set_preparation_generation(generation, cx);
+                return None;
             }
             Event::SettingsSaved { id, result } => {
                 if !self.saves.complete(id) {
@@ -514,8 +539,16 @@ mod tests {
         assert!(session.downloading);
         assert!(session.preparing);
         assert_eq!(session.model_message, "Downloading");
+        assert!(session.project(&SessionEvent::ModelStatus {
+            message: "Verifying downloaded model".into(),
+            preparing: true,
+            downloading: false,
+        }));
+        assert!(session.preparing);
+        assert!(!session.downloading);
+        assert_eq!(session.model_message, "Verifying downloaded model");
         assert!(!session.project(&SessionEvent::Error("unrelated error".into())));
-        assert_eq!(session.model_message, "Downloading");
+        assert_eq!(session.model_message, "Verifying downloaded model");
         assert!(session.project(&SessionEvent::ModelStatus {
             message: "Ready".into(),
             preparing: false,

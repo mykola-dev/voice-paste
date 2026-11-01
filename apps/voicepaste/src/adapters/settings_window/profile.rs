@@ -30,7 +30,7 @@ pub(super) const CURRENT: Profile = Profile {
     startup_hint: "Current macOS user only. Applied with OK or Apply; takes effect on next sign-in.",
     memory_hint: "Host and STT worker resident RAM are measured separately. GGML file size is not total RAM or Metal memory usage.",
     permission_notice: Some(
-        "macOS — local transcription. Microphone and Accessibility access are required for recording keys and automatic Cmd+V. Model downloads require approval from the menu.",
+        "Microphone access is needed to record. Accessibility access enables global recording keys and automatic Cmd+V paste. Manage these permissions in System Settings → Privacy & Security.",
     ),
     weight_path: None,
     weight_description: " (full FP16 GGML)",

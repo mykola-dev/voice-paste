@@ -17,10 +17,11 @@ work around company policy to launch a preview.
 - The existing shared Rust runtime/application state machine now owns macOS
   recording, debounce, session cancellation, stale worker results, settings-at-idle,
   model residency and statistics. The capture-only worker fork was removed.
-- Use **Download selected model…** for the **saved** selection. Its native
-  confirmation explicitly approves Hugging Face weight/VAD downloads. Initial
-  startup, draft dropdown queries and builds do not download model weights.
-  **Cancel model download** retains the partial; a later approved request resumes.
+- A missing **saved** model prompts for approval at startup or after saving a
+  different model. Start recording offers the download again after a decline or
+  failure. Models and VAD come from the separate GitHub `Models` release, not Git
+  LFS. Draft dropdown queries and builds never download weights. Cancellation
+  retains resumable parts; a later approved request resumes.
   Exact size/SHA-256 verification precedes publication. A complete verified partial
   can be published offline. Source manifest: `crates/core/assets/macos-model-artifacts.json`.
 - Full FP16 GGML large-v2, large-v3 and large-v3-turbo use separate pinned artifacts,
@@ -39,9 +40,10 @@ work around company policy to launch a preview.
   not an instruction to bypass VAD. Beam 1–10, decoder fallback/context/seek,
   combined initial prompt and Ukrainian cleanup remain enabled. Native backend
   output is not claimed to be byte-identical to CTranslate2.
-- Microphone permission is requested only on Start. **Enable recording keys…**
-  explicitly requests Accessibility access and retries tap creation. Denied or
-  corporate-restricted access is reported, not bypassed. With permission granted,
+- Microphone permission is requested only on Start (hotkey or menu); denied access
+  opens the relevant System Settings pane. Accessibility is checked/requested at
+  normal startup; granting it reconnects recording keys without a special menu.
+  Corporate restrictions are not bypassed. With permission granted,
   Right Control (default), Right Option, F8 and F12 are standalone recording keys;
   repeat/chords do not create extra toggles. Escape consumes its recording-cancel
   sequence and carries the original session identity through the bounded inbox.
@@ -90,12 +92,12 @@ microphone permissions, transcription weights, login startup or interactive UI.
 2. Record the tested commit (`git rev-parse --short HEAD`), macOS version, chip and
    RAM. Confirm menu-bar residency, Settings text/resize/scroll, Save/Apply/Cancel,
    prompt preservation and reopening after Quit. Existing legacy config stays intact.
-3. Save the intended model/device. Confirm startup does not download weights;
-   **Download selected model…** explicitly authorizes the full model and VAD.
+3. Save the intended model/device. Confirm download requires approval; accept
+   the startup/model-change prompt to fetch the full model and VAD from GitHub.
    Check progress, cancellation/resume and successful verified preparation.
    A network failure is a failed delivery test, not permission to bypass TLS.
-4. Enable recording keys through the menu and grant Accessibility only if policy
-   permits. Start requests Microphone access. Check Right Control, Right Option,
+4. Grant the startup Accessibility request only if policy permits. Start requests
+   Microphone access. Check Right Control, Right Option,
    F8 and F12 individually, held-key repeats, modifier chords, Escape cancellation
    and changing the saved recording key. Denials must be visible and recoverable.
 5. In a disposable text document, record English/Ukrainian and stop: confirm real
@@ -190,14 +192,14 @@ a second dictation state machine. Host contract tests do not request TCC access
 or use a live microphone. Real-device permission, capture and audio-device-loss
 acceptance remain pending; tests on the Mac will be requested after development.
 
-Model-delivery metadata and the limits of an official Hugging Face Git fallback
-are recorded in [macos-model-delivery.md](macos-model-delivery.md). An approved
-local Windows Git LFS test verified full large-v3-turbo weights; no optional tools
-were installed. Corporate Mac delivery remains unverified. Normal startup now
-offers Download/Cancel if offline model verification fails. Direct HTTPS is tried
-first; failure or invalid weights can fall back to already installed Git LFS.
-The menu retains download retry/cancellation. Git temporary transfers restart
-after cancellation; HTTPS partials remain resumable and are never mixed with Git.
+Current model-delivery metadata and historical Hugging Face investigation are
+recorded in [macos-model-delivery.md](macos-model-delivery.md). All three full GGML
+models and Silero were downloaded and verified locally for the approved GitHub
+mirror. Corporate Mac delivery remains unverified. Normal startup offers
+Download/Cancel if offline verification fails; macOS downloads verified raw parts
+from the separate GitHub `Models` release and assembles the original file.
+Start recording retries a declined/failed preparation; cancellation retains parts.
+The Git LFS fallback and its extra menu commands have been removed.
 
 For an update, quit the old preview explicitly and **move the existing
 `build/release/VoicePaste.app` aside** before running the build script again.

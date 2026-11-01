@@ -22,7 +22,8 @@ bool vp_settings_activate(void *rawView) {
 @property(nonatomic, strong) NSStatusItem *item;
 @property(nonatomic, strong) NSMenu *menu;
 @property(nonatomic) uint32_t pending;
-@property(atomic) bool microphoneRequestPending;
+@property(nonatomic) bool microphoneRequestPending;
+@property(nonatomic) bool alive;
 @property(nonatomic, strong) NSMenuItem *captureItem;
 @property(nonatomic, strong) NSMenuItem *cancelItem;
 @property(nonatomic, strong) NSMenuItem *captureStatus;
@@ -39,9 +40,6 @@ bool vp_settings_activate(void *rawView) {
 - (void)quit:(id)sender { (void)sender; self.pending |= 2; }
 - (void)toggle:(id)sender { (void)sender; self.pending |= 4; }
 - (void)cancel:(id)sender { (void)sender; self.pendingCancelSession = self.recordingSession; }
-- (void)download:(id)sender { (void)sender; self.pending |= 16; }
-- (void)enableKeys:(id)sender { (void)sender; self.pending |= 32; }
-- (void)cancelDownload:(id)sender { (void)sender; self.pending |= 64; }
 - (void)clicked:(id)sender {
     (void)sender;
     if (NSApp.currentEvent.type == NSEventTypeRightMouseUp) {
@@ -57,6 +55,7 @@ bool vp_settings_activate(void *rawView) {
 void *vp_menu_create(const uint8_t *png, size_t length, const uint8_t *openPng, size_t openLength) {
     NSCAssert([NSThread isMainThread], @"menu creation must be on the main thread");
     VPMenuHost *host = [VPMenuHost new];
+    host.alive = YES;
     host.item = [NSStatusBar.systemStatusBar statusItemWithLength:NSSquareStatusItemLength];
     if (!host.item.button) return NULL;
     NSImage *image = [[NSImage alloc] initWithData:[NSData dataWithBytes:png length:length]];
@@ -85,6 +84,7 @@ void vp_menu_add(void *raw, const char *title, uint32_t action, bool enabled) {
     NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:[NSString stringWithUTF8String:title] action:selector keyEquivalent:@""];
     item.target = host;
     item.enabled = enabled;
+    if (action == 4) host.dictationItem = item;
     [host.menu addItem:item];
 }
 
@@ -100,6 +100,7 @@ uint32_t vp_menu_drain(void *raw, uint64_t *cancelSession) {
 void vp_menu_destroy(void *raw) {
     NSCAssert([NSThread isMainThread], @"menu destruction must be on the main thread");
     VPMenuHost *host = (__bridge_transfer VPMenuHost *)raw;
+    host.alive = NO;
     host.item.button.target = nil;
     host.item.button.action = NULL;
     [NSStatusBar.systemStatusBar removeStatusItem:host.item];
@@ -109,6 +110,7 @@ void vp_menu_destroy(void *raw) {
 void vp_capture_menu_enable(void *raw) {
     NSCAssert([NSThread isMainThread], @"capture menu must be on the main thread");
     VPMenuHost *host = (__bridge VPMenuHost *)raw;
+    host.dictationItem = nil;
     host.captureItem = [host.menu itemAtIndex:0];
     host.captureItem.title = @"Start microphone capture (no transcription)";
     host.captureItem.enabled = YES;
@@ -122,28 +124,20 @@ void vp_capture_menu_enable(void *raw) {
     host.item.button.toolTip = host.captureStatus.title;
 }
 
-void vp_dictation_menu_enable(void *raw) {
+void vp_menu_update(void *raw, const char *title, bool enabled, bool active, const char *status) {
+    NSCAssert([NSThread isMainThread], @"menu update must be on the main thread");
     VPMenuHost *host = (__bridge VPMenuHost *)raw;
-    vp_capture_menu_enable(raw);
-    host.captureItem.title = @"Start recording";
-    host.captureStatus.title = @"Preparing dictation";
-    NSMenuItem *download = [[NSMenuItem alloc] initWithTitle:@"Download selected model…" action:@selector(download:) keyEquivalent:@""];
-    download.target = host;
-    [host.menu addItem:download];
-    NSMenuItem *cancelDownload = [[NSMenuItem alloc] initWithTitle:@"Cancel model download" action:@selector(cancelDownload:) keyEquivalent:@""];
-    cancelDownload.target = host;
-    [host.menu addItem:cancelDownload];
-    NSMenuItem *keys = [[NSMenuItem alloc] initWithTitle:@"Enable recording keys…" action:@selector(enableKeys:) keyEquivalent:@""];
-    keys.target = host;
-    [host.menu addItem:keys];
-    host.dictationItem = host.captureItem;
+    host.dictationItem.title = [NSString stringWithUTF8String:title];
+    host.dictationItem.enabled = enabled;
+    if (host.recording != active) {host.recording = active;host.item.button.image = active ? host.recordingImage : host.idleImage;}
+    host.item.button.toolTip = [NSString stringWithUTF8String:status];
 }
 
 bool vp_confirm_download(const char *model) {
     NSCAssert([NSThread isMainThread], @"download alert must be on the main thread");
     NSAlert *alert = [NSAlert new];
     alert.messageText = @"Download selected Whisper model?";
-    alert.informativeText = [NSString stringWithFormat:@"Download %@ and Silero VAD from Hugging Face? Full-size weights need approximately 1.6–3.1 GB plus temporary disk space. If HTTPS fails, VoicePaste will try Git with an already installed Git LFS. No tools are installed automatically and no smaller or quantized model is substituted. Cancel keeps networking disabled; you can retry from the menu.", [NSString stringWithUTF8String:model]];
+    alert.informativeText = [NSString stringWithFormat:@"Download %@ and the speech detector from VoicePaste's GitHub Models release? Full-size weights need approximately 1.6–3.1 GB plus temporary disk space. Files are downloaded in parts and verified before use. No additional tools are installed. Cancel skips this download; Start recording will offer it again.", [NSString stringWithUTF8String:model]];
     [alert addButtonWithTitle:@"Download"]; [alert addButtonWithTitle:@"Cancel"];
     [NSApp activate];
     return [alert runModal] == NSAlertFirstButtonReturn;
@@ -162,20 +156,29 @@ void vp_capture_menu_update(void *raw, bool recording, bool busy, bool active, u
 }
 
 // 0 undecided, 1 granted, 2 denied/restricted, 3 request in flight.
+static void vp_open_microphone_settings(void) {
+    [NSWorkspace.sharedWorkspace openURL:[NSURL URLWithString:@"x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"]];
+}
+
 uint32_t vp_microphone_permission(void *raw, bool request) {
     NSCAssert([NSThread isMainThread], @"permission request must be on the main thread");
     VPMenuHost *host = (__bridge VPMenuHost *)raw;
     AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
     if (status == AVAuthorizationStatusAuthorized) return 1;
-    if (status == AVAuthorizationStatusDenied || status == AVAuthorizationStatusRestricted) return 2;
+    if (status == AVAuthorizationStatusDenied || status == AVAuthorizationStatusRestricted) {
+        if (request) vp_open_microphone_settings();
+        return 2;
+    }
     if (!request) return host.microphoneRequestPending ? 3 : 0;
     if (!host.microphoneRequestPending) {
         host.microphoneRequestPending = YES;
-        // The block owns host until completion. No borrowed Rust pointer, no
-        // GPUI reentry and no menu mutation from the arbitrary completion thread.
+        // Complete on the owner thread; shutdown suppresses delayed activation.
+        // No borrowed Rust pointer or GPUI reentry from either block.
         [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio completionHandler:^(BOOL granted) {
-            (void)granted;
-            host.microphoneRequestPending = NO;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                host.microphoneRequestPending = NO;
+                if (host.alive && !granted) vp_open_microphone_settings();
+            });
         }];
     }
     return 3;
@@ -199,6 +202,17 @@ void vp_startup_error(const char *message) {
     NSAlert *alert = [NSAlert new];
     alert.alertStyle = NSAlertStyleCritical;
     alert.messageText = @"VoicePaste could not start";
+    alert.informativeText = [NSString stringWithUTF8String:message];
+    [alert addButtonWithTitle:@"OK"];
+    [NSApp activate];
+    [alert runModal];
+}
+
+void vp_host_error(const char *message) {
+    NSCAssert([NSThread isMainThread], @"error alert must be on the main thread");
+    NSAlert *alert = [NSAlert new];
+    alert.alertStyle = NSAlertStyleCritical;
+    alert.messageText = @"VoicePaste";
     alert.informativeText = [NSString stringWithUTF8String:message];
     [alert addButtonWithTitle:@"OK"];
     [NSApp activate];

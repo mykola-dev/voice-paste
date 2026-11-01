@@ -46,13 +46,22 @@ void *vp_overlay_create(void *view) {
     return (__bridge_retained void *)owner;
 }
 
+// AppKit uses bottom-left global points (including negative monitor origins).
+// Match Windows' work-area top-right, with a 20-point resting panel margin.
+void vp_overlay_origin(double x, double y, double width, double height, double *left, double *bottom) {
+    *left = x + width - 244;
+    *bottom = y + height - 20 - 100;
+}
+
 bool vp_overlay_prepare(void *raw, bool blur, double alpha) {
     VPOverlay *owner = (__bridge VPOverlay *)raw;
     NSPoint mouse = NSEvent.mouseLocation; NSScreen *screen = NSScreen.mainScreen;
     for (NSScreen *candidate in NSScreen.screens) if (NSPointInRect(mouse,candidate.frame)) {screen=candidate;break;}
     if (!screen) return false;
     NSRect area = screen.visibleFrame;
-    NSRect frame = NSMakeRect(NSMaxX(area)-244,NSMinY(area)+20,244,100);
+    double left, bottom;
+    vp_overlay_origin(NSMinX(area), NSMinY(area), NSWidth(area), NSHeight(area), &left, &bottom);
+    NSRect frame = NSMakeRect(left,bottom,244,100);
     [owner.foreground setFrame:frame display:NO]; [owner.backdrop setFrame:frame display:NO];
     bool material = blur && !NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceTransparency;
     owner.effect.hidden = !material;
@@ -60,8 +69,9 @@ bool vp_overlay_prepare(void *raw, bool blur, double alpha) {
     return material;
 }
 
-void vp_overlay_present(void *raw, bool active, double opacity) {
+void vp_overlay_present(void *raw, bool active, double opacity, bool interactive) {
     VPOverlay *owner = (__bridge VPOverlay *)raw;
+    owner.foreground.ignoresMouseEvents = !interactive;
     if (!active) { [owner.foreground orderOut:nil]; [owner.backdrop orderOut:nil]; return; }
     owner.effect.frame = NSMakeRect(244*(1-opacity),0,224,100);
     owner.effect.alphaValue = opacity;

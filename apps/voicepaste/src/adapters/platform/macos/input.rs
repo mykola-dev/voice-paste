@@ -52,7 +52,10 @@ impl Input {
         // SAFETY: UI-thread creation transfers one native owner; callback never
         // calls Rust. Permission denial returns null without installing a tap.
         let pointer = unsafe { vp_input_create(key, prompt) };
-        Ok(Self {pointer:NonNull::new(pointer).ok_or("Global recording keys require Accessibility permission. Grant VoicePaste access in System Settings → Privacy & Security → Accessibility, then use Enable recording keys in the menu.")?,_main:PhantomData})
+        Ok(Self {
+            pointer: NonNull::new(pointer).ok_or("Cannot attach global recording keys. Grant VoicePaste access in System Settings → Privacy & Security → Accessibility; recording keys reconnect automatically after permission is granted.")?,
+            _main: PhantomData,
+        })
     }
     pub fn arm(&self, state: voicepaste_core::State) {
         let session = if let voicepaste_core::State::Recording(id) = state {

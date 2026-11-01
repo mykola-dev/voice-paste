@@ -1,11 +1,10 @@
 //! Pinned GGML provisioning. Only an explicit download command enables network.
-use crate::adapters::model_preparation::{
-    Job, Progress, check_cancel as check, prepare_artifact, publish, verify,
-};
+use crate::adapters::model_preparation::{Job, Progress, check_cancel as check, publish, verify};
 #[cfg(test)]
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, OpenOptions},
+    io::Read,
     path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::atomic::{AtomicBool, Ordering},
@@ -37,10 +36,7 @@ pub fn local_path(root: &Path, name: &str) -> Result<PathBuf, String> {
     {
         Ok(directory)
     } else {
-        Err(
-            "Model is not ready. Use Download selected model in the menu (approval required)."
-                .into(),
-        )
+        Err("Model is not ready. Start recording to approve or retry its download.".into())
     }
 }
 pub fn filter(
@@ -103,96 +99,26 @@ fn prepare(
             continue;
         }
         let partial = directory.join(format!("{}.partial", artifact.path));
-        prepare_artifact(
-            (&partial, &path), artifact, stop, download,
-            |path| OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .mode(0o600)
-            .open(path)
-            .map_err(|e| e.to_string()),
-            |file, _offset| {
-            status.track_file(partial.clone(), artifact.bytes);
-            status.set_downloading(true);
-            status.message(format!(
-                "Downloading {} ({:.0} MiB); resumable",
-                model.name,
-                artifact.bytes as f64 / 1048576.
-            ));
-            let url = format!(
-                "https://huggingface.co/{}/resolve/{}/{}",
-                model.repository, model.revision, artifact.path
-            );
-             crate::adapters::model_preparation::transfer_with_fallback(stop, file, |_file| {
-             let mut child = Command::new("/usr/bin/curl")
-                .args([
-                    "--fail",
-                    "--location",
-                    "--silent",
-                    "--show-error",
-                    "--proto",
-                    "=https",
-                    "--proto-redir",
-                    "=https",
-                    "--connect-timeout",
-                    "15",
-                    "--speed-time",
-                    "30",
-                    "--speed-limit",
-                    "1024",
-                    "--continue-at",
-                    "-",
-                    "--output",
-                ])
-                .arg(&partial)
-                .arg(&url)
-                .arg("--max-filesize")
-                .arg(artifact.bytes.to_string())
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-                .map_err(|e| e.to_string())?;
-             loop {
-                if fs::metadata(&partial).is_ok_and(|m| m.len() > artifact.bytes) {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    break Err(
-                        "Download exceeded the pinned artifact size; partial was not published"
-                            .into(),
-                    );
-                }
-                if stop.load(Ordering::Acquire) {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    break Err("Download cancelled; partial retained".into());
-                }
-                match child.try_wait() {
-                    Ok(Some(exit)) => {
-                        break if exit.success() {
-                            Ok(())
-                        } else {
-                            Err(format!(
-                                "Model download failed ({exit}); partial retained. Corporate network may block Hugging Face weight endpoints."
-                            ))
-                        };
-                    }
-                    Ok(None) => thread::sleep(Duration::from_millis(50)),
-                    Err(e) => {
-                        let _ = child.kill();
-                        let _ = child.wait();
-                        break Err(e.to_string());
-                    }
-                }
-             }
-             }, |file| crate::adapters::model_preparation::verify_open(file, artifact, stop), |file| crate::adapters::model_git::download(model, artifact, &partial, file, stop, status))?;
-             status.set_downloading(false);
-            status.message(format!("Verifying {} / {}", model.name, artifact.path));
-            Ok(())
+        crate::adapters::model_parts::prepare(
+            (&partial, &path),
+            artifact,
+            || crate::adapters::model_parts::mirror(artifact),
+            stop,
+            download,
+            status,
+            |path| {
+                OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .create(true)
+                    .truncate(false)
+                    .mode(0o600)
+                    .open(path)
+                    .map_err(|e| e.to_string())
             },
-        ).map_err(|error| format!("{error} Use Download selected model in the menu to retry."))?;
+            |url, part, offset, size| transfer(url, part, offset, size, stop),
+        )
+        .map_err(|error| format!("{error} Start recording to retry."))?;
     }
     // The worker expects the pinned VAD beside each model. Hard-linking is not
     // required; a subdirectory preserves the independent VAD manifest/revision.
@@ -213,6 +139,84 @@ fn prepare(
         }
     }
     Ok(directory)
+}
+
+/// Native curl is only a single-asset transport. Ordering, resume policy,
+/// integrity, reassembly and publication belong to the shared scenario.
+fn transfer(
+    url: &str,
+    path: &Path,
+    offset: u64,
+    size: u64,
+    stop: &AtomicBool,
+) -> Result<(), String> {
+    check(stop)?;
+    let mut child = Command::new("/usr/bin/curl")
+        .args([
+            "--fail",
+            "--location",
+            "--silent",
+            "--show-error",
+            "--write-out",
+            "%{http_code}",
+            "--proto",
+            "=https",
+            "--proto-redir",
+            "=https",
+            "--connect-timeout",
+            "15",
+            "--max-time",
+            "1800",
+            "--speed-time",
+            "30",
+            "--speed-limit",
+            "1024",
+            "--continue-at",
+        ])
+        .arg(offset.to_string())
+        .arg("--output")
+        .arg(path)
+        .arg("--max-filesize")
+        .arg(size.to_string())
+        .arg(url)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    loop {
+        let oversized = fs::metadata(path).is_ok_and(|m| m.len() > size);
+        if oversized || stop.load(Ordering::Acquire) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return if oversized {
+                Err("Download exceeded pinned part size; not published".into())
+            } else {
+                Err("Download cancelled; partial retained".into())
+            };
+        }
+        match child.try_wait() {
+            Ok(Some(exit)) => {
+                return if exit.success() {
+                    Ok(())
+                } else {
+                    let mut code = String::new();
+                    if let Some(stdout) = child.stdout.take() {
+                        let _ = stdout.take(3).read_to_string(&mut code);
+                    }
+                    Err(format!(
+                        "GitHub model download failed (HTTP {code}, {exit}); partial retained. Check network access to GitHub release assets and retry."
+                    ))
+                };
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(50)),
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(error.to_string());
+            }
+        }
+    }
 }
 
 #[cfg(test)]

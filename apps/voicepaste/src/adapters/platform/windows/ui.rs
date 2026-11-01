@@ -96,6 +96,8 @@ impl OverlayLifecycle {
     }
 
     fn sync_enabled(&mut self, overlay: &OverlayWindow, cx: &mut AsyncApp) -> Result<(), String> {
+        let interactive = cx.update(|cx| overlay.provisioning_interactive(cx));
+        self.shell.set_interactive(interactive)?;
         let opacity = cx.update(|cx| overlay.animation(cx));
         let active = cx.update(|cx| overlay.active(cx));
         let pending = cx.update(|cx| overlay.show_pending(cx));

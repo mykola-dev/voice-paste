@@ -3,11 +3,35 @@
 pub(crate) struct DownloadConsent {
     startup: Option<String>,
     approved: Option<String>,
+    missing: Option<String>,
 }
 
 impl DownloadConsent {
     pub fn unavailable(&mut self, model: String) {
+        self.missing = Some(model.clone());
         self.startup = Some(model);
+    }
+
+    pub fn ready(&mut self, model: &str) {
+        if self.missing.as_deref() == Some(model) {
+            self.missing = None;
+            self.startup = None;
+        }
+    }
+
+    pub fn cancelled(&mut self, model: String) {
+        self.missing = Some(model);
+        self.startup = None;
+        self.approved = None;
+    }
+
+    pub fn retry(&mut self, model: &str) -> bool {
+        if self.missing.as_deref() == Some(model) {
+            self.startup = Some(model.into());
+            true
+        } else {
+            false
+        }
     }
 
     pub fn take_offer(&mut self, model: &str, available: bool) -> bool {
@@ -38,6 +62,27 @@ impl DownloadConsent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cancelling_initial_verification_allows_recording_retry_without_an_automatic_prompt() {
+        let mut consent = DownloadConsent::default();
+        consent.cancelled("large-v3".into());
+        assert!(!consent.take_offer("large-v3", true));
+        assert!(consent.retry("large-v3"));
+        assert!(consent.take_offer("large-v3", true));
+    }
+
+    #[test]
+    fn recording_retry_reoffers_declined_model_but_not_ready_or_stale_model() {
+        let mut consent = DownloadConsent::default();
+        consent.unavailable("large-v3".into());
+        assert!(consent.take_offer("large-v3", true));
+        assert!(!consent.retry("large-v2"));
+        assert!(consent.retry("large-v3"));
+        assert!(consent.take_offer("large-v3", true));
+        consent.ready("large-v3");
+        assert!(!consent.retry("large-v3"));
+    }
 
     #[test]
     fn startup_offer_is_deferred_until_available_and_not_repeated_after_decline() {

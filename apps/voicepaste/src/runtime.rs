@@ -44,10 +44,25 @@ pub enum Command {
         id: u64,
     },
     DownloadModel,
-    CancelModelDownload,
+    CancelModelDownload {
+        generation: u64,
+    },
     Quit,
 }
 pub enum Event {
+    PreparationStarted {
+        generation: u64,
+    },
+    ModelPreparationFailed {
+        model: String,
+        message: String,
+    },
+    ModelPreparationCancelled {
+        model: String,
+    },
+    ModelReady {
+        model: String,
+    },
     StartupModelUnavailable {
         model: String,
     },
@@ -114,11 +129,13 @@ impl Runtime {
                 };
                 let mut preferences = SettingsBoundary::new(storage.settings.clone());
                 let mut model_ready = capture_preview;
+                let mut preparation_generation = 1u64;
                 let mut preparation = if capture_preview { None } else {
-                    prepare(&storage,&preferences.current().model,&sender)
+                    prepare(&storage,&preferences.current().model,&sender,&thread_shutdown)
                 };
                 let mut last_progress = Instant::now();
                 let mut startup_check = !capture_preview;
+                if preparation.is_some() && !reliable(&sender, Event::PreparationStarted { generation: preparation_generation }, &thread_shutdown) { return; }
                 loop {
                     if thread_shutdown.load(Ordering::Acquire) {
                         // Stop capture before disk commits or native-child waits;
@@ -141,27 +158,38 @@ impl Runtime {
                             worker.release();
                         }
                         if previous.model != current.model && !capture_preview {
-                            startup_check=false;
+                            startup_check=true;
                             drop(preparation.take()); model_ready=false;
-                            preparation=prepare(&storage,&current.model,&sender);
+                            preparation_generation = preparation_generation.checked_add(1).expect("Preparation generation exhausted");
+                            if !reliable(&sender, Event::PreparationStarted { generation: preparation_generation }, &thread_shutdown) { break; }
+                            preparation=prepare(&storage,&current.model,&sender,&thread_shutdown);
                         } else if model_ready && !capture_preview && current.keep_in_memory
                             && let Err(error) = worker.preload(current) { report(&storage,&sender,error); }
                     }
                     match receiver.recv_timeout(Duration::from_millis(100)) {
                         Ok(Command::Quit) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
-                        Ok(Command::CancelModelDownload) => {
+                        Ok(Command::CancelModelDownload { generation }) => {
+                            if !current_preparation(generation, preparation_generation, preparation.is_some()) { continue; }
                             startup_check=false;
                             if preparation.is_some(){
                                 drop(preparation.take());model_ready=false;
-                                let _=sender.try_send(Event::ModelStatus{message:"Model preparation cancelled; partial download retained".into(),preparing:false,downloading:false});
+                                if !reliable(&sender, Event::ModelPreparationCancelled { model: preferences.current().model.clone() }, &thread_shutdown) { break; }
+                                if !reliable(&sender, Event::ModelStatus{message:"Model preparation cancelled; partial download retained".into(),preparing:false,downloading:false}, &thread_shutdown) { break; }
                             }
                         }
                         Ok(Command::DownloadModel) => {
                             if app.state()!=State::Idle {report(&storage,&sender,"Wait until dictation is idle before downloading a model".into());continue;}
                             startup_check=false;
                             worker.release();drop(preparation.take());model_ready=false;
+                            preparation_generation = preparation_generation.checked_add(1).expect("Preparation generation exhausted");
+                            if !reliable(&sender, Event::PreparationStarted { generation: preparation_generation }, &thread_shutdown) { break; }
                             match crate::adapters::models::Preparation::start_with_download(storage.root.clone(),&preferences.current().model,true) {
-                                Ok(task)=>preparation=Some(task),Err(error)=>report(&storage,&sender,error),
+                                Ok(task)=>preparation=Some(task),
+                                Err(error)=>{
+                                    storage.log(&error);
+                                    if !reliable(&sender, Event::ModelStatus { message: error.clone(), preparing:false, downloading:false }, &thread_shutdown) { break; }
+                                    if !reliable(&sender, Event::ModelPreparationFailed { model:preferences.current().model.clone(), message:error }, &thread_shutdown) { break; }
+                                },
                             }
                         }
                         Err(mpsc::RecvTimeoutError::Timeout) => (),
@@ -233,16 +261,24 @@ impl Runtime {
                         }
                     }
                     if let Some(result) = preparation.as_mut().and_then(Preparation::poll) {
+                        let network_attempted = preparation.as_ref().is_some_and(|task| task.progress.network_attempted());
                         if let Some(task) = &preparation {
                             storage.log(&format!("Model preparation: {}; network_download={}", task.progress.snapshot(), task.progress.downloading()));
                         }
                         drop(preparation.take());
                         model_ready = result.is_ok();
-                        if std::mem::take(&mut startup_check) && !model_ready
+                        if model_ready && !reliable(&sender, Event::ModelReady { model: preferences.current().model.clone() }, &thread_shutdown) { break; }
+                        let missing_local = std::mem::take(&mut startup_check) && !model_ready;
+                        if missing_local
                             && !reliable(&sender, Event::StartupModelUnavailable { model: preferences.current().model.clone() }, &thread_shutdown) { break; }
                         let message = match result {
                             Ok(_) => format!("{} is ready (verified local model)", preferences.current().model),
-                            Err(error) => { if !error.contains("cancelled") {report(&storage,&sender,error.clone());} else {storage.log(&error);} error },
+                            Err(error) => {
+                                storage.log(&error);
+                                if (!missing_local || network_attempted) && !error.contains("cancelled")
+                                    && !reliable(&sender, Event::ModelPreparationFailed { model: preferences.current().model.clone(), message: format!("Could not prepare the selected model. Verified files and resumable downloads are retained. Try Start recording again to retry.\n\n{error}") }, &thread_shutdown) { break; }
+                                error
+                            },
                         };
                         if !reliable(&sender,Event::ModelStatus {message,preparing:false,downloading:false},&thread_shutdown) { break; }
                         if model_ready && preferences.current().keep_in_memory
@@ -370,16 +406,37 @@ fn report(storage: &Storage, sender: &SyncSender<Event>, error: String) {
     let _ = sender.try_send(Event::Error(error));
 }
 
-fn prepare(storage: &Storage, model: &str, sender: &SyncSender<Event>) -> Option<Preparation> {
+fn current_preparation(requested: u64, current: u64, active: bool) -> bool {
+    active && requested == current
+}
+
+fn prepare(
+    storage: &Storage,
+    model: &str,
+    sender: &SyncSender<Event>,
+    shutdown: &AtomicBool,
+) -> Option<Preparation> {
     match Preparation::start(storage.root.clone(), model) {
         Ok(task) => Some(task),
         Err(error) => {
-            let _ = sender.try_send(Event::ModelStatus {
-                message: error.clone(),
-                preparing: false,
-                downloading: false,
-            });
-            report(storage, sender, error);
+            storage.log(&error);
+            let _ = reliable(
+                sender,
+                Event::ModelStatus {
+                    message: error.clone(),
+                    preparing: false,
+                    downloading: false,
+                },
+                shutdown,
+            );
+            let _ = reliable(
+                sender,
+                Event::ModelPreparationFailed {
+                    model: model.into(),
+                    message: error,
+                },
+                shutdown,
+            );
             None
         }
     }
@@ -388,6 +445,14 @@ fn prepare(storage: &Storage, model: &str, sender: &SyncSender<Event>) -> Option
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cancellation_cannot_target_a_replacement_or_finished_preparation() {
+        assert!(current_preparation(1, 1, true));
+        assert!(!current_preparation(1, 2, true));
+        assert!(!current_preparation(1, 1, false));
+        assert!(!current_preparation(2, 3, true)); // retry of the same model
+    }
 
     #[test]
     fn full_event_queue_does_not_prevent_shutdown_or_receiver_disconnect() {

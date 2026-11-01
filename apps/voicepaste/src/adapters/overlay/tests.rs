@@ -3,6 +3,67 @@ use gpui_kit::TestAppContext;
 use voicepaste_core::SessionId;
 
 #[gpui_kit::test]
+fn provisioning_updates_keep_the_shared_panel_and_cancel_intent_until_terminal(
+    cx: &mut TestAppContext,
+) {
+    let (_sender, levels) = crossbeam_channel::bounded(CAPACITY);
+    let overlay = cx.update(|cx| {
+        gpui_kit::init(cx);
+        super::super::settings_theme::install(cx).unwrap();
+        OverlayWindow::open(
+            "#E9563D",
+            OverlayAppearance::default(),
+            levels,
+            Instant::now(),
+            cx,
+        )
+        .unwrap()
+    });
+    cx.update_window(overlay.handle, |_, window, cx| {
+        overlay.set_preparation_generation(7, cx);
+        for message in [
+            "Downloading large-v2 — 1.0 / 2.0 MiB",
+            "Verifying large-v2",
+            "Publishing verified model",
+        ] {
+            overlay.update_status(State::Idle, true, message, cx);
+            overlay.material(false, cx);
+            overlay.view.update(cx, |view, _| {
+                view.clock = Instant::now() - std::time::Duration::from_secs(1);
+            });
+            window.draw(cx).clear(cx);
+            assert_eq!(overlay.animation(cx), 1.);
+            assert!(overlay.provisioning_interactive(cx));
+            assert_eq!(
+                overlay.view.read(cx).presentation.provisioning.as_deref(),
+                Some(message)
+            );
+            assert!(window.painted_quads().iter().any(|quad| {
+                (quad.bounds.size.width.as_f32() - WIDTH * window.scale_factor()).abs() < 0.1
+                    && (quad.bounds.size.height.as_f32() - HEIGHT * window.scale_factor()).abs()
+                        < 0.1
+            }));
+        }
+        overlay
+            .view
+            .update(cx, |view, _| view.presentation.request_cancel());
+        assert_eq!(overlay.take_cancel(cx), Some(7));
+        assert_eq!(overlay.take_cancel(cx), None);
+        for terminal in ["Ready", "Failed", "Cancelled"] {
+            overlay.update_status(State::Idle, false, terminal, cx);
+            assert!(!overlay.provisioning_interactive(cx));
+            overlay.view.update(cx, |view, _| {
+                view.clock -= std::time::Duration::from_secs(1)
+            });
+            window.draw(cx).clear(cx);
+            assert!(!overlay.active(cx));
+        }
+    })
+    .unwrap();
+    cx.update(|cx| overlay.close(cx));
+}
+
+#[gpui_kit::test]
 fn slide_moves_panel_pixels_not_viewport_and_keeps_completed_entry_visible(
     cx: &mut TestAppContext,
 ) {

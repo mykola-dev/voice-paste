@@ -6,7 +6,7 @@ use std::{ffi::c_void, marker::PhantomData, ptr::NonNull, rc::Rc};
 unsafe extern "C" {
     fn vp_overlay_create(view: *mut c_void) -> *mut c_void;
     fn vp_overlay_prepare(shell: *mut c_void, blur: bool, alpha: f64) -> bool;
-    fn vp_overlay_present(shell: *mut c_void, active: bool, opacity: f64);
+    fn vp_overlay_present(shell: *mut c_void, active: bool, opacity: f64, interactive: bool);
     fn vp_overlay_destroy(shell: *mut c_void);
 }
 fn material_alpha(appearance: voicepaste_core::settings::OverlayAppearance) -> f64 {
@@ -42,12 +42,13 @@ impl Shell {
         })
     }
     pub fn sync(&mut self, overlay: &OverlayWindow, cx: &mut AsyncApp) {
-        let (active, pending, appearance, opacity) = cx.update(|cx| {
+        let (active, pending, appearance, opacity, interactive) = cx.update(|cx| {
             (
                 overlay.active(cx),
                 overlay.show_pending(cx),
                 overlay.current_appearance(cx),
                 overlay.animation(cx),
+                overlay.provisioning_interactive(cx),
             )
         });
         if !active && !self.visible {
@@ -67,7 +68,12 @@ impl Shell {
         // SAFETY: same owned main-thread shell. Animation uses only the last
         // rendered shared sample; native code never advances an independent clock.
         unsafe {
-            vp_overlay_present(self.pointer.as_ptr(), active, f64::from(opacity));
+            vp_overlay_present(
+                self.pointer.as_ptr(),
+                active,
+                f64::from(opacity),
+                interactive,
+            );
         }
         self.visible = active;
     }
@@ -83,6 +89,36 @@ impl Drop for Shell {
 #[cfg(test)]
 mod tests {
     use super::*;
+    unsafe extern "C" {
+        fn vp_overlay_origin(
+            x: f64,
+            y: f64,
+            width: f64,
+            height: f64,
+            left: *mut f64,
+            bottom: *mut f64,
+        );
+    }
+
+    #[test]
+    fn native_appkit_anchor_matches_top_right_work_area_in_global_points() {
+        for (x, y, width, height) in [
+            (0., 0., 1440., 875.),
+            (-1920., -120., 1920., 1080.),
+            (1440., 900., 1728., 1079.),
+        ] {
+            let (mut left, mut bottom) = (0., 0.);
+            // SAFETY: pure native geometry helper, valid output pointers, no AppKit effects.
+            unsafe { vp_overlay_origin(x, y, width, height, &mut left, &mut bottom) };
+            assert_eq!(x + width - (left + 224.), 20.);
+            assert_eq!(y + height - (bottom + 100.), 20.);
+            assert_eq!(
+                left + 244.,
+                x + width,
+                "viewport stops at the work-area edge"
+            );
+        }
+    }
     #[test]
     fn native_tint_uses_unit_alpha_not_byte_alpha() {
         for transparency in 0..=100 {

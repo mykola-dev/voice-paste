@@ -17,8 +17,9 @@ pub(in crate::adapters::platform) struct SessionHost {
 
 impl SessionHost {
     pub fn download_confirmation(&self) -> Option<fn(&str) -> bool> {
-        // Windows retains its existing automatic model provisioning contract.
-        None
+        // Initial provisioning remains automatic; this is an explicit retry
+        // after a failed/cancelled preparation, shared with recording intents.
+        Some(confirm_download)
     }
 
     pub fn new(initial: &Settings, _preview: bool, settings_only: bool) -> Result<Self, String> {
@@ -76,6 +77,29 @@ impl SessionHost {
         self.host.notify(message, error);
     }
 
+    pub fn error_dialog(&self, message: &str) {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW};
+        let text: Vec<u16> = message
+            .chars()
+            .filter(|c| *c != '\0')
+            .take(4096)
+            .collect::<String>()
+            .encode_utf16()
+            .chain(Some(0))
+            .collect();
+        let title: Vec<u16> = "VoicePaste".encode_utf16().chain(Some(0)).collect();
+        // SAFETY: synchronous UI-thread dialog outside framework/state borrows;
+        // UTF-16 buffers remain live until it returns.
+        unsafe {
+            MessageBoxW(
+                std::ptr::null_mut(),
+                text.as_ptr(),
+                title.as_ptr(),
+                MB_OK | MB_ICONERROR,
+            );
+        }
+    }
+
     pub fn refresh(
         &mut self,
         projection: &RuntimeSession,
@@ -95,5 +119,28 @@ impl SessionHost {
             }
             self.last_dpi = Instant::now();
         }
+    }
+}
+
+fn confirm_download(model: &str) -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        IDOK, MB_ICONQUESTION, MB_OKCANCEL, MessageBoxW,
+    };
+    let text: Vec<u16> = format!("Download or resume {model}? Files will be verified before use.")
+        .encode_utf16()
+        .chain(Some(0))
+        .collect();
+    let title: Vec<u16> = "Prepare selected model"
+        .encode_utf16()
+        .chain(Some(0))
+        .collect();
+    // SAFETY: UI-thread dialog outside framework/state borrows; buffers outlive call.
+    unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            text.as_ptr(),
+            title.as_ptr(),
+            MB_OKCANCEL | MB_ICONQUESTION,
+        ) == IDOK
     }
 }

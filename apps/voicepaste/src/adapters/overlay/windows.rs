@@ -94,6 +94,23 @@ impl Shell {
         self.visible
     }
 
+    /// Provisioning accepts clicks but never activation; recording stays click-through.
+    pub fn set_interactive(&mut self, interactive: bool) -> Result<(), String> {
+        // SAFETY: UI-thread owned HWND; subclass data is a value, never a borrow.
+        if unsafe {
+            SetWindowSubclass(
+                self.hwnd,
+                Some(nonactivating),
+                SUBCLASS,
+                usize::from(interactive),
+            )
+        } == 0
+        {
+            return Err(last_error("configure provisioning input"));
+        }
+        Ok(())
+    }
+
     /// Position hidden foreground and material. Returns whether tint lives in the material.
     pub fn prepare(&mut self, appearance: OverlayAppearance) -> Result<bool, String> {
         let geometry = placement()?;
@@ -484,13 +501,19 @@ unsafe extern "system" fn nonactivating(
     w: WPARAM,
     l: LPARAM,
     _: usize,
-    _: usize,
+    interactive: usize,
 ) -> LRESULT {
     // No host state/borrows cross the reentrant GPUI/default window procedure.
     unsafe {
         match message {
             WM_MOUSEACTIVATE => MA_NOACTIVATE as isize,
-            WM_NCHITTEST => HTTRANSPARENT as isize,
+            WM_NCHITTEST => {
+                if interactive != 0 {
+                    HTCLIENT as isize
+                } else {
+                    HTTRANSPARENT as isize
+                }
+            }
             _ => DefSubclassProc(hwnd, message, w, l),
         }
     }
@@ -712,6 +735,18 @@ mod tests {
                 SendMessageW(hwnd, WM_MOUSEACTIVATE, 0, 0),
                 MA_NOACTIVATE as isize
             );
+            assert_eq!(
+                SendMessageW(hwnd, WM_NCHITTEST, 0, 0),
+                HTTRANSPARENT as isize
+            );
+            shell.set_interactive(true).unwrap();
+            assert_eq!(SendMessageW(hwnd, WM_NCHITTEST, 0, 0), HTCLIENT as isize);
+            assert_eq!(
+                SendMessageW(hwnd, WM_MOUSEACTIVATE, 0, 0),
+                MA_NOACTIVATE as isize
+            );
+            assert_eq!(GetForegroundWindow(), foreground);
+            shell.set_interactive(false).unwrap();
             assert_eq!(
                 SendMessageW(hwnd, WM_NCHITTEST, 0, 0),
                 HTTRANSPARENT as isize

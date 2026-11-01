@@ -2,7 +2,10 @@
 
 ## [Unreleased]
 
-- Added a visible macOS startup download choice and a shared, verified Hugging Face Git LFS fallback when direct model downloads fail on Windows or macOS.
+- macOS model downloads now use verified, resumable GitHub Models assets instead of Hugging Face or Git LFS; Windows retains its original HTTPS source without fallback.
+- Model preparation now shows persistent progress with cancellation and error dialogs, and missing macOS models can be retried by starting recording.
+- Matched the macOS recording menu to Windows and corrected the overlay's top-right placement.
+- macOS now requests Accessibility at startup, reconnects recording keys after approval and opens microphone privacy settings after denied recording access.
 
 - Added an Apple Silicon macOS launch preview with a local build script that handles Rosetta terminals and downloads Rust only when needed, with approval.
 - Added shared Settings, a native menu-bar icon and opt-in sign-in startup to the macOS preview, with configuration stored in Application Support.

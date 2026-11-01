@@ -87,11 +87,17 @@ impl OverlayWindow {
     }
 
     pub fn update(&self, state: State, downloading: bool, cx: &mut App) {
+        self.update_status(state, downloading, "Preparing model...", cx);
+    }
+
+    /// Preparation, not transport activity, owns the provisioning lifetime.
+    /// The runtime message already contains measured byte progress when available.
+    pub fn update_status(&self, state: State, preparing: bool, message: &str, cx: &mut App) {
         self.view.update(cx, |view, cx| {
             let was_active = view.presentation.active;
             let appearance = view.presentation.appearance;
             view.presentation
-                .update(state, downloading, view.clock.elapsed());
+                .update_status(state, preparing, message, view.clock.elapsed());
             if !was_active && view.opacity > 0. {
                 // Reversal is not a new native show/material preparation.
                 view.presentation.appearance = appearance;
@@ -112,6 +118,24 @@ impl OverlayWindow {
     pub fn appearance(&self, color: &str, appearance: OverlayAppearance, cx: &mut App) {
         self.view.update(cx, |view, cx| {
             view.presentation.settings(color, appearance);
+            cx.notify();
+        });
+    }
+
+    /// Snapshot under App; apply native mouse policy only after releasing App.
+    pub fn provisioning_interactive(&self, cx: &App) -> bool {
+        self.view.read(cx).presentation.interactive()
+    }
+
+    /// Single bounded intent; the session retains/retries cancellation on backpressure.
+    pub fn take_cancel(&self, cx: &mut App) -> Option<u64> {
+        self.view
+            .update(cx, |view, _| view.presentation.take_cancel())
+    }
+
+    pub fn set_preparation_generation(&self, generation: u64, cx: &mut App) {
+        self.view.update(cx, |view, cx| {
+            view.presentation.set_preparation_generation(generation);
             cx.notify();
         });
     }
@@ -177,6 +201,8 @@ impl Render for OverlayView {
         self.presentation.wave.advance(now);
         let elapsed = self.presentation.elapsed(now);
         let recording = matches!(self.presentation.state, State::Recording(_));
+        let provisioning = self.presentation.provisioning.clone();
+        let cancel_requested = self.presentation.cancel_requested;
         let active = self.presentation.active || self.opacity > 0.;
         if active {
             self.request_frame(window, cx);
@@ -266,7 +292,7 @@ impl Render for OverlayView {
                         .h(px(30.)),
                     )
                 })
-                .when(!recording, |root| {
+                .when(!recording && provisioning.is_none(), |root| {
                     root.children((0..5).map(|bar| {
                         let height = 40. * busy_size(elapsed.as_secs_f64(), bar);
                         div()
@@ -276,6 +302,65 @@ impl Render for OverlayView {
                             .w(px(6.))
                             .h(px(height))
                             .bg(rgb(color))
+                    }))
+                })
+                .when(!recording, |root| {
+                    root.children(provisioning.map(|message| {
+                        let (stage, progress) = message
+                            .split_once(" — ")
+                            .map_or((message.as_str(), None), |(stage, progress)| {
+                                (stage, Some(progress))
+                            });
+                        div()
+                            .absolute()
+                            .inset_0()
+                            .px(px(14.))
+                            .pt(px(8.))
+                            .pb(px(30.))
+                            .flex()
+                            .flex_col()
+                            .justify_center()
+                            .gap(px(2.))
+                            .overflow_hidden()
+                            .font_family("IBM Plex Sans")
+                            .text_color(rgb(0x222222))
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .line_height(px(16.))
+                                    .max_h(px(32.))
+                                    .overflow_hidden()
+                                    .child(stage.to_owned()),
+                            )
+                            .children(progress.map(|progress| {
+                                div()
+                                    .text_size(px(13.))
+                                    .line_height(px(18.))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(progress.to_owned())
+                            }))
+                            .child(
+                                div()
+                                    .id("cancel-provisioning")
+                                    .absolute()
+                                    .right(px(14.))
+                                    .bottom(px(7.))
+                                    .px(px(8.))
+                                    .rounded(px(4.))
+                                    .border_1()
+                                    .border_color(rgb(0x777777))
+                                    .text_size(px(12.))
+                                    .line_height(px(20.))
+                                    .child(if cancel_requested {
+                                        "Cancelling..."
+                                    } else {
+                                        "Cancel"
+                                    })
+                                    .on_click(cx.listener(|view, _, _, cx| {
+                                        view.presentation.request_cancel();
+                                        cx.notify();
+                                    })),
+                            )
                     }))
                 })
             });

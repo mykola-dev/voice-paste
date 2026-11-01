@@ -1,0 +1,32 @@
+[
+  {
+    "name": "ggml-large-v2.bin",
+    "bytes": 3094623691,
+    "sha256": "9a423fe4d40c82774b6af34115b8b935f34152246eb19e80e376071d3f999487",
+    "parts": [
+      {"name":"ggml-large-v2.bin.part001","bytes":1800000000,"sha256":"feebdd16d27486e197d253ae4a659c7106b4e532c80f9f1810395c81b518d4ce"},
+      {"name":"ggml-large-v2.bin.part002","bytes":1294623691,"sha256":"247cbdd1a55e304e55b99ffbae81b447fa71de2de175355d2797d4bbf1e54122"}
+    ]
+  },
+  {
+    "name": "ggml-large-v3.bin",
+    "bytes": 3095033483,
+    "sha256": "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2",
+    "parts": [
+      {"name":"ggml-large-v3.bin.part001","bytes":1800000000,"sha256":"b328f4f247fa34b88e6154eee3186beb38e0583d319e79125fef856b3fb84664"},
+      {"name":"ggml-large-v3.bin.part002","bytes":1295033483,"sha256":"c0dca9fa2ab36fc4c24dacb1344499cbebf2f6eca4f4cf00f4e6fb788fd23d01"}
+    ]
+  },
+  {
+    "name": "ggml-large-v3-turbo.bin",
+    "bytes": 1624555275,
+    "sha256": "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
+    "parts": [{"name":"ggml-large-v3-turbo.bin.part001","bytes":1624555275,"sha256":"1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69"}]
+  },
+  {
+    "name": "ggml-silero-v6.2.0.bin",
+    "bytes": 885098,
+    "sha256": "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987",
+    "parts": [{"name":"ggml-silero-v6.2.0.bin.part001","bytes":885098,"sha256":"2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987"}]
+  }
+]

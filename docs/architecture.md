@@ -48,11 +48,16 @@ diagnostics fail closed before Ready/results. The host validates actual device,
 request/session/generation and deadline through the same worker coordinator as
 Windows. Shared text/VAD policies preserve prompts, cleanup and segmentation.
 GGML and VAD have a separate pinned artifact manifest; startup verifies offline,
-and only explicit startup/menu confirmation or `--download-model` enables downloads.
-HTTPS failure/invalid weights can switch once to installed Git LFS, with isolated
-source staging and shared verification/publication; no tools install automatically.
-`model_git.rs` shares the entire Git/LFS scenario with Windows; its target-selected
-native modules own only subprocess tree creation/termination and executable lookup.
+and only explicit startup/recording-retry confirmation or `--download-model` enables downloads.
+macOS selects the separate GitHub `Models` release; Windows retains its original
+HTTPS source. Neither uses Git LFS fallback or installs download tools.
+`model_parts.rs` owns ordered raw-part delivery, resumable staging, per-part and
+complete artifact verification, bounded reassembly and atomic publication.
+Native curl transfers one asset; it does not implement a parallel provisioning lifecycle.
+Preparation cancellation carries a generation captured by the progress control,
+so delayed clicks/queued commands cannot cancel a replacement model or retry.
+Terminal cancellation/results use reliable bounded event delivery; download-error
+dialogs never suspend the shared Stop/Escape pump during a live recording.
 No fake-success adapters or CT2 artifact reuse are provided.
 The Windows host/backend selection and defaults remain unchanged. See
 [current preview scope and acceptance](macos-preview.md).

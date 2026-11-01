@@ -4,7 +4,10 @@ use crate::adapters::{
     paste::FocusTarget,
     ui_session::{NativeIntents, RecordingPermission, RuntimeSession},
 };
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use voicepaste_core::{State, settings::Settings};
 
 pub(super) struct SessionHost {
@@ -12,6 +15,8 @@ pub(super) struct SessionHost {
     storage: Arc<storage::Storage>,
     keys: Option<input::Input>,
     next_keys: Option<input::Input>,
+    next_key_retry: Instant,
+    keys_enabled: bool,
 }
 
 fn intents(batch: input::Batch) -> NativeIntents {
@@ -35,12 +40,8 @@ impl SessionHost {
         settings_only: bool,
     ) -> Result<Self, String> {
         let host = host::Host::new()?;
-        if !settings_only {
-            if preview {
-                host.enable_capture();
-            } else {
-                host.enable_dictation();
-            }
+        if !settings_only && preview {
+            host.enable_capture();
         }
         Ok(Self {
             host,
@@ -48,9 +49,11 @@ impl SessionHost {
             keys: if settings_only {
                 None
             } else {
-                input::Input::attach(initial, false).ok()
+                input::Input::attach(initial, true).ok()
             },
             next_keys: None,
+            next_key_retry: Instant::now() + Duration::from_secs(2),
+            keys_enabled: !settings_only,
         })
     }
 
@@ -69,11 +72,12 @@ impl SessionHost {
     pub fn drain(&mut self, saved: &Settings, state: State) -> NativeIntents {
         let native = self.host.drain();
         let mut batch = input::Batch::default();
-        let mut warning = None;
-        if native.enable_keys {
-            match input::Input::attach(saved, true) {
-                Ok(value) => batch.merge(self.replace_keys(value, state)),
-                Err(error) => warning = Some(error),
+        // Startup is the only prompting attach. Granting Accessibility later
+        // reconnects without repeatedly activating Settings or system prompts.
+        if self.keys_enabled && self.keys.is_none() && Instant::now() >= self.next_key_retry {
+            self.next_key_retry = Instant::now() + Duration::from_secs(2);
+            if let Ok(value) = input::Input::attach(saved, false) {
+                batch.merge(self.replace_keys(value, state));
             }
         }
         if let Some(keys) = &self.keys {
@@ -86,11 +90,6 @@ impl SessionHost {
         result.quit = native.quit;
         result.settings = native.settings;
         result.cancel = native.cancel.or(result.cancel);
-        result.warning = warning.or(result.warning);
-        result.download = native
-            .download
-            .then_some(host::Host::confirm_download as fn(&str) -> bool);
-        result.cancel_download = native.cancel_download;
         result
     }
 
@@ -127,6 +126,10 @@ impl SessionHost {
             keys.arm(state);
         }
     }
+    pub fn error_dialog(&self, message: &str) {
+        host::Host::error(message);
+    }
+
     pub fn notify(&self, message: &str, _error: bool) {
         self.storage.log(message);
     }

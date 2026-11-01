@@ -212,11 +212,12 @@ inference/device acceptance. Користувач підтвердив лише 
 - [ ] **Реальна доставка моделей.** Лише після явного дозволу перевірити повні
   FP16 large-v2/large-v3/large-v3-turbo та Silero: HTTPS, progress, cancel/resume,
   hashes, corrupted partial/cache, offline restart і corporate-network failures.
-   Локальний Windows Git LFS probe завантажив large-v3-turbo з точним size/hash.
-   Спільний Windows/macOS Git fallback і macOS explicit-consent prompt підключені; macOS/corporate
-   acceptance ще відкрита. Git staging ізольований від resumable HTTPS partial;
-   скасований Git transfer починається заново. Offline import ще не реалізований.
-   HF Git/LFS/Xet не є доведеним обходом мережевих обмежень.
+    Усі три повні GGML моделі й Silero завантажені локально, size/SHA-256 перевірені.
+    Погоджена заміна: macOS — окремий GitHub Release `Models`/`models`, raw parts
+    зі спільним download/assembly lifecycle; Windows — попередній HTTPS source.
+    Git LFS fallback прибирається на обох платформах. Публікація assets, фінальні
+    тести поточних змін та corporate Mac acceptance ще мають бути підтверджені.
+    Offline import ще не реалізований.
   Джерело доказів: [model delivery](docs/macos-model-delivery.md).
 - [ ] **Справжня inference і M1+ qualification.** Записати chip/RAM/macOS;
   перевірити Metal-only без CPU fallback і явний CPU, усі погоджені моделі,

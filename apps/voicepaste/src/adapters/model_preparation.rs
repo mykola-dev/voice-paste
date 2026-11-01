@@ -3,7 +3,7 @@
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},
-    io::{Read, Seek, SeekFrom},
+    io::Read,
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
@@ -13,46 +13,10 @@ use std::{
     thread::{self, JoinHandle},
 };
 use voicepaste_core::models::Artifact;
-#[cfg(test)]
-mod source_tests;
-
-/// One bounded source switch; cancellation never starts another transport.
-pub(crate) fn transfer_with_fallback<T>(
-    cancel: &AtomicBool,
-    state: &mut T,
-    primary: impl FnOnce(&mut T) -> Result<(), String>,
-    valid: impl FnOnce(&mut T) -> Result<bool, String>,
-    fallback: impl FnOnce(&mut T) -> Result<(), String>,
-) -> Result<(), String> {
-    check_cancel(cancel)?;
-    let primary_error = match primary(state) {
-        Ok(()) => {
-            if valid(state)? {
-                return Ok(());
-            }
-            "Primary source failed exact size/SHA-256 verification".to_owned()
-        }
-        Err(error) => error,
-    };
-    check_cancel(cancel)?;
-    fallback(state).map_err(|error| format!("HTTPS: {primary_error}; Git LFS fallback: {error}"))
-}
-
-pub(crate) fn verify_open(
-    file: &mut File,
-    artifact: &Artifact,
-    cancel: &AtomicBool,
-) -> Result<bool, String> {
-    check_cancel(cancel)?;
-    if file.metadata().map_err(|e| e.to_string())?.len() != artifact.bytes {
-        return Ok(false);
-    }
-    file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
-    Ok(hash_reader(file, cancel)?.eq_ignore_ascii_case(&artifact.sha256))
-}
 
 /// Caller owns the cache lock and has rejected the completed artifact. Native
 /// staging permissions/sharing and transport stay outside this shared scenario.
+#[cfg(any(target_os = "windows", test))]
 pub(crate) fn prepare_artifact(
     paths: (&Path, &Path),
     artifact: &Artifact,
@@ -67,7 +31,10 @@ pub(crate) fn prepare_artifact(
         return Ok(());
     }
     if !allow_network {
-        return Err("Model is incomplete or unverified and networking is disabled".into());
+        return Err(
+            "The selected model needs to be downloaded. Start recording to approve or retry."
+                .into(),
+        );
     }
     check_cancel(cancel)?;
     match fs::symlink_metadata(partial) {
@@ -168,6 +135,7 @@ enum Measurement {
 pub(crate) struct Progress {
     message: Mutex<String>,
     downloading: AtomicBool,
+    network_attempted: AtomicBool,
     indeterminate: AtomicBool,
     measurement: Measurement,
 }
@@ -181,6 +149,7 @@ impl Progress {
         Self {
             message: Mutex::new(message),
             downloading: AtomicBool::new(false),
+            network_attempted: AtomicBool::new(false),
             indeterminate: AtomicBool::new(false),
             measurement: Measurement::Cumulative {
                 bytes: AtomicU64::new(0),
@@ -197,6 +166,7 @@ impl Progress {
         Self {
             message: Mutex::new(message),
             downloading: AtomicBool::new(false),
+            network_attempted: AtomicBool::new(false),
             indeterminate: AtomicBool::new(false),
             measurement: Measurement::StagingFile(Mutex::new(None)),
         }
@@ -234,16 +204,14 @@ impl Progress {
     }
 
     pub fn set_downloading(&self, value: bool) {
+        if value {
+            self.network_attempted.store(true, Ordering::Release);
+        }
         self.downloading.store(value, Ordering::Release);
     }
 
-    pub fn clear_tracked_file(&self) {
-        self.indeterminate.store(true, Ordering::Relaxed);
-        if let Measurement::StagingFile(file) = &self.measurement
-            && let Ok(mut file) = file.lock()
-        {
-            *file = None;
-        }
+    pub fn network_attempted(&self) -> bool {
+        self.network_attempted.load(Ordering::Acquire)
     }
 
     pub fn downloading(&self) -> bool {

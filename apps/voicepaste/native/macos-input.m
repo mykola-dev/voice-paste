@@ -91,7 +91,10 @@ void *vp_input_create(uint16_t key, bool prompt) {
     NSCAssert(NSThread.isMainThread, @"input creation must be on main thread");
     if (key != 62 && key != 61 && key != 100 && key != 111) return NULL;
     NSDictionary *options = @{(__bridge NSString *)kAXTrustedCheckOptionPrompt: @(prompt)};
-    if (!AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options)) return NULL;
+    if (!AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options)) {
+        if (prompt) [NSWorkspace.sharedWorkspace openURL:[NSURL URLWithString:@"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"]];
+        return NULL;
+    }
     VPInput *input = [VPInput new];
     input.key = key;
     input.queue = calloc(8, sizeof(VPToggle));

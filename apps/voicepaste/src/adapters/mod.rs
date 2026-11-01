@@ -11,7 +11,8 @@ mod hotkey;
 pub mod launch;
 #[cfg(target_os = "windows")]
 mod memory;
-mod model_git;
+#[cfg(any(target_os = "macos", test))]
+mod model_parts;
 mod model_preparation;
 #[cfg(target_os = "windows")]
 pub mod models;

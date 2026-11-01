@@ -86,6 +86,7 @@ pub(super) async fn ui_session(
     let mut input = RecordingInput::default();
     let mut quitting = false;
     let mut download_consent = DownloadConsent::default();
+    let mut cancel_preparation = None;
     if capture_preview && !settings_only {
         host.notify("Capture preview: records microphone and discards on Stop. No transcription/paste in this explicit mode.", false);
     }
@@ -104,6 +105,23 @@ pub(super) async fn ui_session(
             projection.dispatch(&runtime, &mut settings, &overlay, lifecycle.enabled(), cx)?
         {
             match event {
+                SessionEvent::ModelPreparationFailed {
+                    model,
+                    message: error,
+                } => {
+                    download_consent.cancelled(model);
+                    host.notify(&error, true);
+                    // Model preparation never owns a live recording. Native
+                    // modal presentation is limited to this terminal failure.
+                    if projection.state == State::Idle {
+                        host.error_dialog(&error);
+                    }
+                    message = error;
+                }
+                SessionEvent::ModelPreparationCancelled { model } => {
+                    download_consent.cancelled(model)
+                }
+                SessionEvent::ModelReady { model } => download_consent.ready(&model),
                 SessionEvent::StartupModelUnavailable { model } => {
                     download_consent.unavailable(model)
                 }
@@ -133,6 +151,9 @@ pub(super) async fn ui_session(
             }
         }
         let native = host.drain(&settings.saved, projection.state);
+        if let Some(generation) = cx.update(|cx| overlay.take_cancel(cx)) {
+            cancel_preparation = Some(generation);
+        }
         quitting |= native.quit;
         if quitting {
             // Accepted saves must commit/rollback native registration before exit.
@@ -147,12 +168,19 @@ pub(super) async fn ui_session(
             message = warning;
         }
         if !quitting {
+            if projection.preparing && !native.targets.is_empty() {
+                targets.clear();
+                message = "Preparing the selected model; please wait or cancel preparation.".into();
+            } else if !native.targets.is_empty() && download_consent.retry(&settings.saved.model) {
+                // Recording is a retry intent, not permission to record before
+                // provisioning completes. Consent remains model-scoped.
+                targets.clear();
+            } else {
+                targets.extend(native.targets);
+            }
             let startup_confirm = if download_consent.take_offer(
                 &settings.saved.model,
-                !projection.preparing
-                    && projection.state == State::Idle
-                    && !settings.saving()
-                    && settings.window().is_none(),
+                !projection.preparing && projection.state == State::Idle && !settings.saving(),
             ) {
                 host.download_confirmation()
             } else {
@@ -170,7 +198,7 @@ pub(super) async fn ui_session(
                     download_consent.approve(&settings.saved.model);
                 }
             }
-            if native.cancel_download {
+            if cancel_preparation.is_some() {
                 download_consent.submitted();
             }
             if download_consent.pending(&settings.saved.model)
@@ -179,10 +207,13 @@ pub(super) async fn ui_session(
             {
                 download_consent.submitted();
             }
-            if native.cancel_download && !post(&commands, Command::CancelModelDownload)? {
-                message = "Command queue busy; retry download cancellation.".into();
+            if let Some(generation) = cancel_preparation {
+                if post(&commands, Command::CancelModelDownload { generation })? {
+                    cancel_preparation = None;
+                } else {
+                    message = "Waiting to cancel model preparation…".into();
+                }
             }
-            targets.extend(native.targets);
             if let Some(status) = input.dispatch(
                 projection.state,
                 targets,

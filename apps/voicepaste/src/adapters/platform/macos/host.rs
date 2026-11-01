@@ -1,6 +1,12 @@
 //! Owns one native menu-bar item; callback delivery never enters GPUI/Rust.
 use super::menu::{self, MenuItem, TrayAction};
-use std::{cell::RefCell, ffi::c_void, marker::PhantomData, ptr::NonNull, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    ffi::c_void,
+    marker::PhantomData,
+    ptr::NonNull,
+    rc::Rc,
+};
 
 unsafe extern "C" {
     fn vp_menu_create(
@@ -23,7 +29,14 @@ unsafe extern "C" {
         status: *const std::ffi::c_char,
     );
     fn vp_microphone_permission(host: *mut c_void, request: bool) -> u32;
-    fn vp_dictation_menu_enable(host: *mut c_void);
+    fn vp_menu_update(
+        host: *mut c_void,
+        title: *const std::ffi::c_char,
+        enabled: bool,
+        active: bool,
+        status: *const std::ffi::c_char,
+    );
+    fn vp_host_error(message: *const std::ffi::c_char);
     fn vp_confirm_download(model: *const std::ffi::c_char) -> bool;
 }
 
@@ -47,6 +60,7 @@ pub struct Host {
     // AppKit owns UI-thread callbacks; never transfer this handle to a worker.
     _main_thread: PhantomData<Rc<()>>,
     last_status: RefCell<Option<(voicepaste_core::State, bool, bool, String)>>,
+    preview: Cell<bool>,
 }
 
 pub struct Intents {
@@ -54,9 +68,6 @@ pub struct Intents {
     pub quit: bool,
     pub toggle: bool,
     pub cancel: Option<voicepaste_core::SessionId>,
-    pub download: bool,
-    pub enable_keys: bool,
-    pub cancel_download: bool,
 }
 
 #[derive(PartialEq, Eq)]
@@ -85,6 +96,7 @@ impl Host {
             pointer: NonNull::new(pointer).ok_or("Cannot create the macOS menu-bar icon")?,
             _main_thread: PhantomData,
             last_status: RefCell::new(None),
+            preview: Cell::new(false),
         };
         for item in menu::items(voicepaste_core::State::Idle) {
             match item {
@@ -105,15 +117,9 @@ impl Host {
                         TrayAction::Quit => 2,
                         TrayAction::Toggle => 4,
                     };
-                    // SAFETY: native adapter copies the label synchronously. The
-                    // shared recording command stays disabled until connected.
+                    // SAFETY: native adapter copies the label synchronously.
                     unsafe {
-                        vp_menu_add(
-                            host.pointer.as_ptr(),
-                            title.as_ptr(),
-                            code,
-                            enabled && action != TrayAction::Toggle,
-                        );
+                        vp_menu_add(host.pointer.as_ptr(), title.as_ptr(), code, enabled);
                     }
                 }
             }
@@ -130,22 +136,25 @@ impl Host {
             quit: flags & 2 != 0,
             toggle: flags & 4 != 0,
             cancel: (session != 0).then_some(voicepaste_core::SessionId(session)),
-            download: flags & 16 != 0,
-            enable_keys: flags & 32 != 0,
-            cancel_download: flags & 64 != 0,
         }
     }
 
     pub fn enable_capture(&self) {
+        self.preview.set(true);
         // SAFETY: live retained main-thread host; only called once in capture mode.
         unsafe {
             vp_capture_menu_enable(self.pointer.as_ptr());
         }
     }
-    pub fn enable_dictation(&self) {
-        // SAFETY: main-thread live menu owner; menu changes never enter Rust.
-        unsafe {
-            vp_dictation_menu_enable(self.pointer.as_ptr());
+    /// Call only after releasing application/framework borrows: AppKit's modal
+    /// loop can dispatch pending native events while this alert is open.
+    pub fn error(message: &str) {
+        let message: String = message.chars().filter(|c| *c != '\0').take(4096).collect();
+        if let Ok(message) = std::ffi::CString::new(message) {
+            // SAFETY: main-thread synchronous alert copies the bounded message.
+            unsafe {
+                vp_host_error(message.as_ptr());
+            }
         }
     }
     pub fn confirm_download(model: &str) -> bool {
@@ -183,15 +192,39 @@ impl Host {
         }
         if let Ok(message) = std::ffi::CString::new(status.3.as_str()) {
             // SAFETY: native adapter copies the string during this UI-thread call.
-            unsafe {
-                vp_capture_menu_update(
-                    self.pointer.as_ptr(),
-                    session != 0,
-                    busy,
-                    active,
-                    session,
-                    message.as_ptr(),
-                );
+            if self.preview.get() {
+                unsafe {
+                    vp_capture_menu_update(
+                        self.pointer.as_ptr(),
+                        session != 0,
+                        busy,
+                        active,
+                        session,
+                        message.as_ptr(),
+                    );
+                }
+            } else {
+                for item in menu::items(state) {
+                    if let MenuItem::Command {
+                        action: TrayAction::Toggle,
+                        label,
+                        enabled,
+                    } = item
+                    {
+                        if let Ok(title) = std::ffi::CString::new(label) {
+                            // SAFETY: live main-thread host copies both strings.
+                            unsafe {
+                                vp_menu_update(
+                                    self.pointer.as_ptr(),
+                                    title.as_ptr(),
+                                    enabled && !busy,
+                                    active,
+                                    message.as_ptr(),
+                                );
+                            }
+                        }
+                    }
+                }
             }
             self.last_status.replace(Some(status));
         }
