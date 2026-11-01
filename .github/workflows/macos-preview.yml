@@ -50,6 +50,7 @@ jobs:
           restore-keys: macos-26-arm64-xcode-26.6-
       - name: Format and portable contracts (not dictation qualification)
         run: |
+          bash tests/macos-bootstrap-test.sh
           cargo xtask fmt
           cargo test --locked -p xtask -p voicepaste-core -p voicepaste-application -p voicepaste-protocol
           cargo clippy --locked -p xtask --all-targets -- -D warnings

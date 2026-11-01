@@ -9,6 +9,7 @@
 - Fixed model-readiness hints after preparation and made macOS report unexpected dictation-thread exits instead of leaving stale UI.
 - Made macOS model publication honor cancellation after verification, sync staged weights and retain replaced corrupt artifacts as backups.
 - Fixed downloaded macOS models remaining unpublished and prevented duplicate recording starts while microphone permission is pending.
+- Made the macOS local build select its installed Rust toolchain explicitly and show toolchain errors when validation fails.
 - Made Windows file transcription verify pinned local model artifacts before inference, without enabling downloads.
 
 ## [2.0.0]

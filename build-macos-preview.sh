@@ -88,8 +88,9 @@ if ! has_pinned_rust; then
   # Keep macOS bootstrap inputs separate from any Windows tool cache.
   export CARGO_HOME="$CACHE/macos-rust/cargo"
   export RUSTUP_HOME="$CACHE/macos-rust/rustup"
+  export RUSTUP_TOOLCHAIN="$VERSION-aarch64-apple-darwin"
   export PATH="$CARGO_HOME/bin:$PATH"
-  if ! has_pinned_rust; then
+  if [[ ! -x "$CARGO_HOME/bin/rustc" || ! -x "$CARGO_HOME/bin/cargo" ]] || ! has_pinned_rust; then
     printf 'Rust %s is missing. Download it from static.rust-lang.org into:\n%s\n' "$VERSION" "$CACHE/macos-rust"
     printf 'No sudo, shell-profile changes or global Rust installation. Cargo will also fetch locked build dependencies.\n'
     if [[ "$ASSUME_YES" != true ]]; then
@@ -112,8 +113,23 @@ if ! has_pinned_rust; then
       chmod +x "$BOOTSTRAP/rustup-init"
       "$BOOTSTRAP/rustup-init" -y --no-modify-path --default-toolchain none
     fi
-    "$CARGO_HOME/bin/rustup" toolchain install "$VERSION" --profile minimal --component rustfmt --component clippy
-    has_pinned_rust || fail 'The pinned local Rust toolchain is not usable.'
+    # Ignore inherited rustup overrides and select the exact native toolchain
+    # for both this check and all compiler processes spawned by Cargo.
+    "$CARGO_HOME/bin/rustup" toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --component rustfmt --component clippy || fail 'Local Rust installation failed; see the rustup error above.'
+    if ! "$CARGO_HOME/bin/rustup" run "$RUSTUP_TOOLCHAIN" rustc -vV; then
+      fail 'The local Rust compiler could not start; see the error above.'
+    fi
+    if ! "$CARGO_HOME/bin/rustup" run "$RUSTUP_TOOLCHAIN" cargo --version; then
+      fail 'Local Cargo could not start; see the error above.'
+    fi
+    if ! has_pinned_rust; then
+      printf 'Rust toolchain validation failed. Compiler and Cargo diagnostics follow:\n' >&2
+      command -v rustc >&2 || true
+      rustc -vV >&2 || true
+      command -v cargo >&2 || true
+      cargo --version >&2 || true
+      fail 'The pinned local Rust toolchain is not usable; see the diagnostics above.'
+    fi
   fi
 fi
 
