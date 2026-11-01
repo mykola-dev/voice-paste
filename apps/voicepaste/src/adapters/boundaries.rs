@@ -9,6 +9,7 @@ fn shared_coordination_and_policies_do_not_import_native_apis() {
         ("diagnostics", include_str!("diagnostics.rs")),
         ("models", include_str!("models.rs")),
         ("model preparation", include_str!("model_preparation.rs")),
+        ("shared Git delivery", include_str!("model_git.rs")),
         ("receipts", include_str!("models/verification.rs")),
         ("worker", include_str!("worker.rs")),
         ("transport", include_str!("worker/transport.rs")),

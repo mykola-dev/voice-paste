@@ -48,7 +48,11 @@ diagnostics fail closed before Ready/results. The host validates actual device,
 request/session/generation and deadline through the same worker coordinator as
 Windows. Shared text/VAD policies preserve prompts, cleanup and segmentation.
 GGML and VAD have a separate pinned artifact manifest; startup verifies offline,
-and only explicit menu confirmation or `--download-model` enables HTTPS downloads.
+and only explicit startup/menu confirmation or `--download-model` enables downloads.
+HTTPS failure/invalid weights can switch once to installed Git LFS, with isolated
+source staging and shared verification/publication; no tools install automatically.
+`model_git.rs` shares the entire Git/LFS scenario with Windows; its target-selected
+native modules own only subprocess tree creation/termination and executable lookup.
 No fake-success adapters or CT2 artifact reuse are provided.
 The Windows host/backend selection and defaults remain unchanged. See
 [current preview scope and acceptance](macos-preview.md).

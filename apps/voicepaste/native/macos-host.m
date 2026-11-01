@@ -140,10 +140,12 @@ void vp_dictation_menu_enable(void *raw) {
 }
 
 bool vp_confirm_download(const char *model) {
+    NSCAssert([NSThread isMainThread], @"download alert must be on the main thread");
     NSAlert *alert = [NSAlert new];
     alert.messageText = @"Download selected Whisper model?";
-    alert.informativeText = [NSString stringWithFormat:@"Download %@ and Silero VAD from Hugging Face? Full-size weights need approximately 1.6–3.1 GB plus temporary disk space. No smaller or quantized model will be substituted.", [NSString stringWithUTF8String:model]];
+    alert.informativeText = [NSString stringWithFormat:@"Download %@ and Silero VAD from Hugging Face? Full-size weights need approximately 1.6–3.1 GB plus temporary disk space. If HTTPS fails, VoicePaste will try Git with an already installed Git LFS. No tools are installed automatically and no smaller or quantized model is substituted. Cancel keeps networking disabled; you can retry from the menu.", [NSString stringWithUTF8String:model]];
     [alert addButtonWithTitle:@"Download"]; [alert addButtonWithTitle:@"Cancel"];
+    [NSApp activate];
     return [alert runModal] == NSAlertFirstButtonReturn;
 }
 

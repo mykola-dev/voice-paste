@@ -1,6 +1,7 @@
 # macOS model delivery: evidence and pending integration
 
-Metadata reviewed 2026-10-30; **no model weights were downloaded**. macOS is to
+Metadata reviewed 2026-10-30; Git LFS weight delivery tested locally on Windows
+on 2026-11-01 with user approval (see below). macOS uses
 use whisper.cpp + Metal, not Windows CTranslate2 artifacts. No smaller-model,
 quantized-model, beam-size or VAD substitution is authorized.
 
@@ -49,7 +50,7 @@ obtain reconstructed file URLs through an LFS bridge. Consequently:
   corporate network restrictions. Do not alter proxy/TLS/security controls.
 - Do not silently install Git LFS/Xet, Python, Homebrew or SDKs. Any optional
   tools and actual weight downloads need explicit approval.
-- A future fallback must select only the requested pinned artifact (not clone
+- The fallback must select only the requested pinned artifact (not clone
   every multi-GB variant), own/cancel its child process and staging files, reject
   pointers as completed weights, verify exact size/SHA-256, and atomically publish
   into the same model cache as the primary download path.
@@ -60,6 +61,46 @@ connected, with these full-size GGML artifacts and pinned Silero v6.2.0 from
 Its 885098-byte `ggml-silero-v6.2.0.bin` has SHA-256
 `2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987`.
 The canonical runtime metadata is now `crates/core/assets/macos-model-artifacts.json`.
-No Git fallback is connected or claimed to solve corporate-network delivery.
-The assistant has not downloaded model/VAD weights. Worker source is locked by
+The explicit download now tries direct HTTPS first, then Git LFS once if HTTPS
+fails or returns invalid bytes. Both sources use the same pinned metadata and
+shared verification/publication scenario. Cancellation never starts another source.
+The Git scenario is shared by both catalogs (`adapters/model_git.rs`), including
+the pinned revision/file selection, source staging, verification and cancellable
+copy into the already-open staging handle. The shared source-switch policy lives
+in `model_preparation.rs`. Only child creation/cleanup is target-selected:
+Windows hidden suspended-until-job-owned child trees versus macOS process groups
+and Finder executable discovery. WinHTTP and curl remain native HTTP transports,
+not independent provisioning state machines.
+Git/LFS subprocess trees are owned and terminated on cancellation/error, with
+network low-speed timeouts, bounded diagnostics and a 30-minute command deadline.
+Only already installed Git/LFS are used (including conventional Homebrew paths
+when launched from Finder); no installation or security-control changes occur.
+Git uses a private temporary checkout and selects only the requested LFS file.
+Its staging is removed on failure/cancel; the independent HTTPS partial survives
+until Git weights are fully verified. Copying verified weights truncates that
+partial first, so cancellation during the copy retains only a valid prefix of
+the pinned artifact, never mixed source bytes. Git retries start a fresh checkout.
+During Git transfer the menu reports the source and total size, not a fabricated
+byte-progress counter. Verified Git bytes replace only HTTP staging, then shared
+publication rechecks size/hash/cancellation before replacing the live model.
+
+After a failed startup offline verification, the shared session offers the native
+download confirmation once when idle (outside framework/runtime borrows). Cancel
+does not enable networking; the menu remains available for retry. Ready local
+models, preview and Settings-only modes do not prompt. Consent is tied to the
+selected model and retained under command backpressure.
+
+## Local Git delivery evidence — 2026-11-01
+
+The disposable `build/git-model-probe.ps1` simulated primary unavailability and
+downloaded only `ggml-large-v3-turbo.bin` at the pinned revision through existing
+Git 2.45.1 and Git LFS 3.5.1 on Windows. Actual weights verified as
+1624555275 bytes, SHA-256
+`1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69`.
+Partial-clone lazy fetching failed (`expected packfile`); a shallow Git fetch
+without blob filtering succeeded, so the production fallback uses that route.
+This was one approved model download, not VAD delivery or macOS/corporate-network
+acceptance, and not an end-to-end production adapter test.
+
+Worker source is locked by
 Cargo: whisper-rs 0.16.0 / whisper-rs-sys 0.15.0, including whisper.cpp 1.8.3.

@@ -24,6 +24,10 @@ fn intents(batch: input::Batch) -> NativeIntents {
 }
 
 impl SessionHost {
+    pub fn download_confirmation(&self) -> Option<fn(&str) -> bool> {
+        Some(host::Host::confirm_download)
+    }
+
     pub fn new(
         storage: Arc<storage::Storage>,
         initial: &Settings,

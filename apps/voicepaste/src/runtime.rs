@@ -48,6 +48,9 @@ pub enum Command {
     Quit,
 }
 pub enum Event {
+    StartupModelUnavailable {
+        model: String,
+    },
     StatisticsReset {
         id: u64,
         result: Result<(), String>,
@@ -115,6 +118,7 @@ impl Runtime {
                     prepare(&storage,&preferences.current().model,&sender)
                 };
                 let mut last_progress = Instant::now();
+                let mut startup_check = !capture_preview;
                 loop {
                     if thread_shutdown.load(Ordering::Acquire) {
                         // Stop capture before disk commits or native-child waits;
@@ -137,6 +141,7 @@ impl Runtime {
                             worker.release();
                         }
                         if previous.model != current.model && !capture_preview {
+                            startup_check=false;
                             drop(preparation.take()); model_ready=false;
                             preparation=prepare(&storage,&current.model,&sender);
                         } else if model_ready && !capture_preview && current.keep_in_memory
@@ -145,6 +150,7 @@ impl Runtime {
                     match receiver.recv_timeout(Duration::from_millis(100)) {
                         Ok(Command::Quit) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
                         Ok(Command::CancelModelDownload) => {
+                            startup_check=false;
                             if preparation.is_some(){
                                 drop(preparation.take());model_ready=false;
                                 let _=sender.try_send(Event::ModelStatus{message:"Model preparation cancelled; partial download retained".into(),preparing:false,downloading:false});
@@ -152,6 +158,7 @@ impl Runtime {
                         }
                         Ok(Command::DownloadModel) => {
                             if app.state()!=State::Idle {report(&storage,&sender,"Wait until dictation is idle before downloading a model".into());continue;}
+                            startup_check=false;
                             worker.release();drop(preparation.take());model_ready=false;
                             match crate::adapters::models::Preparation::start_with_download(storage.root.clone(),&preferences.current().model,true) {
                                 Ok(task)=>preparation=Some(task),Err(error)=>report(&storage,&sender,error),
@@ -231,6 +238,8 @@ impl Runtime {
                         }
                         drop(preparation.take());
                         model_ready = result.is_ok();
+                        if std::mem::take(&mut startup_check) && !model_ready
+                            && !reliable(&sender, Event::StartupModelUnavailable { model: preferences.current().model.clone() }, &thread_shutdown) { break; }
                         let message = match result {
                             Ok(_) => format!("{} is ready (verified local model)", preferences.current().model),
                             Err(error) => { if !error.contains("cancelled") {report(&storage,&sender,error.clone());} else {storage.log(&error);} error },

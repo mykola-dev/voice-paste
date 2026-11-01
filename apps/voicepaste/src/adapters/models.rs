@@ -129,26 +129,48 @@ fn ensure(
                     );
                     check_cancel(cancel)?;
                     progress.set_downloading(true);
-                    let mut response =
-                        http::Response::get("huggingface.co", 443, &object, true, offset)?;
-                    if response.status == 200 {
-                        offset = 0;
-                        partial.set_len(0).map_err(|e| e.to_string())?;
-                    } else if response.status != 206 {
-                        return Err(format!(
-                            "Download HTTP {} for {}",
-                            response.status, artifact.path
-                        ));
-                    }
-                    if response.status == 206 {
-                        response.validate_range(offset, artifact.bytes)?;
-                    }
-                    partial
-                        .seek(SeekFrom::Start(offset))
-                        .map_err(|e| e.to_string())?;
-                    transfer(&mut response, partial, offset, artifact, cancel, |bytes| {
-                        progress.bytes(completed + bytes);
-                    })?;
+                    crate::adapters::model_preparation::transfer_with_fallback(
+                        cancel,
+                        partial,
+                        |partial| {
+                            let mut response =
+                                http::Response::get("huggingface.co", 443, &object, true, offset)?;
+                            if response.status == 200 {
+                                offset = 0;
+                                partial.set_len(0).map_err(|e| e.to_string())?;
+                            } else if response.status != 206 {
+                                return Err(format!(
+                                    "Download HTTP {} for {}",
+                                    response.status, artifact.path
+                                ));
+                            }
+                            if response.status == 206 {
+                                response.validate_range(offset, artifact.bytes)?;
+                            }
+                            partial
+                                .seek(SeekFrom::Start(offset))
+                                .map_err(|e| e.to_string())?;
+                            transfer(&mut response, partial, offset, artifact, cancel, |bytes| {
+                                progress.bytes(completed + bytes);
+                            })?;
+                            Ok(())
+                        },
+                        |partial| {
+                            crate::adapters::model_preparation::verify_open(
+                                partial, artifact, cancel,
+                            )
+                        },
+                        |partial| {
+                            crate::adapters::model_git::download(
+                                model,
+                                artifact,
+                                &partial_path,
+                                partial,
+                                cancel,
+                                progress,
+                            )
+                        },
+                    )?;
                     progress.set_downloading(false);
                     progress.message(format!("Verifying {} / {}", model.name, artifact.path));
                     Ok(())

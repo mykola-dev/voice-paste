@@ -3,7 +3,7 @@
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},
-    io::Read,
+    io::{Read, Seek, SeekFrom},
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
@@ -13,6 +13,43 @@ use std::{
     thread::{self, JoinHandle},
 };
 use voicepaste_core::models::Artifact;
+#[cfg(test)]
+mod source_tests;
+
+/// One bounded source switch; cancellation never starts another transport.
+pub(crate) fn transfer_with_fallback<T>(
+    cancel: &AtomicBool,
+    state: &mut T,
+    primary: impl FnOnce(&mut T) -> Result<(), String>,
+    valid: impl FnOnce(&mut T) -> Result<bool, String>,
+    fallback: impl FnOnce(&mut T) -> Result<(), String>,
+) -> Result<(), String> {
+    check_cancel(cancel)?;
+    let primary_error = match primary(state) {
+        Ok(()) => {
+            if valid(state)? {
+                return Ok(());
+            }
+            "Primary source failed exact size/SHA-256 verification".to_owned()
+        }
+        Err(error) => error,
+    };
+    check_cancel(cancel)?;
+    fallback(state).map_err(|error| format!("HTTPS: {primary_error}; Git LFS fallback: {error}"))
+}
+
+pub(crate) fn verify_open(
+    file: &mut File,
+    artifact: &Artifact,
+    cancel: &AtomicBool,
+) -> Result<bool, String> {
+    check_cancel(cancel)?;
+    if file.metadata().map_err(|e| e.to_string())?.len() != artifact.bytes {
+        return Ok(false);
+    }
+    file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+    Ok(hash_reader(file, cancel)?.eq_ignore_ascii_case(&artifact.sha256))
+}
 
 /// Caller owns the cache lock and has rejected the completed artifact. Native
 /// staging permissions/sharing and transport stay outside this shared scenario.
@@ -131,6 +168,7 @@ enum Measurement {
 pub(crate) struct Progress {
     message: Mutex<String>,
     downloading: AtomicBool,
+    indeterminate: AtomicBool,
     measurement: Measurement,
 }
 
@@ -143,6 +181,7 @@ impl Progress {
         Self {
             message: Mutex::new(message),
             downloading: AtomicBool::new(false),
+            indeterminate: AtomicBool::new(false),
             measurement: Measurement::Cumulative {
                 bytes: AtomicU64::new(0),
                 total,
@@ -158,6 +197,7 @@ impl Progress {
         Self {
             message: Mutex::new(message),
             downloading: AtomicBool::new(false),
+            indeterminate: AtomicBool::new(false),
             measurement: Measurement::StagingFile(Mutex::new(None)),
         }
     }
@@ -170,6 +210,7 @@ impl Progress {
 
     #[allow(dead_code, reason = "Used by the streaming transport")]
     pub fn bytes(&self, value: u64) {
+        self.indeterminate.store(false, Ordering::Relaxed);
         if let Measurement::Cumulative { bytes, .. } = &self.measurement {
             bytes.store(value, Ordering::Relaxed);
         }
@@ -188,11 +229,21 @@ impl Progress {
             && let Ok(mut file) = file.lock()
         {
             *file = Some((path, total));
+            self.indeterminate.store(false, Ordering::Relaxed);
         }
     }
 
     pub fn set_downloading(&self, value: bool) {
         self.downloading.store(value, Ordering::Release);
+    }
+
+    pub fn clear_tracked_file(&self) {
+        self.indeterminate.store(true, Ordering::Relaxed);
+        if let Measurement::StagingFile(file) = &self.measurement
+            && let Ok(mut file) = file.lock()
+        {
+            *file = None;
+        }
     }
 
     pub fn downloading(&self) -> bool {
@@ -206,6 +257,7 @@ impl Progress {
             .map(|m| m.clone())
             .unwrap_or_else(|_| "Preparing model".into());
         let counts = match &self.measurement {
+            _ if self.indeterminate.load(Ordering::Relaxed) => None,
             Measurement::Cumulative { bytes, total } => {
                 Some((bytes.load(Ordering::Relaxed), *total))
             }
@@ -238,6 +290,10 @@ pub(crate) fn check_cancel(cancel: &AtomicBool) -> Result<(), String> {
 pub(crate) fn hash(path: &Path, cancel: &AtomicBool) -> Result<String, String> {
     check_cancel(cancel)?;
     let mut file = File::open(path).map_err(|e| e.to_string())?;
+    hash_reader(&mut file, cancel)
+}
+
+fn hash_reader(file: &mut impl Read, cancel: &AtomicBool) -> Result<String, String> {
     let mut hasher = Sha256::new();
     let mut buffer = [0; 256 * 1024];
     loop {
@@ -371,6 +427,21 @@ mod tests {
     impl Drop for PublicationFixture {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+
+    #[test]
+    fn pointers_html_and_same_size_corruption_are_never_published() {
+        for bytes in [
+            b"version https://git-lfs.github.com/spec/v1\noid sha256:fixture\nsize 16\n".as_slice(),
+            b"<html>blocked</html>",
+            b"corrupt weights!",
+        ] {
+            let fixture = PublicationFixture::new();
+            fs::write(&fixture.partial, bytes).unwrap();
+            fs::write(&fixture.destination, b"previous model").unwrap();
+            assert!(!fixture.publish(false).unwrap());
+            assert_eq!(fs::read(&fixture.destination).unwrap(), b"previous model");
         }
     }
 

@@ -1,7 +1,9 @@
 //! Shared GPUI lifetime and Settings coordination. Native effects stay with callers.
+mod download;
 mod input;
 use super::{overlay::OverlayWindow, settings_window::SettingsWindow};
 use crate::runtime::{Command, Event, Runtime};
+pub(crate) use download::DownloadConsent;
 use gpui_kit::{App, AsyncApp, QuitMode};
 pub(crate) use input::RecordingInput;
 use std::{
@@ -41,6 +43,9 @@ pub(crate) enum RecordingPermission {
 
 /// Only non-Settings work leaves the shared reply router.
 pub(crate) enum SessionEvent {
+    StartupModelUnavailable {
+        model: String,
+    },
     State(State),
     Error(String),
     Info(String),
@@ -306,6 +311,9 @@ impl SettingsSession {
         cx: &mut App,
     ) -> Option<SessionEvent> {
         match event {
+            Event::StartupModelUnavailable { model } => {
+                return Some(SessionEvent::StartupModelUnavailable { model });
+            }
             Event::SettingsSaved { id, result } => {
                 if !self.saves.complete(id) {
                     return None;

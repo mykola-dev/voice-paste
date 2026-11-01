@@ -16,6 +16,11 @@ pub(in crate::adapters::platform) struct SessionHost {
 }
 
 impl SessionHost {
+    pub fn download_confirmation(&self) -> Option<fn(&str) -> bool> {
+        // Windows retains its existing automatic model provisioning contract.
+        None
+    }
+
     pub fn new(initial: &Settings, _preview: bool, settings_only: bool) -> Result<Self, String> {
         Ok(Self {
             host: Host::create(Hotkey::parse(&initial.hotkey)?, !settings_only)?,

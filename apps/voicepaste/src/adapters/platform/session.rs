@@ -3,7 +3,8 @@ use super::{OverlayLifecycle, SessionHost, SettingsActivation};
 use crate::adapters::{
     overlay::OverlayWindow,
     ui_session::{
-        self, Context, RecordingInput, RuntimeSession, SessionEvent, SettingsSession, post,
+        self, Context, DownloadConsent, RecordingInput, RuntimeSession, SessionEvent,
+        SettingsSession, post,
     },
 };
 use crate::runtime::Command;
@@ -84,6 +85,7 @@ pub(super) async fn ui_session(
     let mut message = projection.model_message.clone();
     let mut input = RecordingInput::default();
     let mut quitting = false;
+    let mut download_consent = DownloadConsent::default();
     if capture_preview && !settings_only {
         host.notify("Capture preview: records microphone and discards on Stop. No transcription/paste in this explicit mode.", false);
     }
@@ -102,6 +104,9 @@ pub(super) async fn ui_session(
             projection.dispatch(&runtime, &mut settings, &overlay, lifecycle.enabled(), cx)?
         {
             match event {
+                SessionEvent::StartupModelUnavailable { model } => {
+                    download_consent.unavailable(model)
+                }
                 SessionEvent::State(state) => host.state(state),
                 SessionEvent::SettingsSaved { success } => {
                     let pending = host.finish_settings(success, projection.state);
@@ -142,7 +147,18 @@ pub(super) async fn ui_session(
             message = warning;
         }
         if !quitting {
-            if let Some(confirm) = native.download
+            let startup_confirm = if download_consent.take_offer(
+                &settings.saved.model,
+                !projection.preparing
+                    && projection.state == State::Idle
+                    && !settings.saving()
+                    && settings.window().is_none(),
+            ) {
+                host.download_confirmation()
+            } else {
+                None
+            };
+            if let Some(confirm) = native.download.or(startup_confirm)
                 && !capture_preview
                 && !settings_only
             {
@@ -150,11 +166,18 @@ pub(super) async fn ui_session(
                     message =
                         "Wait until dictation/download is idle, or cancel the download first."
                             .into();
-                } else if confirm(&settings.saved.model)
-                    && !post(&commands, Command::DownloadModel)?
-                {
-                    message = "Command queue busy; download was not started.".into();
+                } else if confirm(&settings.saved.model) {
+                    download_consent.approve(&settings.saved.model);
                 }
+            }
+            if native.cancel_download {
+                download_consent.submitted();
+            }
+            if download_consent.pending(&settings.saved.model)
+                && projection.state == State::Idle
+                && post(&commands, Command::DownloadModel)?
+            {
+                download_consent.submitted();
             }
             if native.cancel_download && !post(&commands, Command::CancelModelDownload)? {
                 message = "Command queue busy; retry download cancellation.".into();

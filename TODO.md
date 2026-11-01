@@ -212,8 +212,11 @@ inference/device acceptance. Користувач підтвердив лише 
 - [ ] **Реальна доставка моделей.** Лише після явного дозволу перевірити повні
   FP16 large-v2/large-v3/large-v3-turbo та Silero: HTTPS, progress, cancel/resume,
   hashes, corrupted partial/cache, offline restart і corporate-network failures.
-  Ваги асистент не завантажував. HF Git/LFS/Xet — не незалежне дзеркало й не
-  доведений обхід мережевих обмежень; Git fallback не реалізований.
+   Локальний Windows Git LFS probe завантажив large-v3-turbo з точним size/hash.
+   Спільний Windows/macOS Git fallback і macOS explicit-consent prompt підключені; macOS/corporate
+   acceptance ще відкрита. Git staging ізольований від resumable HTTPS partial;
+   скасований Git transfer починається заново. Offline import ще не реалізований.
+   HF Git/LFS/Xet не є доведеним обходом мережевих обмежень.
   Джерело доказів: [model delivery](docs/macos-model-delivery.md).
 - [ ] **Справжня inference і M1+ qualification.** Записати chip/RAM/macOS;
   перевірити Metal-only без CPU fallback і явний CPU, усі погоджені моделі,

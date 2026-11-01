@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Added a visible macOS startup download choice and a shared, verified Hugging Face Git LFS fallback when direct model downloads fail on Windows or macOS.
+
 - Added an Apple Silicon macOS launch preview with a local build script that handles Rosetta terminals and downloads Rust only when needed, with approval.
 - Added shared Settings, a native menu-bar icon and opt-in sign-in startup to the macOS preview, with configuration stored in Application Support.
 - Connected macOS dictation to the shared recording/runtime, single-key controls, animated overlay, local Metal/CPU worker, approved full-size model downloads, Cmd+V and statistics.

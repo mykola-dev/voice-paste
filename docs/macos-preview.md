@@ -191,8 +191,13 @@ or use a live microphone. Real-device permission, capture and audio-device-loss
 acceptance remain pending; tests on the Mac will be requested after development.
 
 Model-delivery metadata and the limits of an official Hugging Face Git fallback
-are recorded in [macos-model-delivery.md](macos-model-delivery.md); no weights
-or optional Git extensions were downloaded/installed for that investigation.
+are recorded in [macos-model-delivery.md](macos-model-delivery.md). An approved
+local Windows Git LFS test verified full large-v3-turbo weights; no optional tools
+were installed. Corporate Mac delivery remains unverified. Normal startup now
+offers Download/Cancel if offline model verification fails. Direct HTTPS is tried
+first; failure or invalid weights can fall back to already installed Git LFS.
+The menu retains download retry/cancellation. Git temporary transfers restart
+after cancellation; HTTPS partials remain resumable and are never mixed with Git.
 
 For an update, quit the old preview explicitly and **move the existing
 `build/release/VoicePaste.app` aside** before running the build script again.

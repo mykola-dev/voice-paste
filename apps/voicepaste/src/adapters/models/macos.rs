@@ -106,13 +106,14 @@ fn prepare(
         prepare_artifact(
             (&partial, &path), artifact, stop, download,
             |path| OpenOptions::new()
+            .read(true)
             .write(true)
             .create(true)
             .truncate(false)
             .mode(0o600)
             .open(path)
             .map_err(|e| e.to_string()),
-            |_file, _offset| {
+            |file, _offset| {
             status.track_file(partial.clone(), artifact.bytes);
             status.set_downloading(true);
             status.message(format!(
@@ -124,7 +125,8 @@ fn prepare(
                 "https://huggingface.co/{}/resolve/{}/{}",
                 model.repository, model.revision, artifact.path
             );
-            let mut child = Command::new("/usr/bin/curl")
+             crate::adapters::model_preparation::transfer_with_fallback(stop, file, |_file| {
+             let mut child = Command::new("/usr/bin/curl")
                 .args([
                     "--fail",
                     "--location",
@@ -153,7 +155,7 @@ fn prepare(
                 .stderr(Stdio::null())
                 .spawn()
                 .map_err(|e| e.to_string())?;
-            let result = loop {
+             loop {
                 if fs::metadata(&partial).is_ok_and(|m| m.len() > artifact.bytes) {
                     let _ = child.kill();
                     let _ = child.wait();
@@ -184,9 +186,9 @@ fn prepare(
                         break Err(e.to_string());
                     }
                 }
-            };
-            status.set_downloading(false);
-            result?;
+             }
+             }, |file| crate::adapters::model_preparation::verify_open(file, artifact, stop), |file| crate::adapters::model_git::download(model, artifact, &partial, file, stop, status))?;
+             status.set_downloading(false);
             status.message(format!("Verifying {} / {}", model.name, artifact.path));
             Ok(())
             },
