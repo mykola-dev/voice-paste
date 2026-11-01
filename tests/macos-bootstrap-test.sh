@@ -32,7 +32,11 @@ cat > "$TMP/proxy" <<'EOF'
 [[ "$RUSTUP_TOOLCHAIN" == "$EXPECTED_TOOLCHAIN" ]] || { echo 'wrong toolchain' >&2; exit 1; }
 case "${0##*/}:$1" in
   rustc:--version) echo "rustc ${EXPECTED_TOOLCHAIN%%-aarch64*} (test)" ;;
-  rustc:-vV) printf 'rustc test\nhost: aarch64-apple-darwin\n' ;;
+  rustc:-vV)
+    printf 'rustc test\nhost: aarch64-apple-darwin\n'
+    # More than a pipe buffer after the match reproduces grep -q closing early.
+    for ((i=0; i<10000; i++)); do printf 'compiler details after host line\n'; done
+    ;;
   cargo:--version) echo 'cargo test' ;;
   cargo:xtask) echo 'mock build complete' ;;
   *) exit 1 ;;
@@ -42,6 +46,7 @@ cat > "$TMP/project/build/cache/macos-rust/cargo/bin/rustup" <<'EOF'
 #!/bin/bash
 [[ "$RUSTUP_TOOLCHAIN" == "$EXPECTED_TOOLCHAIN" ]] || { echo 'wrong toolchain' >&2; exit 1; }
 if [[ "$1" == toolchain && "$2" == install && "$3" == "$EXPECTED_TOOLCHAIN" ]]; then
+  [[ "${FORBID_INSTALL:-}" != 1 ]] || { echo 'unexpected reinstall' >&2; exit 1; }
   cp "$TEST_PROXY" "$CARGO_HOME/bin/rustc"
   cp "$TEST_PROXY" "$CARGO_HOME/bin/cargo"
 elif [[ "$1" == run && "$2" == "$EXPECTED_TOOLCHAIN" ]]; then
@@ -58,6 +63,12 @@ export EXPECTED_TOOLCHAIN="$(sed -n 's/^channel = "\([^"]*\)".*/\1/p' "$ROOT/rus
 export RUSTUP_TOOLCHAIN=hostile-inherited-override
 bash "$TMP/project/build-macos-preview.sh" --yes > "$TMP/success" 2>&1
 grep -q 'mock build complete' "$TMP/success"
+# An already-installed local toolchain must work without prompting or reinstalling.
+FORBID_INSTALL=1 bash "$TMP/project/build-macos-preview.sh" > "$TMP/reuse" 2>&1
+grep -q 'mock build complete' "$TMP/reuse"
+if grep -q 'Download the local Rust toolchain' "$TMP/reuse"; then
+  echo 'unexpected download prompt' >&2; exit 1
+fi
 # Force reinstallation while keeping the owned rustup executable.
 rm "$TMP/project/build/cache/macos-rust/cargo/bin/rustc" "$TMP/project/build/cache/macos-rust/cargo/bin/cargo"
 if TEST_FAIL=1 bash "$TMP/project/build-macos-preview.sh" --yes > "$TMP/failure" 2>&1; then

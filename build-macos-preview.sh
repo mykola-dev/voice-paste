@@ -76,11 +76,14 @@ fi
 export RUSTUP_AUTO_INSTALL=0
 
 has_pinned_rust() {
-  local actual
+  local actual details
   actual="$(rustc --version 2>/dev/null)" || return 1
   [[ "$actual" == "rustc $VERSION "* ]] || return 1
   # A global Intel Rust installation may still be on PATH after native restart.
-  rustc -vV 2>/dev/null | grep -qx 'host: aarch64-apple-darwin' || return 1
+  # Do not pipe rustc into grep -q under pipefail: grep can exit after the
+  # host line while rustc is still writing, making a valid compiler fail.
+  details="$(rustc -vV 2>/dev/null)" || return 1
+  grep -qx 'host: aarch64-apple-darwin' <<< "$details" || return 1
   cargo --version >/dev/null 2>&1
 }
 
