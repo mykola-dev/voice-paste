@@ -215,8 +215,13 @@ inference/device acceptance. Користувач підтвердив лише 
     Усі три повні GGML моделі й Silero завантажені локально, size/SHA-256 перевірені.
     Погоджена заміна: macOS — окремий GitHub Release `Models`/`models`, raw parts
     зі спільним download/assembly lifecycle; Windows — попередній HTTPS source.
-    Git LFS fallback прибирається на обох платформах. Публікація assets, фінальні
-    тести поточних змін та corporate Mac acceptance ще мають бути підтверджені.
+    Git LFS fallback прибрано на обох платформах. [Models assets](https://github.com/mykola-dev/voice-paste/releases/tag/models)
+    опубліковані: усі remote sizes/digests збігаються з локальними; публічні range
+    downloads усіх шести частин і повний VAD перевірені локально. `a918028` пройшов
+    [macOS CI 41333232913](https://github.com/mykola-dev/voice-paste/actions/runs/41333232913),
+    Windows fmt/clippy/208 tests (1 interactive ignored), Debug пакет оновлено.
+    Меню, TCC recovery, generation-scoped Cancel і progress/error UI реалізовані;
+    corporate Mac delivery та реальна device/visual acceptance ще відкриті.
     Offline import ще не реалізований.
   Джерело доказів: [model delivery](docs/macos-model-delivery.md).
 - [ ] **Справжня inference і M1+ qualification.** Записати chip/RAM/macOS;

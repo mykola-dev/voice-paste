@@ -2,6 +2,15 @@
 
 ## Current delivery revision: GitHub Models assets
 
+Published: [Models](https://github.com/mykola-dev/voice-paste/releases/tag/models).
+All eight assets (six model parts, manifest and license notices) passed remote
+size/digest comparison with local files before publication. Streaming the ordered
+local parts reconstructed all four original pinned SHA-256 values. Unauthenticated
+public range downloads of every part and a complete VAD download were verified
+locally. Code `a918028` passed macOS build/package, clippy and host/worker tests in
+[CI 41333232913](https://github.com/mykola-dev/voice-paste/actions/runs/41333232913).
+These checks do not establish corporate-Mac delivery or real inference acceptance.
+
 The approved replacement for the historical Hugging Face/Git delivery below is
 the separate `Models` GitHub release (`models` tag). It is not an application
 release and does not change the application version. The original full-size
