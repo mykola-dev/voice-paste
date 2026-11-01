@@ -210,18 +210,17 @@ impl Host {
                         label,
                         enabled,
                     } = item
+                        && let Ok(title) = std::ffi::CString::new(label)
                     {
-                        if let Ok(title) = std::ffi::CString::new(label) {
-                            // SAFETY: live main-thread host copies both strings.
-                            unsafe {
-                                vp_menu_update(
-                                    self.pointer.as_ptr(),
-                                    title.as_ptr(),
-                                    enabled && !busy,
-                                    active,
-                                    message.as_ptr(),
-                                );
-                            }
+                        // SAFETY: live main-thread host copies both strings.
+                        unsafe {
+                            vp_menu_update(
+                                self.pointer.as_ptr(),
+                                title.as_ptr(),
+                                enabled && !busy,
+                                active,
+                                message.as_ptr(),
+                            );
                         }
                     }
                 }

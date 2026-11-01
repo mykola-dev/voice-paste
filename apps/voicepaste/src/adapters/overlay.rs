@@ -86,6 +86,7 @@ impl OverlayWindow {
         self.handle
     }
 
+    #[cfg(any(target_os = "windows", test))]
     pub fn update(&self, state: State, downloading: bool, cx: &mut App) {
         self.update_status(state, downloading, "Preparing model...", cx);
     }
