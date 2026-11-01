@@ -10,6 +10,7 @@
 - Made macOS model publication honor cancellation after verification, sync staged weights and retain replaced corrupt artifacts as backups.
 - Fixed downloaded macOS models remaining unpublished and prevented duplicate recording starts while microphone permission is pending.
 - Fixed macOS local builds incorrectly rejecting and repeatedly offering to download an installed Rust toolchain; toolchain failures now show diagnostics.
+- Addressed a macOS Touch Bar crash when closing Settings using an upstream accessibility fix.
 - Made Windows file transcription verify pinned local model artifacts before inference, without enabling downloads.
 
 ## [2.0.0]

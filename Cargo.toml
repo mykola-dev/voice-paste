@@ -1,6 +1,11 @@
 [workspace]
 members = ["crates/core", "crates/application", "crates/protocol", "apps/voicepaste", "apps/stt-worker", "xtask"]
+exclude = ["crates/accesskit_macos_patched"]
 resolver = "3"
+
+[patch.crates-io]
+# Backport AccessKit's KVO/Touch Bar fix until the GPUI pipeline upgrades.
+accesskit_macos = { path = "crates/accesskit_macos_patched" }
 
 [workspace.package]
 edition = "2024"

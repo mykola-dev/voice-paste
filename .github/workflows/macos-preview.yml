@@ -51,6 +51,7 @@ jobs:
       - name: Format and portable contracts (not dictation qualification)
         run: |
           bash tests/macos-bootstrap-test.sh
+          cargo test --locked -p accesskit_macos --test integration
           cargo xtask fmt
           cargo test --locked -p xtask -p voicepaste-core -p voicepaste-application -p voicepaste-protocol
           cargo clippy --locked -p xtask --all-targets -- -D warnings
