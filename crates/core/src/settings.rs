@@ -60,32 +60,6 @@ impl OverlayAppearance {
     pub fn background_alpha(self) -> u8 {
         ((u16::from(100 - self.transparency.min(100)) * 255 + 50) / 100) as u8
     }
-
-    /// A light wash over a fully active blur, never an opaque cover over it.
-    pub fn acrylic_tint_alpha(self) -> u8 {
-        51 + ((u16::from(self.background_alpha()) * 51 + 127) / 255) as u8
-    }
-}
-
-#[cfg(test)]
-mod acrylic_tint_tests {
-    use super::OverlayAppearance;
-
-    #[test]
-    fn tint_remains_white_and_never_covers_the_blur() {
-        let mut previous = u8::MAX;
-        for transparency in 0..=100 {
-            let alpha = OverlayAppearance {
-                transparency,
-                ..Default::default()
-            }
-            .acrylic_tint_alpha();
-            assert!((51..=102).contains(&alpha));
-            assert!(alpha <= previous);
-            previous = alpha;
-        }
-        assert_eq!(previous, 51);
-    }
 }
 
 pub const HOTKEY_CHOICES: &[(&str, &str)] = &[

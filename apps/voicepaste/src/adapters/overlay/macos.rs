@@ -10,7 +10,7 @@ unsafe extern "C" {
     fn vp_overlay_destroy(shell: *mut c_void);
 }
 fn material_alpha(appearance: voicepaste_core::settings::OverlayAppearance) -> f64 {
-    f64::from(appearance.acrylic_tint_alpha()) / 255.
+    f64::from(appearance.background_alpha()) / 255.
 }
 pub struct Shell {
     pointer: NonNull<c_void>,
@@ -129,7 +129,9 @@ mod tests {
             };
             let alpha = material_alpha(appearance);
             assert!((0.0..=1.0).contains(&alpha));
-            assert!((0.2..=0.4).contains(&alpha));
+            assert!(
+                (alpha - (1.0 - f64::from(transparency) / 100.)).abs() <= 0.5 / 255. + f64::EPSILON
+            );
         }
     }
 

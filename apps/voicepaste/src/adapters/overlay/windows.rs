@@ -118,7 +118,7 @@ impl Shell {
         self.geometry = Some(geometry);
         self.opacity = None;
         self.backdrop.take();
-        let alpha = appearance.acrylic_tint_alpha();
+        let alpha = appearance.background_alpha();
         if appearance.acrylic {
             if self.context.is_none() {
                 self.context = Context::new().ok();

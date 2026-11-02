@@ -296,7 +296,7 @@ mod tests {
     #[test]
     fn material_uses_requested_tint_alpha_without_scaling_foreground_or_geometry() {
         let context = Context::new().unwrap();
-        for alpha in [1, 110, 255] {
+        for alpha in [0, 1, 110, 255] {
             let host = super::super::Backdrop::new(std::ptr::null_mut(), &context, alpha).unwrap();
             let tint: windows::UI::Composition::CompositionColorBrush =
                 host.1.tint.Brush().unwrap().cast().unwrap();

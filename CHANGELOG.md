@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 - macOS reuses verification for unchanged model files instead of rechecking them on every startup.
-- Acrylic overlays keep their blur visible across the transparency range on Windows and macOS.
+- Acrylic overlays retain blur at 100% transparency while the white tint follows the full transparency range on Windows and macOS.
 - The macOS tray menu follows the system appearance instead of the menu bar's appearance.
 - Windows tray menus can follow the system light or dark theme on supported Windows versions.
 - macOS no longer opens Accessibility settings automatically on top of the system permission prompt.
