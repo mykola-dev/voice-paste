@@ -57,6 +57,10 @@ pub(crate) enum SessionEvent {
     },
     State(State),
     Error(String),
+    Recovery {
+        session: voicepaste_core::SessionId,
+        message: String,
+    },
     Info(String),
     CaptureCompleted,
     ModelStatus {
@@ -380,6 +384,9 @@ impl SettingsSession {
             }
             Event::State(state) => return Some(SessionEvent::State(state)),
             Event::Error(error) => return Some(SessionEvent::Error(error)),
+            Event::Recovery { session, message } => {
+                return Some(SessionEvent::Recovery { session, message });
+            }
             Event::Info(info) => return Some(SessionEvent::Info(info)),
             Event::CaptureCompleted => return Some(SessionEvent::CaptureCompleted),
             Event::ModelStatus {

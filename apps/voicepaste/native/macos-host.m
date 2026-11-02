@@ -153,6 +153,17 @@ bool vp_confirm_download(const char *model) {
     return [alert runModal] == NSAlertFirstButtonReturn;
 }
 
+bool vp_retry_without_vad(const char *message) {
+    NSCAssert([NSThread isMainThread], @"retry alert must be on the main thread");
+    NSAlert *alert = [NSAlert new];
+    alert.messageText = @"Transcription failed";
+    alert.informativeText = [NSString stringWithUTF8String:message];
+    [alert addButtonWithTitle:@"Try without VAD"];
+    [alert addButtonWithTitle:@"Cancel"];
+    [NSApp activate];
+    return [alert runModal] == NSAlertFirstButtonReturn;
+}
+
 void vp_capture_menu_update(void *raw, bool recording, bool busy, bool active, uint64_t session, const char *status) {
     NSCAssert([NSThread isMainThread], @"capture menu must be on the main thread");
     VPMenuHost *host = (__bridge VPMenuHost *)raw;

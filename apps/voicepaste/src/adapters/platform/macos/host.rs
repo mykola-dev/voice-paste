@@ -38,6 +38,7 @@ unsafe extern "C" {
     );
     fn vp_host_error(message: *const std::ffi::c_char);
     fn vp_confirm_download(model: *const std::ffi::c_char) -> bool;
+    fn vp_retry_without_vad(message: *const std::ffi::c_char) -> bool;
 }
 
 pub(super) fn startup_error(message: &str) {
@@ -163,6 +164,15 @@ impl Host {
         };
         // SAFETY: synchronous main-thread native alert; no framework borrow held.
         unsafe { vp_confirm_download(model.as_ptr()) }
+    }
+
+    pub fn retry_without_vad(message: &str) -> bool {
+        let message: String = message.chars().filter(|c| *c != '\0').take(4096).collect();
+        let Ok(message) = std::ffi::CString::new(message) else {
+            return false;
+        };
+        // SAFETY: synchronous main-thread alert; the string remains live.
+        unsafe { vp_retry_without_vad(message.as_ptr()) }
     }
 
     pub fn capture_status(

@@ -154,6 +154,9 @@ impl SessionHost {
     pub fn error_dialog(&self, message: &str) {
         host::Host::error(message);
     }
+    pub fn retry_without_vad(&self, message: &str) -> bool {
+        host::Host::retry_without_vad(message)
+    }
 
     pub fn notify(&self, message: &str, _error: bool) {
         self.storage.log(message);

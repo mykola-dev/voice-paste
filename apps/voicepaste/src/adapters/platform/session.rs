@@ -87,6 +87,7 @@ pub(super) async fn ui_session(
     let mut quitting = false;
     let mut download_consent = DownloadConsent::default();
     let mut cancel_preparation = None;
+    let mut recovery_choice = None;
     if capture_preview && !settings_only {
         host.notify("Capture preview: records microphone and discards on Stop. No transcription/paste in this explicit mode.", false);
     }
@@ -140,6 +141,14 @@ pub(super) async fn ui_session(
                     host.notify(&error, true);
                     message = error;
                 }
+                SessionEvent::Recovery {
+                    session,
+                    message: error,
+                } => {
+                    let retry = host.retry_without_vad(&error);
+                    recovery_choice = Some((session, retry));
+                    message = error;
+                }
                 SessionEvent::Info(info) => {
                     host.notify(&info, false);
                     message = info;
@@ -151,6 +160,11 @@ pub(super) async fn ui_session(
             }
         }
         let native = host.drain(&settings.saved, projection.state);
+        if let Some((session, retry)) = recovery_choice
+            && post(&commands, Command::RecoveryChoice { session, retry })?
+        {
+            recovery_choice = None;
+        }
         if let Some(generation) = cx.update(|cx| overlay.take_cancel(cx)) {
             cancel_preparation = Some(generation);
         }

@@ -32,10 +32,16 @@ impl AudioFile {
     pub fn remove(self) -> Result<(), String> {
         fs::remove_file(&self.path).map_err(|e| format!("Cannot remove recording: {e}"))
     }
+    /// Transfer responsibility for the file to recovery instead of deleting it.
+    pub fn retain(mut self) -> PathBuf {
+        std::mem::take(&mut self.path)
+    }
 }
 impl Drop for AudioFile {
     fn drop(&mut self) {
-        let _ = fs::remove_file(&self.path);
+        if !self.path.as_os_str().is_empty() {
+            let _ = fs::remove_file(&self.path);
+        }
     }
 }
 

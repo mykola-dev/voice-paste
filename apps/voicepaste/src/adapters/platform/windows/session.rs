@@ -100,6 +100,77 @@ impl SessionHost {
         }
     }
 
+    pub fn retry_without_vad(&self, message: &str) -> bool {
+        use windows_sys::Win32::UI::Controls::{
+            TASKDIALOG_BUTTON, TASKDIALOGCONFIG, TaskDialogIndirect,
+        };
+        let wide = |value: &str| -> Vec<u16> {
+            value
+                .chars()
+                .filter(|c| *c != '\0')
+                .take(4096)
+                .collect::<String>()
+                .encode_utf16()
+                .chain(Some(0))
+                .collect()
+        };
+        let title = wide("VoicePaste");
+        let heading = wide("Transcription failed");
+        let content = wide(message);
+        let retry = wide("Try without VAD");
+        let cancel = wide("Cancel");
+        let buttons = [
+            TASKDIALOG_BUTTON {
+                nButtonID: 100,
+                pszButtonText: retry.as_ptr(),
+            },
+            TASKDIALOG_BUTTON {
+                nButtonID: 2,
+                pszButtonText: cancel.as_ptr(),
+            },
+        ];
+        let config = TASKDIALOGCONFIG {
+            cbSize: std::mem::size_of::<TASKDIALOGCONFIG>() as u32,
+            pszWindowTitle: title.as_ptr(),
+            pszMainInstruction: heading.as_ptr(),
+            pszContent: content.as_ptr(),
+            cButtons: buttons.len() as u32,
+            pButtons: buttons.as_ptr(),
+            nDefaultButton: 2,
+            ..Default::default()
+        };
+        let mut result = 2;
+        // SAFETY: UI thread, no state guards held; strings and buttons remain live.
+        let status = unsafe {
+            TaskDialogIndirect(
+                &config,
+                &mut result,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        if status >= 0 {
+            return result == 100;
+        }
+        // Task Dialog requires common-controls v6; retain a usable recovery
+        // choice on systems where the native dialog is unavailable.
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            IDOK, MB_ICONERROR, MB_OKCANCEL, MessageBoxW,
+        };
+        let fallback = wide(&format!(
+            "{message}\n\nPress OK to try without VAD, or Cancel to keep the recording."
+        ));
+        // SAFETY: same UI thread and live UTF-16 buffers as above.
+        unsafe {
+            MessageBoxW(
+                std::ptr::null_mut(),
+                fallback.as_ptr(),
+                title.as_ptr(),
+                MB_OKCANCEL | MB_ICONERROR,
+            ) == IDOK
+        }
+    }
+
     pub fn refresh(
         &mut self,
         projection: &RuntimeSession,

@@ -32,6 +32,7 @@ pub struct Worker {
     options: Option<TranscriptionOptions>,
     model: String,
     pending: Option<(RequestId, Submission<AudioFile, FocusTarget>)>,
+    recovery: Option<Submission<AudioFile, FocusTarget>>,
     sent: bool,
     deadline: Option<Instant>,
 }
@@ -49,6 +50,7 @@ impl Worker {
             options: None,
             model: String::new(),
             pending: None,
+            recovery: None,
             sent: false,
             deadline: None,
         }
@@ -105,12 +107,29 @@ impl Worker {
     }
     fn failed(&mut self, message: String) -> TranscriptionEvent<FocusTarget> {
         let session = self.pending.as_ref().map(|(_, s)| s.session);
+        // The child must stop using the file before ownership is transferred.
+        drop(self.process.take());
+        let retained = self.pending.take().map(|(_, s)| s);
         self.release();
+        let message = if let Some(submission) = retained {
+            let path = submission.audio.path.clone();
+            self.recovery = Some(submission);
+            format!(
+                "{message}\nRecording retained for recovery: {}",
+                path.display()
+            )
+        } else {
+            message
+        };
         TranscriptionEvent::Failed { session, message }
     }
 
     pub fn memory_status(&self) -> String {
         Process::memory_status(self.process.as_ref(), self.ready)
+    }
+
+    pub fn take_recovery(&mut self) -> Option<Submission<AudioFile, FocusTarget>> {
+        self.recovery.take()
     }
 
     // No mic, clipboard or injection: an explicit file route through the same
@@ -155,17 +174,35 @@ impl Transcription<AudioFile, FocusTarget> for Worker {
     }
     fn submit(&mut self, submission: Submission<AudioFile, FocusTarget>) -> Result<(), String> {
         if self.pending.is_some() {
-            return Err("Transcription already in progress".into());
+            let path = submission.audio.retain();
+            return Err(format!(
+                "Transcription already in progress\nRecording retained for recovery: {}",
+                path.display()
+            ));
         }
-        self.initialize(&submission.settings)?;
-        self.next_request = self
-            .next_request
-            .checked_add(1)
-            .ok_or("Worker request counter exhausted")?;
+        if let Err(error) = self.initialize(&submission.settings) {
+            let path = submission.audio.path.clone();
+            self.recovery = Some(submission);
+            return Err(format!(
+                "{error}\nRecording retained for recovery: {}",
+                path.display()
+            ));
+        }
+        let Some(next_request) = self.next_request.checked_add(1) else {
+            let path = submission.audio.path.clone();
+            self.recovery = Some(submission);
+            return Err(format!(
+                "Worker request counter exhausted\nRecording retained for recovery: {}",
+                path.display()
+            ));
+        };
+        self.next_request = next_request;
         self.pending = Some((RequestId(self.next_request), submission));
         if let Err(error) = self.send_pending() {
-            self.release();
-            return Err(error);
+            let TranscriptionEvent::Failed { message, .. } = self.failed(error) else {
+                unreachable!()
+            };
+            return Err(message);
         }
         Ok(())
     }
@@ -190,9 +227,15 @@ impl Transcription<AudioFile, FocusTarget> for Worker {
         self.receive(response)
     }
     fn release(&mut self) {
-        // Kill/join child before dropping the audio file it could still be using.
+        // Stop the child before retaining any incomplete recording for recovery.
         drop(self.process.take());
-        drop(self.pending.take());
+        if let Some((_, submission)) = self.pending.take() {
+            let path = submission.audio.retain();
+            self.storage.log(&format!(
+                "Recording retained for recovery: {}",
+                path.display()
+            ));
+        }
         self.ready = false;
         self.actual_device.clear();
         self.statistics_filter = None;
@@ -258,6 +301,9 @@ impl Worker {
                 {
                     return Some(self.failed("Mismatched native worker result".into()));
                 }
+                if text.trim().is_empty() {
+                    return Some(self.failed("No speech detected".into()));
+                }
                 let (_, submission) = self.pending.take()?;
                 self.sent = false;
                 self.deadline = None;
@@ -320,6 +366,9 @@ fn valid_device(policy: Option<voicepaste_core::settings::Device>, actual: &str)
 impl Drop for Worker {
     fn drop(&mut self) {
         self.release();
+        if let Some(submission) = self.recovery.take() {
+            submission.audio.retain();
+        }
     }
 }
 
@@ -431,7 +480,68 @@ mod tests {
     }
 
     #[test]
-    fn stale_generation_request_or_session_fail_and_release_pending_audio() {
+    fn rejected_submission_retains_its_audio_and_reports_its_path() {
+        let mut fixture = Fixture::new();
+        let pending = fixture.pending();
+        let path = fixture.worker.storage.temp.join("rejected.wav");
+        fs::write(&path, b"recording").unwrap();
+        let submission = Submission {
+            session: SessionId(4),
+            audio: AudioFile { path: path.clone() },
+            settings: fixture.worker.storage.settings.clone(),
+            target: FocusTarget::current(),
+        };
+        let error = fixture.worker.submit(submission).unwrap_err();
+        assert!(error.contains(&path.display().to_string()));
+        assert_eq!(fs::read(path).unwrap(), b"recording");
+        assert!(pending.exists());
+    }
+
+    #[test]
+    fn worker_failure_returns_the_original_recording_for_retry() {
+        let mut fixture = Fixture::new();
+        let path = fixture.pending();
+        assert!(matches!(
+            fixture.worker.receive(Response::Error {
+                generation: Generation(7),
+                id: Some(RequestId(11)),
+                message: "decoder failed".into(),
+            }),
+            Some(TranscriptionEvent::Failed {
+                session: Some(SessionId(3)),
+                ..
+            })
+        ));
+        let mut submission = fixture.worker.take_recovery().unwrap();
+        assert_eq!(submission.audio.path, path);
+        assert_eq!(submission.session, SessionId(3));
+        submission.settings.enable_vad = false;
+        assert!(!submission.settings.enable_vad);
+        assert!(path.exists());
+        let retained = submission.audio.retain();
+        assert!(retained.exists());
+    }
+
+    #[test]
+    fn empty_result_keeps_recording_available_for_retry() {
+        let mut fixture = Fixture::new();
+        let path = fixture.pending();
+        let mut response = result(7, 11, 3);
+        if let Response::Result { text, .. } = &mut response {
+            *text = "  ".into();
+        }
+        assert!(matches!(
+            fixture.worker.receive(response),
+            Some(TranscriptionEvent::Failed { .. })
+        ));
+        let submission = fixture.worker.take_recovery().unwrap();
+        assert_eq!(submission.audio.path, path);
+        assert!(path.exists());
+        submission.audio.retain();
+    }
+
+    #[test]
+    fn stale_generation_request_or_session_fail_and_retain_pending_audio() {
         for ids in [(6, 11, 3), (7, 10, 3), (7, 11, 2)] {
             let mut fixture = Fixture::new();
             let audio = fixture.pending();
@@ -442,7 +552,7 @@ mod tests {
                     ..
                 })
             ));
-            assert!(!audio.exists());
+            assert!(audio.exists());
             assert!(!fixture.worker.ready);
         }
     }
@@ -473,7 +583,7 @@ mod tests {
     }
 
     #[test]
-    fn timeout_and_explicit_release_clear_owned_submission() {
+    fn timeout_and_explicit_release_retain_owned_submission() {
         let mut fixture = Fixture::new();
         let audio = fixture.pending();
         fixture.worker.deadline = Some(Instant::now());
@@ -484,10 +594,11 @@ mod tests {
                 ..
             })
         ));
-        assert!(!audio.exists());
+        assert!(audio.exists());
+        fs::remove_file(audio).unwrap();
         let audio = fixture.pending();
         fixture.worker.release();
-        assert!(!audio.exists());
+        assert!(audio.exists());
         assert!(fixture.worker.poll().is_none());
     }
 }

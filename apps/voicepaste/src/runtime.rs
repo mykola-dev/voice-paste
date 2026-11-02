@@ -25,6 +25,10 @@ pub enum Command {
         target: FocusTarget,
     },
     Cancel(SessionId),
+    RecoveryChoice {
+        session: SessionId,
+        retry: bool,
+    },
     SaveSettings {
         id: u64,
         settings: Settings,
@@ -82,6 +86,10 @@ pub enum Event {
     },
     State(State),
     Error(String),
+    Recovery {
+        session: SessionId,
+        message: String,
+    },
     CaptureCompleted,
     Info(String),
     SettingsSaved {
@@ -122,6 +130,7 @@ impl Runtime {
                 let microphone = Microphone::new(storage.temp.clone(), meter, clock);
                 let mut app = Dictation::new(microphone);
                 let mut worker = Worker::new(storage.clone());
+                let mut recovery: Option<voicepaste_application::Submission<crate::adapters::audio::AudioFile, FocusTarget>> = None;
                 let mut statistics = crate::adapters::statistics::Statistics::open(&storage.root.join("data/transcription-stats.sqlite"));
                 if let Err(error) = &statistics { storage.log(&format!("Transcription statistics unavailable: {error}")); }
                 let mut paste = ClipboardPaste {
@@ -219,6 +228,24 @@ impl Runtime {
                             }
                             let _ = sender.try_send(Event::State(app.state()));
                         }
+                        Ok(Command::RecoveryChoice { session, retry }) => {
+                            if recovery.as_ref().is_some_and(|s| s.session == session) {
+                                let mut submission = recovery.take().expect("matching recovery");
+                                if retry {
+                                    submission.settings.enable_vad = false;
+                                    if let Err(error) = worker.submit(submission) {
+                                        if let Some(submission) = worker.take_recovery() { submission.audio.retain(); }
+                                        app.complete(session);
+                                        report(&storage, &sender, error);
+                                    }
+                                } else {
+                                    let path = submission.audio.retain();
+                                    app.complete(session);
+                                    report(&storage, &sender, format!("Recording retained for recovery: {}", path.display()));
+                                }
+                                let _ = sender.try_send(Event::State(app.state()));
+                            }
+                        }
                         Ok(Command::Toggle { now, target }) => {
                             if preferences.current().debug_logging {
                                 storage.log(&format!("Toggle at {} ms; before {:?}", now.as_millis(), app.state()));
@@ -240,8 +267,20 @@ impl Runtime {
                                         }
                                         app.complete(id);
                                     } else if let Err(error) = worker.submit(submission) {
-                                        app.complete(id);
-                                        report(&storage, &sender, error);
+                                        if let Some(submission) = worker.take_recovery() {
+                                            if submission.settings.enable_vad {
+                                                storage.log(&error);
+                                                recovery = Some(submission);
+                                                if !reliable(&sender, Event::Recovery { session: id, message: error }, &thread_shutdown) { break; }
+                                            } else {
+                                                submission.audio.retain();
+                                                app.complete(id);
+                                                report(&storage, &sender, error);
+                                            }
+                                        } else {
+                                            app.complete(id);
+                                            report(&storage, &sender, error);
+                                        }
                                     }
                                 }
                                 Ok(None) => {
@@ -327,6 +366,18 @@ impl Runtime {
                                 let _ = sender.try_send(Event::State(app.state()));
                             }
                             TranscriptionEvent::Failed { session, message } => {
+                                let failed = worker.take_recovery();
+                                if let Some(submission) = failed {
+                                    if app.state() == State::Transcribing(submission.session) && submission.settings.enable_vad {
+                                        let id = submission.session;
+                                        storage.log(&message);
+                                        recovery = Some(submission);
+                                        if !reliable(&sender, Event::Recovery { session: id, message }, &thread_shutdown) { break; }
+                                        continue;
+                                    }
+                                    let path = submission.audio.retain();
+                                    storage.log(&format!("Recording retained for recovery: {}", path.display()));
+                                }
                                 if let Some(session) = session {
                                     app.complete(session);
                                 }
@@ -351,6 +402,10 @@ impl Runtime {
                             let _ = sender.try_send(Event::State(app.state()));
                         }
                     }
+                }
+                if let Some(submission) = recovery.take() {
+                    let path = submission.audio.retain();
+                    storage.log(&format!("Recording retained for recovery: {}", path.display()));
                 }
                 if let Err(error) = app.shutdown() {
                     storage.log(&error);

@@ -121,7 +121,7 @@ impl Pipeline {
             let prompt = self
                 .tokenizer
                 .prompt(&history, language.as_deref().ok_or("Missing language")?)?;
-            let (generated, average, temperature) = self.generate(&encoded, &prompt)?;
+            let (generated, average, temperature) = self.generate(&encoded, &prompt, size)?;
             if generated.no_speech > 0.6 && average <= -1.0 {
                 seek += size;
                 continue;
@@ -169,9 +169,11 @@ impl Pipeline {
         &self,
         encoded: &Encoded<'_>,
         prompt: &[u32],
+        size: usize,
     ) -> Result<(Generation, f32, f32), String> {
         let mut best = None;
         let mut best_below_compression = None;
+        let mut timestamp_error = None;
         for temperature in [0.0, 0.2, 0.4, 0.6, 0.8, 1.0] {
             let result = encoded.generate(
                 prompt,
@@ -180,6 +182,12 @@ impl Pipeline {
                 temperature,
             )?;
             let average = result.score * result.ids.len() as f32 / (result.ids.len() + 1) as f32;
+            if !(result.no_speech > 0.6 && average <= -1.0)
+                && let Err(error) = split_timestamps(&result.ids, self.tokenizer.timestamp, size)
+            {
+                timestamp_error = Some(error);
+                continue;
+            }
             let text = self.tokenizer.decode(&result.ids)?;
             let ratio = compression_ratio(text.trim())?;
             let fallback =
@@ -207,7 +215,9 @@ impl Pipeline {
                 best = Some(candidate);
             }
         }
-        let (result, average, _) = best_below_compression.or(best).ok_or("No decoder result")?;
+        let (result, average, _) = best_below_compression
+            .or(best)
+            .ok_or_else(|| timestamp_error.unwrap_or_else(|| "No decoder result".into()))?;
         Ok((result, average, 1.0))
     }
 }
@@ -253,7 +263,9 @@ fn split_timestamps(
         (ids[start - 1] - timestamp) as usize * 2
     };
     if advance == 0 || advance > size {
-        return Err("Invalid decoder timestamp seek; audio was not silently skipped".into());
+        return Err(format!(
+            "Invalid decoder timestamp seek (advance={advance}, window={size}); audio was not silently skipped"
+        ));
     }
     Ok((chunks, advance))
 }
@@ -384,6 +396,16 @@ mod tests {
         let (chunks, seek) = split_timestamps(&unfinished, 100, 3000).unwrap();
         assert_eq!(chunks, vec![&unfinished[..3]]);
         assert_eq!(seek, 10);
+    }
+    #[test]
+    fn invalid_timestamp_seek_reports_bounds_without_skipping_audio() {
+        let zero = [100, 1, 100, 100, 2];
+        let error = split_timestamps(&zero, 100, 3000).unwrap_err();
+        assert!(error.contains("advance=0, window=3000"));
+
+        let beyond_window = [100, 1, 106, 106, 2];
+        let error = split_timestamps(&beyond_window, 100, 10).unwrap_err();
+        assert!(error.contains("advance=12, window=10"));
     }
     #[test]
     fn ua_cleanup_and_custom_prompt_are_preserved() {
