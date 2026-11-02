@@ -15,6 +15,36 @@ use std::{
 use voicepaste_core::models::Artifact;
 use voicepaste_core::{models::Model, settings::SettingsPlatform};
 
+#[path = "verification.rs"]
+mod verification;
+
+// macOS receipts use nanosecond change and modification times, not Windows
+// FILETIME values. The model caches are platform-specific.
+fn receipt_times(metadata: &fs::Metadata) -> (u64, u64) {
+    use std::os::unix::fs::MetadataExt;
+    let nanos = |seconds: i64, subsecond: i64| {
+        (seconds as u64)
+            .wrapping_mul(1_000_000_000)
+            .wrapping_add(subsecond as u64)
+    };
+    (
+        nanos(metadata.ctime(), metadata.ctime_nsec()),
+        nanos(metadata.mtime(), metadata.mtime_nsec()),
+    )
+}
+
+fn receipt_model(model: &Model) -> Result<Model, String> {
+    let mut receipt = model.clone();
+    if model.name != "silero-v6.2.0" {
+        let vad = voicepaste_core::models::macos_vad()?;
+        receipt.revision = format!("{}:{}", model.revision, vad.revision);
+        let mut file = vad.files[0].clone();
+        file.path = "vad.bin".into();
+        receipt.files.push(file);
+    }
+    Ok(receipt)
+}
+
 fn selected(name: &str) -> Result<Model, String> {
     voicepaste_core::models::find_for(name, SettingsPlatform::Macos)
 }
@@ -91,6 +121,15 @@ fn prepare(
         .map_err(|e| e.to_string())?;
     lock.try_lock()
         .map_err(|e| format!("Model is locked: {e}"))?;
+    let expected = receipt_model(model)?;
+    if verification::Receipt::current(&directory, &expected) {
+        check(stop)?;
+        status.message(format!(
+            "Using verified local {} (unchanged files)",
+            model.name
+        ));
+        return Ok(directory);
+    }
     for artifact in &model.files {
         check(stop)?;
         let path = directory.join(&artifact.path);
@@ -138,6 +177,23 @@ fn prepare(
             }
         }
     }
+    // Check hashes against a stable before/after fingerprint before recording
+    // the shortcut. Unlike Windows, open files cannot deny external writers.
+    let before = verification::Receipt::inspect(&directory, &expected)
+        .ok_or("Model files changed during verification")?;
+    for artifact in &expected.files {
+        check(stop)?;
+        if !verify(&directory.join(&artifact.path), artifact, stop)? {
+            return Err("Model files changed during verification".into());
+        }
+    }
+    let after = verification::Receipt::inspect(&directory, &expected)
+        .ok_or("Model files changed during verification")?;
+    if before != after {
+        return Err("Model files changed during verification".into());
+    }
+    check(stop)?;
+    after.save(&directory)?;
     Ok(directory)
 }
 
@@ -259,6 +315,12 @@ mod tests {
         assert_eq!(fs::read(&path).unwrap(), bytes);
         assert!(!partial.exists());
         assert!(!status.downloading());
+        assert!(verification::Receipt::current(
+            &directory,
+            &receipt_model(&model).unwrap()
+        ));
+        prepare(&root, &model, false, &stop, &status).unwrap();
+        assert!(status.snapshot().contains("unchanged files"));
         let lock = OpenOptions::new()
             .read(true)
             .write(true)
@@ -269,6 +331,10 @@ mod tests {
         drop(lock);
         let corrupt = vec![0; bytes.len()];
         fs::write(&path, &corrupt).unwrap();
+        assert!(!verification::Receipt::current(
+            &directory,
+            &receipt_model(&model).unwrap()
+        ));
         assert!(prepare(&root, &model, false, &stop, &status).is_err());
         assert_eq!(fs::read(&path).unwrap(), corrupt);
         assert!(

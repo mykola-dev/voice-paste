@@ -22,6 +22,9 @@ work around company policy to launch a preview.
   failure. Models and VAD come from the separate GitHub `Models` release, not Git
   LFS. Draft dropdown queries and builds never download weights. Cancellation
   retains resumable parts; a later approved request resumes.
+  Previously verified, unchanged model and VAD files reuse a local receipt, so
+  later launches do not repeatedly hash the entire model. The first launch after
+  this change or any detected file change still verifies the pinned hashes.
   Exact size/SHA-256 verification precedes publication. A complete verified partial
   can be published offline. Source manifest: `crates/core/assets/macos-model-artifacts.json`.
 - Full FP16 GGML large-v2, large-v3 and large-v3-turbo use separate pinned artifacts,

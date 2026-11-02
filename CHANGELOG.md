@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- macOS reuses verification for unchanged model files instead of rechecking them on every startup.
 - macOS overlay transparency now fades the light blur material as well as its white tint.
 - macOS no longer opens Accessibility settings automatically on top of the system permission prompt.
 - Removed the permanent macOS permission reminder from Settings.

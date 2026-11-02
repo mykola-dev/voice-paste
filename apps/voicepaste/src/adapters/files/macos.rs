@@ -7,6 +7,21 @@ pub(in crate::adapters) fn private_options() -> fs::OpenOptions {
     options
 }
 
+// Exclusivity is provided by the caller's model lock on macOS.
+pub(in crate::adapters) fn exclusive_options() -> fs::OpenOptions {
+    private_options()
+}
+
+pub(in crate::adapters) fn replace(source: &Path, destination: &Path) -> Result<(), String> {
+    fs::rename(source, destination).map_err(|e| e.to_string())?;
+    let parent = destination
+        .parent()
+        .ok_or("Missing model cache directory")?;
+    fs::File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|e| e.to_string())
+}
+
 /// Cache writers hold the model lock. Retain the old inode before atomic rename;
 /// a failed rename leaves both the completed artifact and staging bytes intact.
 pub(in crate::adapters) fn replace_preserving(

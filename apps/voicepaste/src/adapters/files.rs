@@ -9,4 +9,4 @@ pub(super) use windows::{
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]
-pub(super) use macos::{private_options, replace_preserving};
+pub(super) use macos::{exclusive_options, private_options, replace, replace_preserving};

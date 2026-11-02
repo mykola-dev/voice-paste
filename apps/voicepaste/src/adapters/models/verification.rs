@@ -27,7 +27,7 @@ impl Receipt {
             .files
             .iter()
             .map(|artifact| {
-                let metadata = fs::metadata(directory.join(&artifact.path)).ok()?;
+                let metadata = fs::symlink_metadata(directory.join(&artifact.path)).ok()?;
                 if !metadata.is_file() || metadata.len() != artifact.bytes {
                     return None;
                 }
@@ -49,6 +49,11 @@ impl Receipt {
     }
 
     pub(super) fn current(directory: &Path, model: &Model) -> bool {
+        if !fs::symlink_metadata(directory.join(".verified.json"))
+            .is_ok_and(|metadata| metadata.is_file())
+        {
+            return false;
+        }
         let Some(current) = Self::inspect(directory, model) else {
             return false;
         };
@@ -63,6 +68,9 @@ impl Receipt {
         // Caller holds the exclusive model lock. A crash leaves only a cache
         // miss; the receipt is published only after all pinned hashes passed.
         let temporary = directory.join(".verified.json.partial");
+        if fs::symlink_metadata(&temporary).is_ok_and(|metadata| !metadata.is_file()) {
+            return Err("Refusing non-file receipt staging path".into());
+        }
         let mut file = files::exclusive_options()
             .write(true)
             .create(true)

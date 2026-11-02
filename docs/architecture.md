@@ -53,6 +53,11 @@ macOS selects the separate GitHub `Models` release; Windows retains its original
 HTTPS source. Neither uses Git LFS fallback or installs download tools.
 `model_parts.rs` owns ordered raw-part delivery, resumable staging, per-part and
 complete artifact verification, bounded reassembly and atomic publication.
+The shared local verification receipt skips rehashing unchanged files on later
+starts. macOS fingerprints both the pinned GGML file and its VAD copy with
+native change/write timestamps; a missing, changed or invalid receipt triggers
+full verification before a new receipt is saved. Receipts are a performance cache,
+not a security boundary against deliberate local tampering.
 Native curl transfers one asset; it does not implement a parallel provisioning lifecycle.
 Preparation cancellation carries a generation captured by the progress control,
 so delayed clicks/queued commands cannot cancel a replacement model or retry.
