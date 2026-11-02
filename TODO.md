@@ -188,6 +188,11 @@ User reported on the corporate Mac: recording hotkeys (including F12 and Right
 Option), Escape during recording, and automatic Cmd+V do not work; clipboard
 copy succeeds. This supersedes prior host-contract evidence. The actual event-tap
 and paste failure modes and real-device acceptance remain unconfirmed.
+After rebuilding, the system Accessibility request appeared while an older
+VoicePaste entry was still enabled; the application also opened Settings on top.
+The duplicate opening is fixed. Ad-hoc code-identity mismatch is a plausible
+cause of stale permission and nonworking keys, not yet confirmed on this Mac;
+stable signing and permission persistence across rebuilt versions remain open.
 
 Поточний стан: recording/runtime, single-key controls/Escape, GPUI Settings/overlay,
 whisper.cpp/Metal worker, approved GGML/VAD provisioning, Cmd+V та statistics

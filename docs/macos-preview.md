@@ -47,6 +47,14 @@ work around company policy to launch a preview.
   Right Option (default), Right Command, F8 and F12 are standalone recording keys;
   repeat/chords do not create extra toggles. Escape consumes its recording-cancel
   sequence and carries the original session identity through the bounded inbox.
+  The system prompt alone offers to open Settings; VoicePaste does not open it
+  simultaneously. Local previews are ad-hoc signed: changing the build can
+  change its code identity, so an enabled Accessibility entry from an older build
+  does not guarantee access for the current one. If that happens, the user may
+  remove the stale VoicePaste entry and add the current `.app` in Accessibility,
+  subject to company policy. No TCC reset, security-policy change, certificate
+  installation or permission grant is performed automatically. A stable signing
+  identity would require separate provisioning and device verification.
 - Shared GPUI draws the animated waveform/busy indicator. Native NSPanel policy
   handles nonactivation, work-area placement and a separately owned backdrop.
   The public AppKit backdrop uses **NSVisualEffectView system blur plus white

@@ -1149,15 +1149,6 @@ impl Render for SettingsView {
                     .bg(cx.theme().title_bar)
                     .child("VoicePaste Settings"),
             )
-            .when_some(PROFILE.permission_notice, |root, notice| {
-                root.child(
-                    div()
-                        .px(px(12.))
-                        .py(px(8.))
-                        .text_size(px(12.))
-                        .child(notice),
-                )
-            })
             .child(
                 div()
                     .flex()

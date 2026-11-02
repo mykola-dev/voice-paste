@@ -6,7 +6,6 @@ pub(super) struct Profile {
     pub cpu_hint: &'static str,
     pub startup_hint: &'static str,
     pub memory_hint: &'static str,
-    pub permission_notice: Option<&'static str>,
     /// CT2 names its weight artifact; the GGML catalog contains one weight file.
     pub weight_path: Option<&'static str>,
     pub weight_description: &'static str,
@@ -18,7 +17,6 @@ pub(super) const CURRENT: Profile = Profile {
     cpu_hint: "CPU INT8; GPU not used.",
     startup_hint: "Current Windows user only. Applied with OK or Apply.",
     memory_hint: "Resident RAM is memory currently held in physical RAM. Model size is the selected model.bin file size, not RAM or VRAM usage; it is shown even before download.",
-    permission_notice: None,
     weight_path: Some("model.bin"),
     weight_description: "",
 };
@@ -29,9 +27,6 @@ pub(super) const CURRENT: Profile = Profile {
     cpu_hint: "CPU inference; full FP16 model weights, no GPU offload.",
     startup_hint: "Current macOS user only. Applied with OK or Apply; takes effect on next sign-in.",
     memory_hint: "Host and STT worker resident RAM are measured separately. GGML file size is not total RAM or Metal memory usage.",
-    permission_notice: Some(
-        "Microphone access is needed to record. Accessibility access enables global recording keys and automatic Cmd+V paste. Manage these permissions in System Settings → Privacy & Security.",
-    ),
     weight_path: None,
     weight_description: " (full FP16 GGML)",
 };

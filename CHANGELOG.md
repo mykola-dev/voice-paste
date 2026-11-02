@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- macOS no longer opens Accessibility settings automatically on top of the system permission prompt.
+- Removed the permanent macOS permission reminder from Settings.
 - Preserved macOS menu-bar icon proportions and changed the default waveform amplification to 10× without overwriting saved values.
 - Improved macOS keyboard-tap recovery and Cmd+V event delivery, and report when global recording keys cannot be attached.
 - macOS now defaults to Right Option and offers Right Command instead of Right Control for recording.

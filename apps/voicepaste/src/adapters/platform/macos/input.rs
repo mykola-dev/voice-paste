@@ -58,7 +58,7 @@ impl Input {
         let pointer = unsafe { vp_input_create(key, prompt, &mut error) };
         Ok(Self {
             pointer: NonNull::new(pointer).ok_or_else(|| match error {
-                2 => "Cannot attach global recording keys: Accessibility access is not granted. Recording keys reconnect after access is granted.",
+                2 => "Recording keys need Accessibility access for this build. If VoicePaste is already enabled in System Settings, remove the old entry and add the current VoicePaste.app again. Keys reconnect after access is granted.",
                 4 => "Cannot create the macOS keyboard event tap despite Accessibility being granted. Recording hotkeys and Escape are unavailable.",
                 _ => "Cannot initialize the macOS keyboard event tap. Recording hotkeys and Escape are unavailable.",
             }.to_string())?,

@@ -102,7 +102,6 @@ void *vp_input_create(uint16_t key, bool prompt, uint32_t *error) {
     if (key != 62 && key != 61 && key != 54 && key != 100 && key != 111) { *error = 1; return NULL; }
     NSDictionary *options = @{(__bridge NSString *)kAXTrustedCheckOptionPrompt: @(prompt)};
     if (!AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options)) {
-        if (prompt) [NSWorkspace.sharedWorkspace openURL:[NSURL URLWithString:@"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"]];
         *error = 2; return NULL;
     }
     VPInput *input = [VPInput new];
