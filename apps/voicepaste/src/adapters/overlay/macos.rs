@@ -98,7 +98,7 @@ mod tests {
             left: *mut f64,
             bottom: *mut f64,
         );
-        fn vp_overlay_material_opacity(alpha: f64, animation: f64) -> f64;
+        fn vp_overlay_material_opacity(animation: f64) -> f64;
     }
 
     #[test]
@@ -136,22 +136,13 @@ mod tests {
     }
 
     #[test]
-    fn material_fades_with_transparency_and_animation() {
-        for transparency in 0..=100 {
-            let appearance = voicepaste_core::settings::OverlayAppearance {
-                transparency,
-                ..Default::default()
-            };
-            let alpha = material_alpha(appearance);
-            for animation in [0., 0.25, 0.5, 1.] {
-                // SAFETY: pure native arithmetic; no AppKit state or pointers.
-                let actual = unsafe { vp_overlay_material_opacity(alpha, animation) };
-                assert!((actual - alpha * animation).abs() < 1e-12);
-            }
+    fn material_opacity_follows_animation_not_tint_transparency() {
+        for animation in [0., 0.25, 0.5, 1.] {
+            // SAFETY: pure native arithmetic; no AppKit state or pointers.
+            assert_eq!(unsafe { vp_overlay_material_opacity(animation) }, animation);
         }
         // SAFETY: same pure native helper, including defensive input clamping.
-        assert_eq!(unsafe { vp_overlay_material_opacity(0., 1.) }, 0.);
-        assert_eq!(unsafe { vp_overlay_material_opacity(1., 1.) }, 1.);
-        assert_eq!(unsafe { vp_overlay_material_opacity(2., -1.) }, 0.);
+        assert_eq!(unsafe { vp_overlay_material_opacity(-1.) }, 0.);
+        assert_eq!(unsafe { vp_overlay_material_opacity(2.) }, 1.);
     }
 }

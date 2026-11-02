@@ -62,9 +62,9 @@ work around company policy to launch a preview.
   handles nonactivation, work-area placement and a separately owned backdrop.
   The public AppKit backdrop uses **NSVisualEffectView system blur plus white
   tint**, clipped at 16 DIP, not a claim of an identical Windows Gaussian kernel.
-  The material uses a light appearance, and transparency fades both the system
-  effect and tint; at 100% no opaque system material remains. Foreground text
-  and waveform do not inherit the background-transparency setting.
+  The material uses a light appearance; transparency changes the white tint,
+  not the system blur. Foreground text and waveform do not inherit the
+  background-transparency setting. The system may reduce transparency for accessibility.
   Reduce Transparency or unavailable blur retains the shared translucent body.
   Visual/nonactivation/mixed-display acceptance remains unperformed.
 - Cmd+V copies Unicode, attempts original-app restoration and falls back to

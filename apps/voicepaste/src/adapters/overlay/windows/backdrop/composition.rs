@@ -309,11 +309,15 @@ mod tests {
                     B: 255
                 }
             );
+            assert_eq!(host.1.blur.Opacity().unwrap(), 1.0);
             assert_eq!(
                 host.1.root.Opacity().unwrap(),
                 1.0,
                 "transparency belongs to tint, not foreground"
             );
+            host.1.transition(0.4, 30.).unwrap();
+            assert_eq!(host.1.root.Opacity().unwrap(), 0.4);
+            assert_eq!(host.1.blur.Opacity().unwrap(), 1.0);
         }
     }
 }
