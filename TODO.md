@@ -193,6 +193,10 @@ VoicePaste entry was still enabled; the application also opened Settings on top.
 The duplicate opening is fixed. Ad-hoc code-identity mismatch is a plausible
 cause of stale permission and nonworking keys, not yet confirmed on this Mac;
 stable signing and permission persistence across rebuilt versions remain open.
+User subsequently confirmed recording keys work after removing and re-adding
+VoicePaste in Accessibility on that Mac. This supports a stale permission entry
+as the cause for that build; exact TCC identity and persistence across future
+rebuilds are still unverified. Escape and automatic paste need separate confirmation.
 
 Поточний стан: recording/runtime, single-key controls/Escape, GPUI Settings/overlay,
 whisper.cpp/Metal worker, approved GGML/VAD provisioning, Cmd+V та statistics
