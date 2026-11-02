@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  Turn speech into text in any app. Start and stop with a hotkey; Whisper transcribes locally and pastes your words where you're typing.
+  Built to make interacting with agentic tools several times faster, VoicePaste lets you dictate prompts, code, commands and messages for vibe coding, computer use, and chats with AI agents. Whisper transcribes locally and pastes your words wherever you're typing.
 </p>
 
 <p align="center">
