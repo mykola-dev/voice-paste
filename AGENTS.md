@@ -13,10 +13,14 @@
   are current. Prototype source was removed; open work is `TODO.md`
   (`RustMigration/TODO.md` is a compatibility link).
 - Record defects instead of copying them or silently changing visible behavior.
-- After completing a user-visible feature or fix, add a concise English one-line
-  bullet to `CHANGELOG.md` under `[Unreleased]`. Describe the user-facing result,
-  merge related entries and avoid duplicates, internal refactors and unverified
-  claims. Do not move entries into a numbered release until release is requested.
+- After completing a user-visible feature or fix, add or merge a concise English
+  one-line bullet in `CHANGELOG.md` under `[Unreleased]`. Treat the changelog as a
+  curated product summary, not a commit/session log: include only material
+  user-visible changes and omit routine maintenance, implementation details,
+  duplicates and unverified claims. Group entries under nonempty `### Features`,
+  `### Improvements` and `### Fixes` sections; order sections and bullets by user
+  impact, not implementation, platform or commit chronology. Do not move entries
+  into a numbered release until release is requested.
 
 ## NON-NEGOTIABLE: ONE SHARED APPLICATION, NARROW PLATFORM ADAPTERS
 

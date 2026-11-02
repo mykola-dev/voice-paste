@@ -33,18 +33,29 @@ discard Settings drafts, download models or install SDKs without permission.
 
 ## Prepare
 
-1. Review `Unreleased` against the actual changes. Keep short English one-line
-   user-facing bullets; combine duplicates, remove implementation noise and verify
-   claims. Do not turn known open defects into claims of fixes. No unrelated code
-   cleanup, dependency upgrades or settings/default changes as part of release.
-2. Require meaningful release notes. Rename `## [Unreleased]` to
+1. Review `Unreleased` against the actual user-visible changes; do not copy a commit,
+   PR, session or platform-by-platform inventory. Curate and consolidate related
+   work into short English one-line bullets, with one bullet per distinct user
+   benefit. Omit routine maintenance, implementation detail, duplicates and
+   low-value noise; verify every claim and do not present known open defects as
+   fixes. Keep the notes concise (often 3–8 bullets, not a quota).
+2. Organize notes under nonempty `### Features`, `### Improvements` and `### Fixes`
+   sections: new capabilities, better existing workflows/behavior, and corrected
+   broken behavior, respectively. Order sections and bullets by user impact and
+   visibility, leading with the release's most valuable changes and leaving narrow
+   edge cases or polish lower. Category order is flexible when a major fix matters
+   more than a minor feature. Combine cross-platform changes when they deliver the
+   same outcome; retain separate notes only when the user-visible results differ.
+   Do not add unrelated code cleanup, dependency upgrades or settings/default
+   changes as part of release.
+3. Require meaningful release notes. Rename `## [Unreleased]` to
    `## [VERSION] - YYYY-MM-DD` using the actual release date, and insert a fresh
    empty `## [Unreleased]` above it. Preserve earlier release notes.
-3. Update `[workspace.package].version` in root `Cargo.toml` and corresponding local
+4. Update `[workspace.package].version` in root `Cargo.toml` and corresponding local
    workspace package versions in `Cargo.lock`, without upgrading dependencies.
    Inspect the diff for stale version references; do not rewrite historical notes,
    protocol versions, third-party versions or unrelated test fixtures.
-4. Validate the exact release body with
+5. Validate the exact release body with
    `cargo xtask release-notes --tag vVERSION`. It must contain only this release.
 
 ## Validate

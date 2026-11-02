@@ -5,8 +5,11 @@
 <h1 align="center">Voice Paste 2</h1>
 
 <p align="center">
-  <em>Speak. Transcribe. Done.</em><br>
-  Local voice dictation that doesn't stop on silence.
+  <em>Speak. Stop. Paste.</em>
+</p>
+
+<p align="center">
+  Turn speech into text in any app. Start and stop with a hotkey; Whisper transcribes locally and pastes your words where you're typing.
 </p>
 
 <p align="center">
