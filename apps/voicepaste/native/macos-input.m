@@ -17,6 +17,7 @@ typedef struct { int32_t pid; } VPToggle;
 @property(nonatomic) uint64_t cancelSession;
 @property(nonatomic) bool overflow;
 @property(nonatomic) bool disabled;
+@property(nonatomic) bool active;
 @property(nonatomic) uint32_t count;
 @property(nonatomic) VPToggle *queue;
 @property(nonatomic) uint8_t *pressed;
@@ -37,12 +38,12 @@ static CGEventRef vp_key_event(CGEventTapProxy proxy, CGEventType type, CGEventR
     (void)proxy;
     VPInput *input = (__bridge VPInput *)raw;
     if (type == kCGEventTapDisabledByTimeout || type == kCGEventTapDisabledByUserInput) {
-        input.disabled = YES;
+        if (input.active) input.disabled = YES;
         input.held = NO;
         input.escapeHeld = NO;
         input.functionConsumed = NO;
-        vp_refresh_keys(input);
-        CGEventTapEnable(input.tap, true);
+        // Repair and resynchronize outside the event callback. An intentionally
+        // disabled staged replacement must never re-enable itself here.
         return event;
     }
     uint16_t key = (uint16_t)CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
@@ -69,6 +70,14 @@ static CGEventRef vp_key_event(CGEventTapProxy proxy, CGEventType type, CGEventR
     CGEventFlags own = input.key == 62 ? kCGEventFlagMaskControl : input.key == 61 ? kCGEventFlagMaskAlternate : 0;
     if (down) {
         if (!input.held) {
+            // Another tap can consume a key-up. Discard stale tracked downs so
+            // an unrelated old key cannot block every subsequent hotkey.
+            for (uint16_t k = 0; k < 128 && input.otherKeys; k++) {
+                if (input.pressed[k] && !CGEventSourceKeyState(kCGEventSourceStateCombinedSessionState, k)) {
+                    input.pressed[k] = 0;
+                    input.otherKeys--;
+                }
+            }
             CGEventFlags all = CGEventGetFlags(event);
             input.held = YES;
             input.contaminated = input.otherKeys != 0 || (modifiers & ~own) != 0 || (input.key == 62 && (all & 0x1)) || (input.key == 61 && (all & 0x20));
@@ -87,26 +96,28 @@ static CGEventRef vp_key_event(CGEventTapProxy proxy, CGEventType type, CGEventR
     return event;
 }
 
-void *vp_input_create(uint16_t key, bool prompt) {
+void *vp_input_create(uint16_t key, bool prompt, uint32_t *error) {
     NSCAssert(NSThread.isMainThread, @"input creation must be on main thread");
-    if (key != 62 && key != 61 && key != 100 && key != 111) return NULL;
+    *error = 0;
+    if (key != 62 && key != 61 && key != 100 && key != 111) { *error = 1; return NULL; }
     NSDictionary *options = @{(__bridge NSString *)kAXTrustedCheckOptionPrompt: @(prompt)};
     if (!AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options)) {
         if (prompt) [NSWorkspace.sharedWorkspace openURL:[NSURL URLWithString:@"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"]];
-        return NULL;
+        *error = 2; return NULL;
     }
     VPInput *input = [VPInput new];
     input.key = key;
     input.queue = calloc(8, sizeof(VPToggle));
     input.pressed = calloc(128, 1);
-    if (!input.queue || !input.pressed) {free(input.queue);free(input.pressed);return NULL;}
+    if (!input.queue || !input.pressed) {free(input.queue);free(input.pressed);*error = 3;return NULL;}
     vp_refresh_keys(input);
     CGEventMask mask = CGEventMaskBit(kCGEventKeyDown) | CGEventMaskBit(kCGEventKeyUp) | CGEventMaskBit(kCGEventFlagsChanged);
     input.tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap, kCGEventTapOptionDefault, mask, vp_key_event, (__bridge void *)input);
-    if (!input.tap) { free(input.queue); free(input.pressed); return NULL; }
+    if (!input.tap) { free(input.queue); free(input.pressed); *error = 4; return NULL; }
     input.source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, input.tap, 0);
-    if (!input.source) { CFRelease(input.tap); free(input.queue); free(input.pressed); return NULL; }
+    if (!input.source) { CFRelease(input.tap); free(input.queue); free(input.pressed); *error = 3; return NULL; }
     CFRunLoopAddSource(CFRunLoopGetMain(), input.source, kCFRunLoopCommonModes);
+    input.active = YES;
     CGEventTapEnable(input.tap, true);
     return (__bridge_retained void *)input;
 }
@@ -117,15 +128,25 @@ void vp_input_arm(void *raw, uint64_t session) {
 }
 void vp_input_active(void *raw, bool active) {
     VPInput *input = (__bridge VPInput *)raw;
+    input.active = active;
+    if (active) vp_refresh_keys(input);
+    else { input.held = NO; input.escapeHeld = NO; input.functionConsumed = NO; }
     CGEventTapEnable(input.tap, active);
 }
 
 uint32_t vp_input_drain(void *raw, int32_t *pids, uint32_t *flags, uint64_t *cancelSession) {
     VPInput *input = (__bridge VPInput *)raw;
+    bool invalid = !CFMachPortIsValid(input.tap);
+    if (!invalid && input.active && !CGEventTapIsEnabled(input.tap)) {
+        input.disabled = YES;
+        input.held = NO; input.escapeHeld = NO; input.functionConsumed = NO;
+        vp_refresh_keys(input);
+        CGEventTapEnable(input.tap, true);
+    }
     uint32_t count = input.count;
     for (uint32_t i = 0; i < count; i++) pids[i] = input.queue[i].pid;
     *cancelSession = input.cancelSession;
-    *flags = (input.overflow ? 2 : 0) | (input.disabled ? 4 : 0);
+    *flags = (input.overflow ? 2 : 0) | (input.disabled ? 4 : 0) | (invalid ? 8 : 0);
     input.count = 0; input.cancelSession = 0; input.overflow = NO; input.disabled = NO;
     return count;
 }
@@ -167,13 +188,28 @@ bool vp_paste_post(uint32_t *error) {
     @autoreleasepool {
         *error = 0;
         if (!CGPreflightPostEventAccess()) { *error = 3; return false; }
-        CGEventRef down = CGEventCreateKeyboardEvent(NULL, 9, true);
-        CGEventRef up = CGEventCreateKeyboardEvent(NULL, 9, false);
-        if (!down || !up) { if (down) CFRelease(down); if (up) CFRelease(up); *error = 4; return false; }
+        CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+        if (!source) { *error = 4; return false; }
+        CGEventRef commandDown = CGEventCreateKeyboardEvent(source, 55, true);
+        CGEventRef down = CGEventCreateKeyboardEvent(source, 9, true);
+        CGEventRef up = CGEventCreateKeyboardEvent(source, 9, false);
+        CGEventRef commandUp = CGEventCreateKeyboardEvent(source, 55, false);
+        if (!commandDown || !down || !up || !commandUp) {
+            if (commandDown) CFRelease(commandDown);
+            if (down) CFRelease(down);
+            if (up) CFRelease(up);
+            if (commandUp) CFRelease(commandUp);
+            CFRelease(source); *error = 4; return false;
+        }
+        CGEventSetFlags(commandDown, kCGEventFlagMaskCommand);
         CGEventSetFlags(down, kCGEventFlagMaskCommand);
-        CGEventSetFlags(up, 0);
-        CGEventPost(kCGHIDEventTap, down); CGEventPost(kCGHIDEventTap, up);
-        CFRelease(down); CFRelease(up);
+        CGEventSetFlags(up, kCGEventFlagMaskCommand);
+        CGEventSetFlags(commandUp, 0);
+        CGEventPost(kCGHIDEventTap, commandDown);
+        CGEventPost(kCGHIDEventTap, down);
+        CGEventPost(kCGHIDEventTap, up);
+        CGEventPost(kCGHIDEventTap, commandUp);
+        CFRelease(commandDown); CFRelease(down); CFRelease(up); CFRelease(commandUp); CFRelease(source);
         return true; // Posted, not a claim that the target accepted the paste.
     }
 }

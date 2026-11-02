@@ -184,6 +184,11 @@
 
 ## macOS: authorized development on `macOS-2`
 
+User reported on the corporate Mac: recording hotkeys (including F12 and Right
+Option), Escape during recording, and automatic Cmd+V do not work; clipboard
+copy succeeds. This supersedes prior host-contract evidence. The actual event-tap
+and paste failure modes and real-device acceptance remain unconfirmed.
+
 Поточний стан: recording/runtime, single-key controls/Escape, GPUI Settings/overlay,
 whisper.cpp/Metal worker, approved GGML/VAD provisioning, Cmd+V та statistics
 підключені. Для `dc90085` [CI 41187550557](https://github.com/mykola-dev/voice-paste/actions/runs/41187550557)

@@ -60,11 +60,18 @@ void *vp_menu_create(const uint8_t *png, size_t length, const uint8_t *openPng, 
     if (!host.item.button) return NULL;
     NSImage *image = [[NSImage alloc] initWithData:[NSData dataWithBytes:png length:length]];
     if (!image) { [NSStatusBar.systemStatusBar removeStatusItem:host.item]; return NULL; }
-    image.size = NSMakeSize(18, 18);
+    NSSize idleSize = image.size;
+    if (idleSize.width <= 0 || idleSize.height <= 0) { [NSStatusBar.systemStatusBar removeStatusItem:host.item]; return NULL; }
+    CGFloat idleScale = 18.0 / MAX(idleSize.width, idleSize.height);
+    image.size = NSMakeSize(idleSize.width * idleScale, idleSize.height * idleScale);
     image.template = NO;
     NSImage *recordingImage = [[NSImage alloc] initWithData:[NSData dataWithBytes:openPng length:openLength]];
     if (!recordingImage) { [NSStatusBar.systemStatusBar removeStatusItem:host.item]; return NULL; }
-    recordingImage.size = NSMakeSize(18,18); recordingImage.template = NO;
+    NSSize recordingSize = recordingImage.size;
+    if (recordingSize.width <= 0 || recordingSize.height <= 0) { [NSStatusBar.systemStatusBar removeStatusItem:host.item]; return NULL; }
+    CGFloat recordingScale = 18.0 / MAX(recordingSize.width, recordingSize.height);
+    recordingImage.size = NSMakeSize(recordingSize.width * recordingScale, recordingSize.height * recordingScale);
+    recordingImage.template = NO;
     host.idleImage = image; host.recordingImage = recordingImage;
     host.item.button.image = image;
     host.item.button.toolTip = @"VoicePaste — local dictation";

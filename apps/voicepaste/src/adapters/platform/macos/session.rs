@@ -17,6 +17,7 @@ pub(super) struct SessionHost {
     next_keys: Option<input::Input>,
     next_key_retry: Instant,
     keys_enabled: bool,
+    initial_key_error: Option<String>,
 }
 
 fn intents(batch: input::Batch) -> NativeIntents {
@@ -43,17 +44,25 @@ impl SessionHost {
         if !settings_only && preview {
             host.enable_capture();
         }
+        let (keys, initial_key_error) = if settings_only {
+            (None, None)
+        } else {
+            match input::Input::attach(initial, true) {
+                Ok(keys) => (Some(keys), None),
+                Err(error) => {
+                    storage.log(&error);
+                    (None, Some(error))
+                }
+            }
+        };
         Ok(Self {
             host,
             storage,
-            keys: if settings_only {
-                None
-            } else {
-                input::Input::attach(initial, true).ok()
-            },
+            keys,
             next_keys: None,
             next_key_retry: Instant::now() + Duration::from_secs(2),
             keys_enabled: !settings_only,
+            initial_key_error,
         })
     }
 
@@ -83,10 +92,26 @@ impl SessionHost {
         if let Some(keys) = &self.keys {
             batch.merge(keys.drain());
         }
+        let invalid_tap = batch.invalid;
+        if invalid_tap {
+            self.storage
+                .log("Keyboard event tap became invalid; reconnecting.");
+            self.keys = None;
+            self.next_key_retry = Instant::now();
+            batch.warning = true;
+        }
         if native.toggle {
             batch.targets.push(FocusTarget::capture());
         }
         let mut result = intents(batch);
+        if invalid_tap {
+            result.warning = Some(
+                "Keyboard event tap became invalid; reconnecting recording keys and Escape.".into(),
+            );
+        }
+        if let Some(error) = self.initial_key_error.take() {
+            result.warning = Some(error);
+        }
         result.quit = native.quit;
         result.settings = native.settings;
         result.cancel = native.cancel.or(result.cancel);

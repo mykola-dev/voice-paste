@@ -60,7 +60,10 @@ jobs:
       - name: Lint macOS host
         run: cargo clippy --locked -p voicepaste -p voicepaste-stt-worker --all-targets -- -D warnings
       - name: Test macOS host and worker contracts (no GUI interaction or model downloads)
-        run: cargo test --locked -p voicepaste -p voicepaste-stt-worker --bins
+        run: |
+          cargo test --locked -p voicepaste -p voicepaste-stt-worker --bins
+          xcrun clang -fobjc-arc -Wall -Wextra -Werror tests/macos-input-contract.m -framework AppKit -framework ApplicationServices -o build/cache/macos-input-contract
+          build/cache/macos-input-contract
       - uses: actions/upload-artifact@v5
         with:
           name: VoicePaste-macos-arm64-launch-preview-${{ github.sha }}

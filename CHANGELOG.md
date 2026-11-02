@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Preserved macOS menu-bar icon proportions and changed the default waveform amplification to 10× without overwriting saved values.
+- Improved macOS keyboard-tap recovery and Cmd+V event delivery, and report when global recording keys cannot be attached.
 - macOS model downloads now use verified, resumable GitHub Models assets instead of Hugging Face or Git LFS; Windows retains its original HTTPS source without fallback.
 - Model preparation now shows persistent progress with cancellation and error dialogs, and missing macOS models can be retried by starting recording.
 - Matched the macOS recording menu to Windows and corrected the overlay's top-right placement.

@@ -3,7 +3,7 @@ use crate::adapters::paste::FocusTarget;
 use std::{ffi::c_void, marker::PhantomData, ptr::NonNull, rc::Rc};
 use voicepaste_core::settings::{Hotkey, Settings};
 unsafe extern "C" {
-    fn vp_input_create(key: u16, prompt: bool) -> *mut c_void;
+    fn vp_input_create(key: u16, prompt: bool, error: *mut u32) -> *mut c_void;
     fn vp_input_arm(input: *mut c_void, session: u64);
     fn vp_input_active(input: *mut c_void, active: bool);
     fn vp_input_drain(
@@ -23,11 +23,13 @@ pub struct Batch {
     pub targets: Vec<FocusTarget>,
     pub cancel: Option<voicepaste_core::SessionId>,
     pub warning: bool,
+    pub invalid: bool,
 }
 impl Batch {
     pub fn merge(&mut self, mut batch: Self) {
         let remaining = 8usize.saturating_sub(self.targets.len());
         self.warning |= batch.warning || batch.targets.len() > remaining;
+        self.invalid |= batch.invalid;
         let take = batch.targets.len().min(remaining);
         self.targets.extend(batch.targets.drain(..take));
         self.cancel = batch.cancel.or(self.cancel);
@@ -51,9 +53,14 @@ impl Input {
         let key = recording_key(settings)?;
         // SAFETY: UI-thread creation transfers one native owner; callback never
         // calls Rust. Permission denial returns null without installing a tap.
-        let pointer = unsafe { vp_input_create(key, prompt) };
+        let mut error = 0;
+        let pointer = unsafe { vp_input_create(key, prompt, &mut error) };
         Ok(Self {
-            pointer: NonNull::new(pointer).ok_or("Cannot attach global recording keys. Grant VoicePaste access in System Settings → Privacy & Security → Accessibility; recording keys reconnect automatically after permission is granted.")?,
+            pointer: NonNull::new(pointer).ok_or_else(|| match error {
+                2 => "Cannot attach global recording keys: Accessibility access is not granted. Recording keys reconnect after access is granted.",
+                4 => "Cannot create the macOS keyboard event tap despite Accessibility being granted. Recording hotkeys and Escape are unavailable.",
+                _ => "Cannot initialize the macOS keyboard event tap. Recording hotkeys and Escape are unavailable.",
+            }.to_string())?,
             _main: PhantomData,
         })
     }
@@ -95,6 +102,7 @@ impl Input {
                 .collect(),
             cancel: (session != 0).then_some(voicepaste_core::SessionId(session)),
             warning: flags & 6 != 0,
+            invalid: flags & 8 != 0,
         }
     }
 }
@@ -133,11 +141,13 @@ mod tests {
             targets: (0..8).map(FocusTarget::from_pid).collect(),
             cancel: Some(voicepaste_core::SessionId(1)),
             warning: false,
+            invalid: false,
         };
         batch.merge(Batch {
             targets: (8..16).map(FocusTarget::from_pid).collect(),
             cancel: Some(voicepaste_core::SessionId(2)),
             warning: false,
+            invalid: false,
         });
         assert_eq!(batch.targets.len(), 8);
         assert!(batch.warning);

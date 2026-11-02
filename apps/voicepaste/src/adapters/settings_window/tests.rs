@@ -289,7 +289,7 @@ fn appearance_uses_one_slider_across_modes_and_preserves_draft_until_save(cx: &m
                 view.page = SettingsPage::Appearance;
                 view.transparency
                     .update(cx, |slider, cx| slider.set_value(73., window, cx));
-                assert_eq!(view.amplification.read(cx).value().start(), 30.);
+                assert_eq!(view.amplification.read(cx).value().start(), 10.);
                 view.amplification
                     .update(cx, |slider, cx| slider.set_value(50., window, cx));
             });

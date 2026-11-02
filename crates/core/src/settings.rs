@@ -52,7 +52,7 @@ impl Default for OverlayAppearance {
         Self {
             acrylic: true,
             transparency: 40,
-            waveform_amplification: 30,
+            waveform_amplification: 10,
         }
     }
 }
@@ -547,8 +547,17 @@ mod tests {
     #[test]
     fn waveform_amplification_defaults_validates_and_preserves_saved_settings() {
         let old = Settings::from_json("{}").unwrap();
-        assert_eq!(old.overlay_appearance().waveform_amplification, 30);
-        for gain in [1, 20, 30, 50] {
+        assert_eq!(old.overlay_appearance().waveform_amplification, 10);
+        for platform in [SettingsPlatform::Windows, SettingsPlatform::Macos] {
+            assert_eq!(
+                Settings::initial_for(platform)
+                    .unwrap()
+                    .overlay_appearance()
+                    .waveform_amplification,
+                10
+            );
+        }
+        for gain in [1, 10, 20, 30, 50] {
             let saved = Settings::from_json(&format!(
                 r#"{{"waveformAmplification":{gain},"overlayTransparency":57}}"#
             ))

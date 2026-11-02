@@ -77,7 +77,7 @@
   foreground share the transition; interrupted transitions reverse without a position
   jump. Exit retains the last content and does not delay recording, paste or cancel.
   The transition opacity multiplies the configured background alpha, not its setting.
-- Waveform amplification in Appearance is 1–50 in integer steps, default 30.
+- Waveform amplification in Appearance is 1–50 in integer steps, default 10.
   The audio meter supplies raw RMS. Display gain is raw RMS times the slider
   multiplier at every level, with no gain ramp or extra x2 amplification.
   The result is clamped before the existing 140 ms release; recorded PCM and
