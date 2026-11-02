@@ -1,4 +1,4 @@
-# Apple Silicon macOS preview
+# Apple Silicon macOS beta
 
 Development branch: `macOS-2`, based on `ab6c864` from `master`.
 The launch-only milestone is complete: the user confirmed a locally compiled
@@ -62,10 +62,9 @@ work around company policy to launch a preview.
   handles nonactivation, work-area placement and a separately owned backdrop.
   The public AppKit backdrop uses **NSVisualEffectView system blur plus white
   tint**, clipped at 16 DIP, not a claim of an identical Windows Gaussian kernel.
-  The material uses a light appearance; transparency varies the white tint
-  from opaque to transparent without fading the system blur. Foreground text and waveform do not inherit the
-  background-transparency setting. The system may reduce transparency for accessibility.
-  Reduce Transparency or unavailable blur retains the shared translucent body.
+   The material uses a light appearance and the overlay uses Acrylic at 100%
+   transparency; these controls are hidden on macOS. Foreground text and waveform
+   remain sharp. The system may reduce transparency for accessibility.
   Visual/nonactivation/mixed-display acceptance remains unperformed.
 - Cmd+V copies Unicode, attempts original-app restoration and falls back to
   current focus if restoration is unavailable. Posting permission/allocation
@@ -80,8 +79,9 @@ work around company policy to launch a preview.
   Temp recording ownership removes files on completion/cancel/orderly shutdown;
   abrupt-crash recovery is still an open task, not an implemented guarantee.
 
-Real microphone/TCC/hotkey/paste/Metal performance, M1 memory and visual behavior
-have **not** been accepted on a Mac. User requested completing development and
+Recording keys were confirmed on one Mac after refreshing its Accessibility entry.
+The complete microphone/TCC/hotkey/paste/Metal performance, M1 memory and visual matrix
+has **not** been accepted on a Mac. User requested completing development and
 automatic checks first, then one combined manual pass. Do not ask for slice-by-slice
 manual tests or describe a green CI as hardware acceptance.
 

@@ -121,7 +121,7 @@ fn ensure(
                         .map_err(|e| e.to_string())
                 },
                 |partial, mut offset| {
-                    progress.message(format!("Downloading {} / {}", model.name, artifact.path));
+                    progress.message(format!("Downloading {}", model.name));
                     progress.bytes(completed + offset);
                     let object = format!(
                         "/{}/resolve/{}/{}",

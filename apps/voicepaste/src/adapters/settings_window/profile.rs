@@ -9,6 +9,7 @@ pub(super) struct Profile {
     /// CT2 names its weight artifact; the GGML catalog contains one weight file.
     pub weight_path: Option<&'static str>,
     pub weight_description: &'static str,
+    pub show_material_controls: bool,
 }
 
 #[cfg(target_os = "windows")]
@@ -19,6 +20,7 @@ pub(super) const CURRENT: Profile = Profile {
     memory_hint: "Resident RAM is memory currently held in physical RAM. Model size is the selected model.bin file size, not RAM or VRAM usage; it is shown even before download.",
     weight_path: Some("model.bin"),
     weight_description: "",
+    show_material_controls: true,
 };
 
 #[cfg(target_os = "macos")]
@@ -29,6 +31,7 @@ pub(super) const CURRENT: Profile = Profile {
     memory_hint: "Host and STT worker resident RAM are measured separately. GGML file size is not total RAM or Metal memory usage.",
     weight_path: None,
     weight_description: " (full FP16 GGML)",
+    show_material_controls: false,
 };
 
 #[cfg(test)]

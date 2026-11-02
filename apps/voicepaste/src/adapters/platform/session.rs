@@ -64,7 +64,7 @@ pub(super) async fn ui_session(
     let overlay = cx.update(|cx| {
         OverlayWindow::open(
             &initial.indicator_color,
-            initial.overlay_appearance(),
+            crate::adapters::settings_window::overlay_appearance(&initial),
             levels,
             clock,
             cx,
@@ -194,7 +194,7 @@ pub(super) async fn ui_session(
                     message =
                         "Wait until dictation/download is idle, or cancel the download first."
                             .into();
-                } else if confirm(&settings.saved.model) {
+                } else if confirm(&download_label(&settings.saved.model)) {
                     download_consent.approve(&settings.saved.model);
                 }
             }
@@ -281,4 +281,26 @@ pub(super) async fn ui_session(
     lifecycle.close(overlay, cx);
     host.state(State::Idle);
     Ok(())
+}
+
+fn download_label(name: &str) -> String {
+    let platform = crate::adapters::settings_window::model_platform();
+    match voicepaste_core::models::find_for(name, platform) {
+        Ok(model) => format!(
+            "Whisper {} — {:.2} GiB",
+            model.name,
+            model.files.iter().map(|file| file.bytes).sum::<u64>() as f64 / 1_073_741_824.0
+        ),
+        Err(_) => name.to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod download_label_tests {
+    #[test]
+    fn confirmation_identifies_model_and_size() {
+        let label = super::download_label("large-v2");
+        assert!(label.starts_with("Whisper large-v2 — "));
+        assert!(label.ends_with(" GiB"));
+    }
 }

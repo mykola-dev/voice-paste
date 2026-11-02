@@ -126,10 +126,7 @@ fn confirm_download(model: &str) -> bool {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         IDOK, MB_ICONQUESTION, MB_OKCANCEL, MessageBoxW,
     };
-    let text: Vec<u16> = format!("Download or resume {model}? Files will be verified before use.")
-        .encode_utf16()
-        .chain(Some(0))
-        .collect();
+    let text: Vec<u16> = model.encode_utf16().chain(Some(0)).collect();
     let title: Vec<u16> = "Prepare selected model"
         .encode_utf16()
         .chain(Some(0))

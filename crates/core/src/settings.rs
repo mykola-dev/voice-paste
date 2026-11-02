@@ -175,6 +175,14 @@ impl Settings {
                 .unwrap_or(defaults.waveform_amplification),
         }
     }
+    pub fn overlay_appearance_for(&self, platform: SettingsPlatform) -> OverlayAppearance {
+        let mut appearance = self.overlay_appearance();
+        if platform == SettingsPlatform::Macos {
+            appearance.acrylic = true;
+            appearance.transparency = 100;
+        }
+        appearance
+    }
     pub fn initial() -> Result<Self, String> {
         Self::from_json(INITIAL_SETTINGS)
     }
@@ -506,6 +514,33 @@ mod tests {
         assert_eq!(
             Settings::from_json(&serde_json::to_string(&enabled).unwrap()).unwrap(),
             enabled
+        );
+    }
+
+    #[test]
+    fn macos_material_policy_preserves_saved_values_and_waveform() {
+        let saved = Settings::from_json_for(
+            r#"{"overlayAcrylic":false,"overlayTransparency":17,"waveformAmplification":7}"#,
+            SettingsPlatform::Macos,
+        )
+        .unwrap();
+        let appearance = saved.overlay_appearance_for(SettingsPlatform::Macos);
+        assert!(appearance.acrylic);
+        assert_eq!(appearance.transparency, 100);
+        assert_eq!(appearance.waveform_amplification, 7);
+        assert_eq!(saved.overlay_acrylic, Some(false));
+        assert_eq!(saved.overlay_transparency, Some(17));
+        let initial = Settings::initial_for(SettingsPlatform::Macos).unwrap();
+        assert_eq!(
+            initial
+                .overlay_appearance_for(SettingsPlatform::Macos)
+                .transparency,
+            100
+        );
+        assert!(
+            initial
+                .overlay_appearance_for(SettingsPlatform::Macos)
+                .acrylic
         );
     }
 

@@ -6,11 +6,11 @@
 
 <p align="center">
   <em>Speak. Transcribe. Done.</em><br>
-  Windows voice dictation that doesn't stop on silence.
+  Local voice dictation that doesn't stop on silence.
 </p>
 
 <p align="center">
-  <a href="https://github.com/mykola-dev/voice-agent/releases"><img src="https://img.shields.io/badge/Download-Windows-0078D6?logo=windows&logoColor=white" alt="Download for Windows"></a>
+  <a href="https://github.com/mykola-dev/voice-paste/releases"><img src="https://img.shields.io/badge/Download-Windows-0078D6?logo=windows&logoColor=white" alt="Download for Windows"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/Built_with-Rust-CE422B?logo=rust&logoColor=white" alt="Built with Rust"></a>
 </p>
 
@@ -22,13 +22,13 @@ Press a hotkey, speak naturally, press it again — your words are transcribed
 and pasted into the active app. Pause as long as you need: you decide when to stop.
 
 - 🌍 English, Ukrainian and bilingual dictation.
-- ⚡ Local Whisper transcription with NVIDIA CUDA acceleration.
-- 🫥 Lives in the tray; the recording overlay stays out of your way.
+- ⚡ Local Whisper transcription with NVIDIA CUDA on Windows or Metal on Apple Silicon.
+- 🫥 Lives in the system tray or menu bar; the recording overlay stays out of your way.
 - 📦 Portable Rust app. No Python or .NET installation.
 
-## 🚀 Quick start
+## 🚀 Quick start: Windows
 
-1. Download the **Windows x64 ZIP** from [Releases](https://github.com/mykola-dev/voice-agent/releases).
+1. Download the **Windows x64 ZIP** from [Releases](https://github.com/mykola-dev/voice-paste/releases).
 2. Extract it to a writable folder and run **`VoicePaste.exe`**. Keep `runtime/` alongside it.
 3. Allow the first model download to finish — internet is needed for setup.
 4. Focus your editor, chat or terminal. Press <kbd>ScrollLock</kbd>, speak,
@@ -53,6 +53,39 @@ Requires Rust and MSVC/Windows SDK; native runtime files are acquired automatica
 No PowerShell or Bash is needed. See the
 [Windows build guide](docs/build-windows.md#build-and-checks-windows-x64).
 
+### macOS beta: build and install
+
+The Apple Silicon port is a **beta**, built locally from the `macOS-2` branch.
+It requires macOS 26 or later, an Apple Silicon Mac, Git, and full Xcode with
+its Metal tools selected and set up. Intel Macs are not supported. Allow disk
+space for the build and a full-size Whisper model (roughly 1.6–3.1 GB, plus
+temporary files). A real-device acceptance pass is still in progress.
+
+In Terminal:
+
+```sh
+git clone --branch macOS-2 https://github.com/mykola-dev/voice-paste.git
+cd voice-paste
+bash build-macos-preview.sh
+open build/release/VoicePaste.app
+```
+
+The script asks before downloading a repository-local Rust toolchain or CMake
+if needed; Cargo also fetches the locked build dependencies. It does not install
+Xcode or download speech models. On first launch, approve the model download
+when prompted. Grant Accessibility access for the recording hotkey and paste,
+and Microphone access when starting a recording. The default key is
+<kbd>Right Option</kbd>; press it again to stop, or <kbd>Esc</kbd> to cancel.
+Settings and Quit are available from the menu-bar icon.
+
+This beta is ad-hoc signed, not notarized, and managed Macs may block it. Do not
+change security policies to run it. After rebuilding, an old Accessibility entry
+may need to be removed and the new app added, subject to your device's policy.
+Settings and models are stored under `~/Library/Application Support/VoicePaste/`.
+To update, quit the app, preserve that data, and move the existing
+`build/release/VoicePaste.app` aside before pulling and running the build script
+again. See the [macOS beta guide](docs/macos-preview.md) for details and known limits.
+
 ## 🧰 Stack & acknowledgements
 
 Built with **Rust**, using [GPUI](https://www.gpui.rs/) for GPU-accelerated UI
@@ -62,14 +95,13 @@ making these open-source tools available! ❤️
 
 ## 🗺️ Roadmap
 
-- [ ] macOS port.
+- [x] Apple Silicon macOS port — **beta**; device acceptance and distribution remain in progress.
 - [ ] Linux port.
 
-Windows is the only currently supported platform. See [TODO.md](TODO.md) for
-known issues and other unfinished work.
+See [TODO.md](TODO.md) for known issues and remaining beta work.
 
 <p align="center">
   <a href="docs/README.md">📖 Documentation</a> ·
   <a href="TODO.md">🚧 Known issues &amp; unfinished work</a> ·
-  <a href="https://github.com/mykola-dev/voice-agent/issues">🐛 Report a bug</a>
+  <a href="https://github.com/mykola-dev/voice-paste/issues">🐛 Report a bug</a>
 </p>

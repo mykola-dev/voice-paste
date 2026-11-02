@@ -94,7 +94,8 @@ pub(crate) fn prepare(
     let entry = entry()?;
     entry.validate(artifact)?;
     let directory = partial.parent().ok_or("Missing model staging directory")?;
-    for (index, part) in entry.parts.iter().enumerate() {
+    let mut completed = 0;
+    for part in &entry.parts {
         check_cancel(cancel)?;
         let path = directory.join(format!("{}.partial", part.name));
         let pinned = Artifact {
@@ -102,13 +103,9 @@ pub(crate) fn prepare(
             bytes: part.bytes,
             sha256: part.sha256.clone(),
         };
-        status.message(format!(
-            "Verifying {} part {}/{}",
-            artifact.path,
-            index + 1,
-            entry.parts.len()
-        ));
+        status.message(format!("Verifying {}", artifact.path));
         if verify(&path, &pinned, cancel)? {
+            completed += part.bytes;
             continue;
         }
         if !allow_network {
@@ -126,13 +123,13 @@ pub(crate) fn prepare(
             offset = 0;
         }
         drop(file);
-        status.message(format!(
-            "Downloading {} part {}/{}; resumable",
-            artifact.path,
-            index + 1,
-            entry.parts.len()
-        ));
-        status.track_file(path.clone(), part.bytes);
+        let name = artifact
+            .path
+            .strip_prefix("ggml-")
+            .unwrap_or(&artifact.path);
+        let name = name.strip_suffix(".bin").unwrap_or(name);
+        status.message(format!("Downloading {name}"));
+        status.track_file_range(path.clone(), completed, artifact.bytes);
         struct Active<'a>(&'a Progress);
         impl Drop for Active<'_> {
             fn drop(&mut self) {
@@ -149,6 +146,7 @@ pub(crate) fn prepare(
                 part.name
             ));
         }
+        completed += part.bytes;
     }
     check_cancel(cancel)?;
     // A prior complete partial may have been corrupt. Only verified parts can

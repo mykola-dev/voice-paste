@@ -1,8 +1,14 @@
 # Cross-platform readiness
 
-Статус: 2026-10-29, заплановану Windows-only source isolation виконано. Це карта робіт, не заява про
-підтримку macOS/Linux. Контракт функцій: [behavior.md](behavior.md); правила
+Статус: macOS Apple Silicon доступний як **бета** на гілці `macOS-2`; Linux
+залишається майбутнім портом. Спільний session coordinator та основні lifecycle
+policies реалізовані на обох платформах; device acceptance і distribution ще відкриті.
+Актуальний backlog — [TODO.md](../TODO.md). Контракт функцій: [behavior.md](behavior.md); правила
 залежностей: [engineering-principles.md](engineering-principles.md).
+
+Матриця й етапи нижче — **історичний snapshot Windows source isolation від
+2026-10-29**, не поточний опис підтримки платформ. Новіший стан macOS і докази
+перевірок наведені в [macOS beta guide](macos-preview.md) та TODO.
 
 ## Мета і незмінні правила
 

@@ -27,6 +27,15 @@ mod profile;
 use profile::CURRENT as PROFILE;
 const PLATFORM: SettingsPlatform = PROFILE.platform;
 
+pub(super) fn overlay_appearance(
+    settings: &Settings,
+) -> voicepaste_core::settings::OverlayAppearance {
+    settings.overlay_appearance_for(PLATFORM)
+}
+pub(super) fn model_platform() -> SettingsPlatform {
+    PLATFORM
+}
+
 pub struct SettingsWindow {
     handle: AnyWindowHandle,
     view: Entity<SettingsView>,
@@ -978,7 +987,7 @@ impl Render for SettingsView {
             SettingsPage::Appearance => vec![
                 settings_group(
                     vec![
-                        div().id("overlay-acrylic").test_support().child(
+                        gpui_kit::div().when(PROFILE.show_material_controls, |container| container.child(div().id("overlay-acrylic").test_support().child(
                             Checkbox::new("acrylic")
                                 .label("Acrylic")
                                 .checked(self.draft.overlay_appearance().acrylic)
@@ -987,9 +996,7 @@ impl Render for SettingsView {
                                     this.draft.overlay_acrylic = Some(*value);
                                     cx.notify();
                                 })),
-                        ).into_any_element(),
-                        hint("Frosted background where supported; otherwise uses translucency.", cx).into_any_element(),
-                        row(
+                        )).child(hint("Frosted background where supported; otherwise uses translucency.", cx)).child(row(
                             "Background transparency",
                             div().id("overlay-transparency").test_support().flex().flex_col().gap_2()
                                 .child(div().flex().items_center().gap_3()
@@ -999,7 +1006,7 @@ impl Render for SettingsView {
                                     .child(format!("{}%", self.transparency.read(cx).value().start().round() as u8)))
                                 .child(hint("0%: opaque tint · 100%: no background. Acrylic keeps blur between the endpoints. Applies to both modes; timer and waveform stay sharp.", cx)),
                             narrow,
-                        ).into_any_element(),
+                        ))).into_any_element(),
                         row(
                             "Waveform amplification",
                             div().id("waveform-amplification").test_support().flex().flex_col().gap_2()

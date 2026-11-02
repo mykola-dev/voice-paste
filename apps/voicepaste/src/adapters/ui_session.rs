@@ -345,7 +345,11 @@ impl SettingsSession {
                 }
                 if let Ok(value) = &result {
                     self.saved = value.clone();
-                    overlay.appearance(&value.indicator_color, value.overlay_appearance(), cx);
+                    overlay.appearance(
+                        &value.indicator_color,
+                        super::settings_window::overlay_appearance(value),
+                        cx,
+                    );
                 }
                 if let Some(window) = self.window.as_ref().filter(|window| window.id == id) {
                     window.saved(&result, cx);

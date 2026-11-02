@@ -129,7 +129,7 @@ pub(crate) fn publish(
 /// current staging file. This is a transport policy, not a platform decision.
 enum Measurement {
     Cumulative { bytes: AtomicU64, total: u64 },
-    StagingFile(Mutex<Option<(PathBuf, u64)>>),
+    StagingFile(Mutex<Option<(PathBuf, u64, u64)>>),
 }
 
 pub(crate) struct Progress {
@@ -198,7 +198,17 @@ impl Progress {
         if let Measurement::StagingFile(file) = &self.measurement
             && let Ok(mut file) = file.lock()
         {
-            *file = Some((path, total));
+            *file = Some((path, 0, total));
+            self.indeterminate.store(false, Ordering::Relaxed);
+        }
+    }
+
+    #[allow(dead_code, reason = "Multipart staging is used on macOS")]
+    pub fn track_file_range(&self, path: PathBuf, completed: u64, total: u64) {
+        if let Measurement::StagingFile(file) = &self.measurement
+            && let Ok(mut file) = file.lock()
+        {
+            *file = Some((path, completed, total));
             self.indeterminate.store(false, Ordering::Relaxed);
         }
     }
@@ -232,7 +242,9 @@ impl Progress {
             Measurement::StagingFile(file) if self.downloading() => {
                 // Drop the lock before filesystem IO.
                 let file = file.lock().ok().and_then(|file| file.clone());
-                file.map(|(path, total)| (fs::metadata(path).map_or(0, |m| m.len()), total))
+                file.map(|(path, completed, total)| {
+                    (completed + fs::metadata(path).map_or(0, |m| m.len()), total)
+                })
             }
             Measurement::StagingFile(_) => None,
         };
@@ -674,6 +686,9 @@ mod tests {
         progress.message("Downloading".into());
         progress.set_downloading(true);
         assert_eq!(progress.snapshot(), "Downloading — 1.0 / 2.0 MiB");
+        progress.track_file_range(path.clone(), 2 * 1048576, 4 * 1048576);
+        assert_eq!(progress.snapshot(), "Downloading — 3.0 / 4.0 MiB");
+        progress.track_file(path.clone(), 2 * 1048576);
         assert_eq!(
             hash(&path, &AtomicBool::new(false)).unwrap(),
             format!("{:X}", Sha256::digest(&data))

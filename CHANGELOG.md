@@ -1,6 +1,7 @@
 # Changelog
 
 ## [Unreleased]
+- macOS uses a transparent Acrylic overlay without exposing material controls; model download prompts and progress are simpler on both platforms.
 
 - macOS reuses verification for unchanged model files instead of rechecking them on every startup.
 - Acrylic overlays retain blur at 100% transparency while the white tint follows the full transparency range on Windows and macOS.

@@ -1,7 +1,7 @@
 # VoicePaste — відкриті задачі
 
 Канонічний backlog продукту, перенесений із `RustMigration/TODO.md`.
-Оновлено 2026-10-31: архітектурний review та залишок macOS-порту.
+Оновлено 2026-11-02: macOS-порт доступний як бета; нижче залишено перевірки та ризики.
 Результати й межі перевірок: [shared verification](docs/verification-2026-10-31.md)
 та [earlier Windows verification](docs/verification-2026-10-29.md).
 Контракт: [behavior](docs/behavior.md); defaults і saved prompts не змінювати.
@@ -11,7 +11,7 @@
 **Обов'язкова архітектура — common domain/application/orchestration/GPUI та
 вузькі native adapters, аналог `expect`/`actual`. Не розмножувати сценарії й не
 розсипати `if Windows/macOS` або `cfg` по бізнес-логіці та UI. Правило закріплено
-в [AGENTS.md](AGENTS.md). Поточний порт ще не відповідає йому повністю.**
+в [AGENTS.md](AGENTS.md).**
 
 - [x] **Об'єднати UI-session coordination.** Прибрати дублювання між
   `apps/voicepaste/src/adapters/platform/session.rs` і
@@ -182,7 +182,7 @@
   транзакцією на весь каталог; після preflight збій IO може залишити часткове
   оновлення. Locked-destination rejection/data preservation уже тестуються.
 
-## macOS: authorized development on `macOS-2`
+## macOS beta: development on `macOS-2`
 
 User reported on the corporate Mac: recording hotkeys (including F12 and Right
 Option), Escape during recording, and automatic Cmd+V do not work; clipboard
@@ -198,17 +198,17 @@ VoicePaste in Accessibility on that Mac. This supports a stale permission entry
 as the cause for that build; exact TCC identity and persistence across future
 rebuilds are still unverified. Escape and automatic paste need separate confirmation.
 
-Поточний стан: recording/runtime, single-key controls/Escape, GPUI Settings/overlay,
-whisper.cpp/Metal worker, approved GGML/VAD provisioning, Cmd+V та statistics
-підключені. Для `dc90085` [CI 41187550557](https://github.com/mykola-dev/voice-paste/actions/runs/41187550557)
-пройшов macOS Release/package/signature, clippy та host contracts. Windows:
-152 tests passed, 1 interactive ignored, clippy/Debug compile; runnable folders
-не оновлювали (`--no-deploy`). Це **не** завершення архітектури або реальна
-inference/device acceptance. Користувач підтвердив лише запуск ранішого локально
-зібраного Rust preview на corporate macOS 26.7.1. Downloaded CI apps там заблоковані.
+Поточний стан: recording/runtime, single-key controls/Escape, спільні GPUI
+Settings/overlay, whisper.cpp/Metal worker, GGML/VAD provisioning, Cmd+V та
+statistics реалізовані. Порт доступний для локальної збірки як **бета**, не як
+нотаризований release. [CI 41427969464](https://github.com/mykola-dev/voice-paste/actions/runs/41427969464)
+пройшов для `1c29481`; це не замінює real-device acceptance наступних змін.
+Користувач підтвердив запуск локально зібраного застосунку та роботу recording
+keys після повторного додавання Accessibility; downloaded CI apps на корпоративному
+Mac заблоковані. Інші непідтверджені сценарії залишаються нижче.
 
-- [ ] **Спочатку архітектурні виправлення вище**, потім фінальна автоматична
-  перевірка й один спільний ручний прогін, без проміжних slice-test прохань.
+- [x] **Спільна архітектура:** session coordinator і основні lifecycle policies
+  винесено в shared code; native effects залишаються в адаптерах.
 - [x] **Фінальні commits/CI.** Локальні `258c4f6` (ambiguous GGML rejection та
   запуск worker contracts у CI) і `24e6dbb` (combined acceptance guide) pushed
   разом зі shared-session/provisioning/bootstrap refactor. Windows: 189 tests
@@ -245,7 +245,7 @@ inference/device acceptance. Користувач підтвердив лише 
   on/off та unload/reload. Не зменшувати модель/beam/VAD/precision заради RAM.
   Поточна збірка на одному runner не кваліфікує M1 або обидві підтримувані macOS.
 - [ ] **TCC, recording keys та focus/paste.** Microphone/Accessibility allow,
-  deny/retry; Right Control/Right Option/F8/F12, repeats/chords, key replacement,
+  deny/retry; Right Option/Right Command/F8/F12, repeats/chords, key replacement,
   Escape/stale session, busy toggles. Перевірити Unicode, рівно один Cmd+V,
   original-app restoration/current-focus fallback, manual clipboard on failure
   та відсутність paste після shutdown. Target зараз app/PID, не стабільна AX
@@ -264,7 +264,7 @@ inference/device acceptance. Користувач підтвердив лише 
 - [ ] **Підсумкова acceptance/evidence.** Пройти один
   [combined local-device checklist](docs/macos-preview.md), записати результати
   й залишкові дефекти, оновити docs відповідно до фактичної архітектури. Не
-  називати порт завершеним через CI. Не merge/push master і не публікувати macOS
+  вважати бету кваліфікованою для production лише через CI. Не merge/push master і не публікувати macOS
   release без окремого запиту. Linux лишається поза scope.
 
 ## Відкладено за рішенням користувача
