@@ -1,6 +1,7 @@
 #import <AppKit/AppKit.h>
 #import <QuartzCore/QuartzCore.h>
 #include <stdbool.h>
+#include <math.h>
 
 @interface VPBackdropPanel : NSPanel
 @end
@@ -13,6 +14,7 @@
 @property(nonatomic, strong) VPBackdropPanel *backdrop;
 @property(nonatomic, strong) NSVisualEffectView *effect;
 @property(nonatomic, strong) NSView *tint;
+@property(nonatomic) double materialAlpha;
 @end
 @implementation VPOverlay
 @end
@@ -39,6 +41,9 @@ void *vp_overlay_create(void *view) {
     owner.effect = [[NSVisualEffectView alloc] initWithFrame:NSMakeRect(0,0,224,100)];
     owner.effect.blendingMode = NSVisualEffectBlendingModeBehindWindow;
     owner.effect.material = NSVisualEffectMaterialPopover;
+    // The overlay is a white material even when the system uses Dark Mode.
+    // Otherwise Popover resolves to a dark, nearly opaque backdrop.
+    owner.effect.appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
     owner.effect.state = NSVisualEffectStateActive;
     owner.effect.wantsLayer = YES; owner.effect.layer.cornerRadius = 16; owner.effect.layer.masksToBounds = YES;
     owner.tint = [[NSView alloc] initWithFrame:owner.effect.bounds]; owner.tint.wantsLayer = YES;
@@ -53,6 +58,10 @@ void vp_overlay_origin(double x, double y, double width, double height, double *
     *bottom = y + height - 20 - 100;
 }
 
+double vp_overlay_material_opacity(double alpha, double animation) {
+    return fmax(0.0, fmin(1.0, alpha)) * fmax(0.0, fmin(1.0, animation));
+}
+
 bool vp_overlay_prepare(void *raw, bool blur, double alpha) {
     VPOverlay *owner = (__bridge VPOverlay *)raw;
     NSPoint mouse = NSEvent.mouseLocation; NSScreen *screen = NSScreen.mainScreen;
@@ -65,6 +74,7 @@ bool vp_overlay_prepare(void *raw, bool blur, double alpha) {
     [owner.foreground setFrame:frame display:NO]; [owner.backdrop setFrame:frame display:NO];
     bool material = blur && !NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceTransparency;
     owner.effect.hidden = !material;
+    owner.materialAlpha = alpha;
     owner.tint.layer.backgroundColor = [NSColor colorWithWhite:1 alpha:alpha].CGColor;
     return material;
 }
@@ -74,7 +84,9 @@ void vp_overlay_present(void *raw, bool active, double opacity, bool interactive
     owner.foreground.ignoresMouseEvents = !interactive;
     if (!active) { [owner.foreground orderOut:nil]; [owner.backdrop orderOut:nil]; return; }
     owner.effect.frame = NSMakeRect(244*(1-opacity),0,224,100);
-    owner.effect.alphaValue = opacity;
+    // Transparency applies to the entire system material, not only its tint;
+    // otherwise 100% transparency leaves the dark system backdrop visible.
+    owner.effect.alphaValue = vp_overlay_material_opacity(owner.materialAlpha, opacity);
     if (!owner.foreground.visible) {
         [owner.backdrop orderFrontRegardless];
         [owner.foreground orderWindow:NSWindowAbove relativeTo:owner.backdrop.windowNumber];
