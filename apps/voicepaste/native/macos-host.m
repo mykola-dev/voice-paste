@@ -43,6 +43,9 @@ bool vp_settings_activate(void *rawView) {
 - (void)clicked:(id)sender {
     (void)sender;
     if (NSApp.currentEvent.type == NSEventTypeRightMouseUp) {
+        // A status item can inherit the menu bar's appearance instead of the
+        // application's system appearance; refresh on every open for theme changes.
+        self.menu.appearance = NSApp.effectiveAppearance;
         [self.menu popUpMenuPositioningItem:nil
                                atLocation:NSMakePoint(0, self.item.button.bounds.size.height)
                                    inView:self.item.button];

@@ -118,8 +118,8 @@ impl Shell {
         self.geometry = Some(geometry);
         self.opacity = None;
         self.backdrop.take();
-        let alpha = appearance.background_alpha();
-        if appearance.acrylic && alpha > 0 {
+        let alpha = appearance.acrylic_tint_alpha();
+        if appearance.acrylic {
             if self.context.is_none() {
                 self.context = Context::new().ok();
             }
@@ -751,7 +751,7 @@ mod tests {
                 SendMessageW(hwnd, WM_NCHITTEST, 0, 0),
                 HTTRANSPARENT as isize
             );
-            for (acrylic, transparency) in [(false, 57), (true, 100)] {
+            for (acrylic, transparency) in [(false, 57), (false, 100)] {
                 assert!(
                     !shell
                         .prepare(OverlayAppearance {

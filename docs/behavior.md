@@ -86,8 +86,9 @@
   transcription are unchanged. Baseline thickness remains 1 DIP.
   Saved gain applies on the next overlay show, not during an active recording.
 - Acrylic defaults on; one shared transparency defaults to 40%. Existing saved
-  transparency values are preserved. 0% is opaque white
-  tint, intermediate Acrylic retains blur, 100% removes the whole background.
+  transparency values are preserved. Acrylic keeps the blur at full strength
+  and varies a light white tint from 40% to 20%, so neither endpoint hides it.
+  With Acrylic off, transparency controls the ordinary white background alpha.
   Unsupported blur uses ordinary translucency at the same alpha. Save applies
   on next overlay show; Cancel has no effect. No live preview is required.
 - App-local data only; logs at `%TEMP%/VoicePaste/voicepaste.log`. No automatic

@@ -3,7 +3,9 @@
 ## [Unreleased]
 
 - macOS reuses verification for unchanged model files instead of rechecking them on every startup.
-- macOS overlay keeps its light system blur visible when the white tint is made transparent.
+- Acrylic overlays keep their blur visible across the transparency range on Windows and macOS.
+- The macOS tray menu follows the system appearance instead of the menu bar's appearance.
+- Windows tray menus can follow the system light or dark theme on supported Windows versions.
 - macOS no longer opens Accessibility settings automatically on top of the system permission prompt.
 - Removed the permanent macOS permission reminder from Settings.
 - Preserved macOS menu-bar icon proportions and changed the default waveform amplification to 10× without overwriting saved values.

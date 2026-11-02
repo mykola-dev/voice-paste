@@ -1,6 +1,7 @@
 //! Native menu tracking and Settings activation. Call outside GPUI/state borrows.
 pub(super) mod events;
 mod host;
+mod menu_theme;
 pub(super) mod session;
 pub(super) mod ui;
 use super::menu::{self, MenuItem, TrayAction};
@@ -76,6 +77,7 @@ pub(super) fn tray_menu(
     // crosses TrackPopupMenu's nested loop. Capture paste target before activation.
     unsafe {
         let target = FocusTarget::capture();
+        let _theme = menu_theme::system_menu_theme();
         let menu = create_menu(items)?;
         let mut point: POINT = zeroed();
         if GetCursorPos(&mut point) == 0 {
