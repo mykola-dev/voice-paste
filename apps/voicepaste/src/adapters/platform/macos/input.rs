@@ -43,6 +43,7 @@ fn recording_key(settings: &Settings) -> Result<u16, String> {
     match hotkey.key {
         0xA3 => Ok(62),
         0xA5 => Ok(61),
+        0x5C => Ok(54),
         0x77 => Ok(100),
         0x7B => Ok(111),
         _ => Err("Unsupported macOS recording key".into()),
@@ -124,6 +125,7 @@ mod tests {
         for (key, code) in [
             ("RightCtrl", 62),
             ("RightAlt", 61),
+            ("RightCommand", 54),
             ("F8", 100),
             ("F12", 111),
         ] {

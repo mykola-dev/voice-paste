@@ -44,7 +44,7 @@ work around company policy to launch a preview.
   opens the relevant System Settings pane. Accessibility is checked/requested at
   normal startup; granting it reconnects recording keys without a special menu.
   Corporate restrictions are not bypassed. With permission granted,
-  Right Control (default), Right Option, F8 and F12 are standalone recording keys;
+  Right Option (default), Right Command, F8 and F12 are standalone recording keys;
   repeat/chords do not create extra toggles. Escape consumes its recording-cancel
   sequence and carries the original session identity through the bounded inbox.
 - Shared GPUI draws the animated waveform/busy indicator. Native NSPanel policy
@@ -97,7 +97,7 @@ microphone permissions, transcription weights, login startup or interactive UI.
    Check progress, cancellation/resume and successful verified preparation.
    A network failure is a failed delivery test, not permission to bypass TLS.
 4. Grant the startup Accessibility request only if policy permits. Start requests
-   Microphone access. Check Right Control, Right Option,
+   Microphone access. Check Right Option, Right Command,
    F8 and F12 individually, held-key repeats, modifier chords, Escape cancellation
    and changing the saved recording key. Denials must be visible and recoverable.
 5. In a disposable text document, record English/Ukrainian and stop: confirm real
@@ -146,8 +146,8 @@ The following describes that earlier slice, not current feature limitations.
 - Left-click the lips icon to open/reveal Settings; right-click for the shared
   menu description and Quit. Start recording remains disabled until connected.
 - Settings use the shared One Dark master–detail UI, draft identity, prompt,
-  geometry, OK/Apply/Cancel and validation. macOS choices are Right Control
-  (default), Right Option, F8, F12, Cmd+V, and Metal-only (default) / CPU. These
+  geometry, OK/Apply/Cancel and validation. macOS choices are Right Option
+  (default), Right Command, F8, F12, Cmd+V, and Metal-only (default) / CPU. These
   are saved preferences, not a claim that native hotkeys or inference run yet.
   An Auto policy is not introduced before its behavior is agreed.
 - Config is `~/Library/Application Support/VoicePaste/config.json`; logs are
@@ -277,7 +277,7 @@ CI apps remain blocked there; local compilation is the next launch gate.
   artifacts, VAD, beam/language/prompt parity and actual device reporting.
 - Complete recording → transcribe → restore target → Cmd+V, cancellation,
   residency, startup, statistics and crash/shutdown behavior.
-- macOS recording presets: **Right Control (default), Right Option, F8, F12**.
+- macOS recording presets: **Right Option (default), Right Command, F8, F12**.
   No multi-key presets. Validate modifier-only chord/repeat handling on hardware.
 - Data: `~/Library/Application Support/VoicePaste`; Windows portable data stays
   app-local. Eight-GB RAM compatibility is a measurement target, not a promise;

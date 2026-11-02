@@ -58,7 +58,7 @@ static CGEventRef vp_key_event(CGEventTapProxy proxy, CGEventType type, CGEventR
         if (type == kCGEventKeyUp && input.escapeHeld) { input.escapeHeld = NO; return NULL; }
     }
     if (type == kCGEventFlagsChanged && key == input.key) {
-        CGEventFlags side = key == 62 ? (CGEventFlags)0x2000 : (CGEventFlags)0x40;
+        CGEventFlags side = key == 62 ? (CGEventFlags)0x2000 : key == 61 ? (CGEventFlags)0x40 : (CGEventFlags)0x10;
         down = (CGEventGetFlags(event) & side) != 0;
     } else if (type != kCGEventKeyDown && type != kCGEventKeyUp) {
         if (input.held) input.contaminated = YES;
@@ -67,7 +67,7 @@ static CGEventRef vp_key_event(CGEventTapProxy proxy, CGEventType type, CGEventR
     if (key != input.key) { if (input.held) input.contaminated = YES; return event; }
     if (CGEventGetIntegerValueField(event, kCGKeyboardEventAutorepeat)) return input.functionConsumed ? NULL : event;
     CGEventFlags modifiers = CGEventGetFlags(event) & (kCGEventFlagMaskCommand | kCGEventFlagMaskShift | kCGEventFlagMaskControl | kCGEventFlagMaskAlternate);
-    CGEventFlags own = input.key == 62 ? kCGEventFlagMaskControl : input.key == 61 ? kCGEventFlagMaskAlternate : 0;
+    CGEventFlags own = input.key == 62 ? kCGEventFlagMaskControl : input.key == 61 ? kCGEventFlagMaskAlternate : input.key == 54 ? kCGEventFlagMaskCommand : 0;
     if (down) {
         if (!input.held) {
             // Another tap can consume a key-up. Discard stale tracked downs so
@@ -80,7 +80,7 @@ static CGEventRef vp_key_event(CGEventTapProxy proxy, CGEventType type, CGEventR
             }
             CGEventFlags all = CGEventGetFlags(event);
             input.held = YES;
-            input.contaminated = input.otherKeys != 0 || (modifiers & ~own) != 0 || (input.key == 62 && (all & 0x1)) || (input.key == 61 && (all & 0x20));
+            input.contaminated = input.otherKeys != 0 || (modifiers & ~own) != 0 || (input.key == 62 && (all & 0x1)) || (input.key == 61 && (all & 0x20)) || (input.key == 54 && (all & 0x8));
             input.functionConsumed = (input.key == 100 || input.key == 111) && !input.contaminated;
         }
         if (input.functionConsumed) return NULL;
@@ -99,7 +99,7 @@ static CGEventRef vp_key_event(CGEventTapProxy proxy, CGEventType type, CGEventR
 void *vp_input_create(uint16_t key, bool prompt, uint32_t *error) {
     NSCAssert(NSThread.isMainThread, @"input creation must be on main thread");
     *error = 0;
-    if (key != 62 && key != 61 && key != 100 && key != 111) { *error = 1; return NULL; }
+    if (key != 62 && key != 61 && key != 54 && key != 100 && key != 111) { *error = 1; return NULL; }
     NSDictionary *options = @{(__bridge NSString *)kAXTrustedCheckOptionPrompt: @(prompt)};
     if (!AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options)) {
         if (prompt) [NSWorkspace.sharedWorkspace openURL:[NSURL URLWithString:@"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"]];

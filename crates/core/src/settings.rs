@@ -83,8 +83,8 @@ impl SettingsPlatform {
         match self {
             Self::Windows => HOTKEY_CHOICES,
             Self::Macos => &[
-                ("Right Control", "RightCtrl"),
                 ("Right Option", "RightAlt"),
+                ("Right Command", "RightCommand"),
                 ("F8", "F8"),
                 ("F12", "F12"),
             ],
@@ -183,7 +183,7 @@ impl Settings {
         let mut settings: Self =
             serde_json::from_str(INITIAL_SETTINGS).map_err(|e| e.to_string())?;
         if platform == SettingsPlatform::Macos {
-            settings.hotkey = "RightCtrl".into();
+            settings.hotkey = "RightAlt".into();
             settings.paste_shortcut = PasteShortcut::CmdV;
             settings.device = Device::MetalOnly;
         }
@@ -205,7 +205,14 @@ impl Settings {
         for (key, field) in fields {
             value[key] = field.clone();
         }
-        let settings: Self = serde_json::from_value(value).map_err(|e| e.to_string())?;
+        let mut settings: Self = serde_json::from_value(value).map_err(|e| e.to_string())?;
+        // Right Control is no longer offered on macOS. Preserve every other
+        // preference while moving this retired preset to the new default.
+        if platform == SettingsPlatform::Macos
+            && Hotkey::parse(&settings.hotkey).ok() == Hotkey::parse("RightCtrl").ok()
+        {
+            settings.hotkey = "RightAlt".into();
+        }
         settings.validate()?;
         Ok(settings)
     }
@@ -235,7 +242,7 @@ impl Settings {
                 .any(|(_, value)| Hotkey::parse(value).ok() == Hotkey::parse(&self.hotkey).ok())
         {
             return Err(
-                "macOS recording keys must be Right Control, Right Option, F8 or F12".into(),
+                "macOS recording keys must be Right Option, Right Command, F8 or F12".into(),
             );
         }
         Ok(())
@@ -319,6 +326,7 @@ impl Hotkey {
             "NUMPAD0" => 0x60,
             "RIGHTALT" | "RIGHT ALT" => 0xa5,
             "RIGHTCTRL" | "RIGHT CTRL" => 0xa3,
+            "RIGHTCOMMAND" | "RIGHT COMMAND" | "RIGHTCMD" => 0x5c,
             "SPACE" => 0x20,
             "INSERT" => 0x2d,
             _ if upper.len() == 1 && upper.as_bytes()[0].is_ascii_alphanumeric() => {
@@ -351,7 +359,7 @@ mod tests {
         assert_eq!(windows.hotkey, "ScrollLock");
         assert_eq!(windows.device, Device::CudaOnly);
         let mac = Settings::initial_for(SettingsPlatform::Macos).unwrap();
-        assert_eq!(mac.hotkey, "RightCtrl");
+        assert_eq!(mac.hotkey, "RightAlt");
         assert_eq!(mac.device, Device::MetalOnly);
         assert_eq!(mac.paste_shortcut, PasteShortcut::CmdV);
         assert_eq!(
@@ -391,6 +399,13 @@ mod tests {
             mac.hotkey = key.into();
             assert!(mac.validate_for(SettingsPlatform::Macos).is_err());
         }
+        let migrated = Settings::from_json_for(
+            r#"{"hotkey":"RightCtrl","customInitialPrompt":"keep this","waveformAmplification":30}"#,
+            SettingsPlatform::Macos,
+        ).unwrap();
+        assert_eq!(migrated.hotkey, "RightAlt");
+        assert_eq!(migrated.custom_initial_prompt, "keep this");
+        assert_eq!(migrated.waveform_amplification, Some(30));
     }
     #[test]
     fn frozen_defaults_round_trip_without_changes() {

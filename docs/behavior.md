@@ -6,6 +6,8 @@
   silence never auto-stops it. Debounce is 300 ms; busy transcription ignores toggle.
 - UI hotkey choices: ScrollLock, Numpad0, Right Alt, Right Ctrl, F8 and F12. Preserve
   existing parser-supported config combinations, conflict handling and rollback.
+  On macOS the choices are Right Option (default), Right Command, F8 and F12;
+  a previously saved Right Control selection resolves to Right Option on load.
 - Escape cancels only the current recording, consuming the relevant key sequence;
   cancellation must not transcribe, paste or change the clipboard.
 - Capture the target focus before recording. The overlay must never activate or
