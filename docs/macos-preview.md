@@ -101,7 +101,7 @@ microphone permissions, transcription weights, login startup or interactive UI.
    ```sh
    git switch master
    git pull --ff-only
-   bash build-macos-preview.sh
+   ./build-macos-preview.sh
    open build/release/VoicePaste.app
    ```
 
@@ -235,7 +235,7 @@ Build locally **on an Apple Silicon development Mac**, from a checkout of
 `master`, with:
 
 ```bash
-bash build-macos-preview.sh
+./build-macos-preview.sh
 ```
 
 When started from a Rosetta-translated Terminal on Apple Silicon, the script

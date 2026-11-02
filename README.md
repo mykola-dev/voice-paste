@@ -65,9 +65,9 @@ acceptance and distribution qualification remain in progress.
 In Terminal:
 
 ```sh
-git clone --branch master https://github.com/mykola-dev/voice-paste.git
+git clone https://github.com/mykola-dev/voice-paste.git
 cd voice-paste
-bash build-macos-preview.sh
+./build-macos-preview.sh
 open build/release/VoicePaste.app
 ```
 
