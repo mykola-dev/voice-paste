@@ -79,7 +79,9 @@ fn prepare(storage: &Storage, download: bool, progress: bool) -> Result<(), Stri
     }
 }
 
-pub(crate) fn run() -> Result<(), String> {
+pub(crate) fn run(
+    validate_settings: fn(&voicepaste_core::settings::Settings) -> Result<(), String>,
+) -> Result<(), String> {
     let policy = native::CLI_POLICY;
     let mode = parse(std::env::args_os().skip(1).collect(), &policy)?;
     let storage = Arc::new(native::open_storage()?);
@@ -102,7 +104,8 @@ pub(crate) fn run() -> Result<(), String> {
         Mode::Resident | Mode::Settings | Mode::Capture => {
             let settings_only = mode == Mode::Settings;
             let capture = mode == Mode::Capture;
-            let runtime = Runtime::start(storage.clone(), capture || settings_only)?;
+            let runtime =
+                Runtime::start(storage.clone(), capture || settings_only, validate_settings)?;
             let result = native::run_session(runtime, storage.clone(), capture, settings_only);
             if let Err(error) = &result {
                 storage.log(error);

@@ -34,6 +34,7 @@ pub mod statistics;
 #[cfg(target_os = "windows")]
 pub mod storage;
 pub(crate) mod ui_session;
+mod unique_audio;
 #[cfg(target_os = "macos")]
 pub mod storage {
     pub use super::platform::storage::Storage;

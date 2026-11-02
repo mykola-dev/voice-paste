@@ -7,11 +7,17 @@
 - `crates/application`: dictation/settings workflows and consumer-owned ports;
   depends on core, not concrete adapters.
 - `crates/protocol`: bounded versioned UTF-8 host/worker IPC and request identities.
-- `apps/voicepaste`: composition root/runtime, GPUI Settings, Windows tray,
+  Wire messages reuse selected core types, so their serialized forms are also part
+  of IPC v3 and are covered by fixed JSON fixtures. Parsing validates framing and
+  message structure before the host/worker check version compatibility; this is not
+  version negotiation, and unknown-field rejection differs between variants.
+  Incompatible wire changes require coordinated host/worker changes and a version
+  bump; saved settings and prompts retain their separate compatibility contract.
+- `apps/voicepaste`: composition root/runtime, GPUI Settings, native tray/menu bar,
   hotkeys, audio, storage, model provisioning, clipboard/input and worker owner.
-- `apps/stt-worker`: separate resident Rust process, frontend/tokenizer/VAD/decoding
-  pipeline and narrow C++ C ABI adapter to CTranslate2 **4.7.1**. Only the worker
-  loads CT2/CUDA/ONNX Runtime. Normal use requires no Python or .NET.
+- `apps/stt-worker`: separate resident Rust process; Windows uses CTranslate2
+  **4.7.1** and macOS uses whisper.cpp/Metal. Only the worker loads native ML
+  libraries. Normal use requires no Python or .NET.
 
 Concrete adapters depend on inner contracts and are wired explicitly. Resource
 owners handle cancellation, stale completions, bounded queues and shutdown.
@@ -19,8 +25,8 @@ See [engineering rules](engineering-principles.md).
 
 ### macOS branch status
 
-On `macOS-2`, local compilation is the accepted test route after the user
-confirmed the Rust launch preview opens on the corporate Mac. Downloaded CI
+Local compilation is the accepted macOS test route after the user
+confirmed the Rust launch preview opens on a Mac. Downloaded CI
 artifacts remain blocked there. The current implementation connects the shared
 dictation runtime/application, GPUI Settings/overlay, statistics and explicit
 `SettingsPlatform` choices to Application Support persistence and native adapters.
@@ -47,8 +53,9 @@ measurements. CPU and Metal-only remain distinct; pinned native GPU fallback
 diagnostics fail closed before Ready/results. The host validates actual device,
 request/session/generation and deadline through the same worker coordinator as
 Windows. Shared text/VAD policies preserve prompts, cleanup and segmentation.
-GGML and VAD have a separate pinned artifact manifest; startup verifies offline,
-and only explicit startup/recording-retry confirmation or `--download-model` enables downloads.
+GGML and VAD have a separate pinned artifact manifest; initial preparation and a
+saved model change permit automatic downloads, as on Windows. A retry after failure
+or cancellation requires no download confirmation; file mode remains offline.
 macOS selects the separate GitHub `Models` release; Windows retains its original
 HTTPS source. Neither uses Git LFS fallback or installs download tools.
 `model_parts.rs` owns ordered raw-part delivery, resumable staging, per-part and
@@ -110,10 +117,10 @@ terminal reply, cancellation/join, progress snapshots and cancellable chunked
 SHA-256 for both catalogs. Progress explicitly distinguishes cumulative stream
 bytes from an external transport's staging file, preserving the existing display
 policies without OS switches. Completion is consumed once; success, failure and
-unwinding clear download activity. Catalog selection, download approval, transport,
+unwinding clear download activity. Catalog selection, network permission, transport,
 cache locks and receipts stay in the model adapters. One shared artifact scenario
 recovers verified complete partials offline, preserves short resume offsets,
-resets complete corrupt/oversized staging only with network approval, and verifies
+resets complete corrupt/oversized staging only when networking is enabled, and verifies
 and publishes successful transfers. Failed/interrupted transfers retain staging;
 a retry resets a complete corrupt partial instead of appending to it. Exact-size/SHA-256 verification
 and verified publication now share one policy: reject non-file paths, sync staged
@@ -192,7 +199,7 @@ remains separate from shared-rendering contracts.
 Keep shared UI state/layout and domain/application free of native handles. Isolate
 OS behavior in compile-time-selected modules with target-scoped dependencies and
 narrow consumer-owned boundaries. Apple Silicon macOS implementation is authorized
-on `macOS-2`; Linux remains a future target. No fake-success adapter or speculative
+on `master`; Linux remains a future target. No fake-success adapter or speculative
 platform/plugin framework is intended.
 Remaining reliability/release qualification is tracked in [TODO](../TODO.md).
 Feature inventory and staged platform isolation are in
@@ -288,9 +295,8 @@ job-assignment failure kills/waits only this owned child. The process owner is n
 established before fallible pipe/thread setup, closing a pre-existing partial-setup
 reaping gap. Normal release requests Shutdown, closes stdin, waits up to 500 ms
 before killing/waiting, closes the job before joining readers, then drops pending
-audio/target. **The 500 ms bound is only the post-send wait:** synchronous stdin
-write and joins have no independent hard deadline; loaded-worker/fault-path
-qualification remains open, not proved by the owned child test fixture.
+audio/target. The 500 ms bound is only the post-send wait: synchronous stdin
+write and joins have no independent hard deadline.
 
 `memory.rs` formats separate host/worker byte measurements; only
 `memory/windows.rs` probes native handles borrowed from `Child` or the current
@@ -303,8 +309,10 @@ stays in `tray_icons.rs`; native HICON allocation and monitor DPI probing live i
 
 ## Storage and build inputs
 
-Settings, models and temporary session data are under `<exe-dir>/data/`;
-diagnostics are `%TEMP%/VoicePaste/voicepaste.log`. Existing config is never reseeded
+On Windows, settings, models and temporary session data are under `<exe-dir>/data/`;
+diagnostics are `%TEMP%/VoicePaste/voicepaste.log`. On macOS, data is under
+`~/Library/Application Support/VoicePaste/` and logs under `~/Library/Logs/VoicePaste/`.
+Existing config is never reseeded
 on upgrade. Public defaults and the pinned model catalog live in
 `crates/core/assets/`; private prompts belong only in app-local configuration.
 

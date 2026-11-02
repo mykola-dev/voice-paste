@@ -1,6 +1,6 @@
 # TODO перенесено
 
-Актуальні відкриті задачі продукту: **[../TODO.md](../TODO.md)**.
+Єдиний актуальний план і відкриті задачі: **[../docs/revision-plan.md](../docs/revision-plan.md)**.
 
 2026-10-29 користувач підтвердив Windows interactive acceptance; застарілі
 міграційні acceptance-пункти закрито. Решта ризиків і відкладені download/OS ports

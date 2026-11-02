@@ -246,8 +246,10 @@ fn run() -> Result<()> {
         std::env::var_os("CARGO_BUILD_TARGET").is_none(),
         "Unset CARGO_BUILD_TARGET: portable packaging uses native Windows x64 outputs, not a cross-target cache"
     );
+    eprintln!("Preparing MSVC build environment...");
     let vs = msvc(&mut runner)?;
     let source = files::absolute(root, &options.source);
+    eprintln!("Checking native build inputs...");
     native::prepare(&runner, &source, &vs, options.offline)?;
     if options.action == "prepare" {
         return Ok(());
@@ -262,6 +264,7 @@ fn run() -> Result<()> {
         "Matching CT2 headers missing"
     );
     let lib = root.join(layout::NATIVE_LIB);
+    eprintln!("Preparing native import library...");
     native::import_library(&runner, &source, &lib)?;
     runner
         .env
@@ -297,6 +300,10 @@ fn run() -> Result<()> {
     } else {
         &options.action
     };
+    eprintln!(
+        "Running {} build...",
+        if options.release { "release" } else { "debug" }
+    );
     cargo_task(&runner, action, &options)?;
     if options.action == "package" || (options.action == "build" && !options.no_deploy) {
         fs::create_dir_all(root.join("build"))?;

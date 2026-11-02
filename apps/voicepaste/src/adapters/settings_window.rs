@@ -32,10 +32,6 @@ pub(super) fn overlay_appearance(
 ) -> voicepaste_core::settings::OverlayAppearance {
     settings.overlay_appearance_for(PLATFORM)
 }
-pub(super) fn model_platform() -> SettingsPlatform {
-    PLATFORM
-}
-
 pub struct SettingsWindow {
     handle: AnyWindowHandle,
     view: Entity<SettingsView>,
@@ -52,7 +48,7 @@ impl SettingsWindow {
         let closed = Rc::new(Cell::new(false));
         let close = closed.clone();
         let bounds = initial_bounds(&base, cx);
-        let models = voicepaste_core::models::catalog()?
+        let models = voicepaste_core::models::catalog_for(PLATFORM)?
             .into_iter()
             .map(|m| voicepaste_core::models::display_name(&m.name))
             .collect();
@@ -450,7 +446,7 @@ impl SettingsView {
         }
         subscriptions.push(cx.observe(&model, |this, model, cx| {
             if let Some(selected) = model.read(cx).selected_value() {
-                let id = voicepaste_core::models::id_from_display(selected);
+                let id = voicepaste_core::models::id_from_display_for(selected, PLATFORM);
                 if this.status_model != id {
                     this.status_model = id.clone();
                     this.model_query = Some(id);
@@ -549,11 +545,12 @@ impl SettingsView {
             .get(index(&self.paste)?)
             .ok_or("Select a paste shortcut")?
             .1;
-        draft.model = voicepaste_core::models::id_from_display(
+        draft.model = voicepaste_core::models::id_from_display_for(
             self.model
                 .read(cx)
                 .selected_value()
                 .ok_or("Select a model")?,
+            PLATFORM,
         );
         draft.device = PLATFORM
             .devices()
@@ -681,7 +678,10 @@ fn model_size_label(selected: &str) -> String {
 
 impl SettingsView {
     fn statistics_filter(&self, cx: &App) -> Option<StatisticsFilter> {
-        let model = voicepaste_core::models::id_from_display(self.model.read(cx).selected_value()?);
+        let model = voicepaste_core::models::id_from_display_for(
+            self.model.read(cx).selected_value()?,
+            PLATFORM,
+        );
         let device = PLATFORM
             .devices()
             .get(self.device.read(cx).selected_index(cx)?.row)?

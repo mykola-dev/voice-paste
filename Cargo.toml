@@ -9,7 +9,7 @@ accesskit_macos = { path = "crates/accesskit_macos_patched" }
 
 [workspace.package]
 edition = "2024"
-version = "2.0.0"
+version = "2.0.1"
 publish = false
 
 [workspace.dependencies]

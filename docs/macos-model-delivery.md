@@ -1,4 +1,4 @@
-# macOS model delivery: evidence and pending integration
+# macOS model delivery: current source and historical evidence
 
 ## Current delivery revision: GitHub Models assets
 
@@ -9,7 +9,7 @@ local parts reconstructed all four original pinned SHA-256 values. Unauthenticat
 public range downloads of every part and a complete VAD download were verified
 locally. Code `a918028` passed macOS build/package, clippy and host/worker tests in
 [CI 41333232913](https://github.com/mykola-dev/voice-paste/actions/runs/41333232913).
-These checks do not establish corporate-Mac delivery or real inference acceptance.
+These checks do not establish delivery on the tested Mac or real inference acceptance.
 
 The approved replacement for the historical Hugging Face/Git delivery below is
 the separate `Models` GitHub release (`models` tag). It is not an application
@@ -21,15 +21,21 @@ size/SHA-256 validation before publication to the application cache.
 
 macOS selects this source; Windows keeps its original HTTPS source without a
 Git LFS fallback. The part lifecycle is shared code, while curl/WinHTTP are native
-transport effects. No Git LFS installation is required. Actual corporate-Mac
+transport effects. No Git LFS installation is required. Actual macOS device
 large-asset delivery and inference remain device acceptance, not CI claims.
+
+macOS automatically downloads the saved model during initial preparation and after
+a saved model change, like Windows; retry after cancellation or failure does not
+require confirmation on either platform. Draft queries, builds, Settings-only mode
+and offline file transcription do not download models. User reports that macOS is working do not by themselves
+qualify delivery on the tested Mac or every model/device.
 
 The following sections document historical investigation and are not the new
 source-selection policy.
 
 Metadata reviewed 2026-10-30; Git LFS weight delivery tested locally on Windows
 on 2026-11-01 with user approval (see below). macOS uses
-use whisper.cpp + Metal, not Windows CTranslate2 artifacts. No smaller-model,
+whisper.cpp + Metal, not Windows CTranslate2 artifacts. No smaller-model,
 quantized-model, beam-size or VAD substitution is authorized.
 
 ## Official whisper.cpp model repository
@@ -49,7 +55,7 @@ These are the non-`q*` GGML artifacts, not the separately listed Core ML encoder
 archives. The model card's 40-character SHA column is not a SHA-256 checksum;
 use the pointer's 64-character `oid sha256` for future integrity verification.
 This metadata does **not** prove model compatibility with a future pinned worker,
-successful delivery through the corporate network or actual inference quality.
+successful delivery on the tested Mac or actual inference quality.
 Before runtime integration, put verified metadata in the canonical backend-specific
 artifact manifest; do not parse this document as application configuration.
 
@@ -73,8 +79,8 @@ obtain reconstructed file URLs through an LFS bridge. Consequently:
   successful model download.
 - Plain Git cannot reconstruct the weights from the small pointer file. LFS/Xet
   still needs reachable weight-storage endpoints, potentially the blocked ones.
-- This can be a different client/protocol route, **not a guaranteed bypass** of
-  corporate network restrictions. Do not alter proxy/TLS/security controls.
+- This can be a different client/protocol route, **not a guaranteed solution** to
+  network restrictions. Do not alter proxy/TLS/security controls.
 - Do not silently install Git LFS/Xet, Python, Homebrew or SDKs. Any optional
   tools and actual weight downloads need explicit approval.
 - The fallback must select only the requested pinned artifact (not clone
@@ -82,7 +88,7 @@ obtain reconstructed file URLs through an LFS bridge. Consequently:
   pointers as completed weights, verify exact size/SHA-256, and atomically publish
   into the same model cache as the primary download path.
 
-Current implementation: an explicit approved curl download/resume path is now
+Historical implementation at that investigation stage: an explicit approved curl download/resume path was
 connected, with these full-size GGML artifacts and pinned Silero v6.2.0 from
 `ggml-org/whisper-vad`, revision `9ffd54a1e1ee413ddf265af9913beaf518d1639b`.
 Its 885098-byte `ggml-silero-v6.2.0.bin` has SHA-256
@@ -111,7 +117,7 @@ During Git transfer the menu reports the source and total size, not a fabricated
 byte-progress counter. Verified Git bytes replace only HTTP staging, then shared
 publication rechecks size/hash/cancellation before replacing the live model.
 
-After a failed startup offline verification, the shared session offers the native
+At that stage, after a failed startup offline verification, the shared session offered the native
 download confirmation once when idle (outside framework/runtime borrows). Cancel
 does not enable networking; the menu remains available for retry. Ready local
 models, preview and Settings-only modes do not prompt. Consent is tied to the
@@ -126,7 +132,7 @@ Git 2.45.1 and Git LFS 3.5.1 on Windows. Actual weights verified as
 `1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69`.
 Partial-clone lazy fetching failed (`expected packfile`); a shallow Git fetch
 without blob filtering succeeded, so the production fallback uses that route.
-This was one approved model download, not VAD delivery or macOS/corporate-network
+This was one approved model download, not VAD delivery or macOS device
 acceptance, and not an end-to-end production adapter test.
 
 Worker source is locked by

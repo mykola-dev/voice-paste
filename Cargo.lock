@@ -7978,7 +7978,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "voicepaste"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "cpal",
  "crossbeam-channel",
@@ -8007,14 +8007,14 @@ dependencies = [
 
 [[package]]
 name = "voicepaste-application"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "voicepaste-core",
 ]
 
 [[package]]
 name = "voicepaste-core"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -8022,7 +8022,7 @@ dependencies = [
 
 [[package]]
 name = "voicepaste-protocol"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -8031,7 +8031,7 @@ dependencies = [
 
 [[package]]
 name = "voicepaste-stt-worker"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "cc",
  "flate2",
@@ -9392,7 +9392,7 @@ checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
 
 [[package]]
 name = "xtask"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "anyhow",
  "serde",

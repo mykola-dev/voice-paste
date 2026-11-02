@@ -26,7 +26,7 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       CARGO_BUILD_JOBS: '3'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Validate native build host
         run: |
           test "$(uname -m)" = arm64
@@ -38,7 +38,7 @@ jobs:
           # symlink ancestors deliberately; use an owned physical temp root.
           mkdir -p build/cache/tmp
           echo "TMPDIR=$(cd build/cache/tmp && pwd -P)/" >> "$GITHUB_ENV"
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: cargo-cache
         with:
           path: |
@@ -64,7 +64,7 @@ jobs:
           cargo test --locked -p voicepaste -p voicepaste-stt-worker --bins
           xcrun clang -fobjc-arc -Wall -Wextra -Werror tests/macos-input-contract.m -framework AppKit -framework ApplicationServices -o build/cache/macos-input-contract
           build/cache/macos-input-contract
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: VoicePaste-macos-arm64-launch-preview-${{ github.sha }}
           path: build/package/*
@@ -72,7 +72,7 @@ jobs:
           retention-days: 14
       - name: Retain compiler cache even after a source compilation failure
         if: ${{ always() && steps.cargo-cache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry
@@ -89,7 +89,7 @@ jobs:
       actions: read
     steps:
       - name: Download the original delivered artifact (not a rebuild)
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           artifact-ids: '12984205097'
           run-id: '41065476513'
@@ -155,7 +155,7 @@ jobs:
           echo 'Archive integrity/executable/plist/signature checks passed. Policy results above do not establish launch approval on the corporate Mac.'
       - name: Upload audit evidence even if a structural check fails
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: original-macos-package-audit-${{ github.run_id }}
           path: build/package-audit/

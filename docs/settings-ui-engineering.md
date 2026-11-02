@@ -50,7 +50,9 @@
 Win32 залишається вузьким platform adapter там, де потрібен, а не другим renderer.
 Погоджений виняток 2026-10-29: foreground/state/animation overlay переносимо на
 спільний GPUI, зберігаючи Windows Composition blur + tint та rounded clipping як
-вузький native adapter. Без портів macOS/Linux або розширення interactive harness.
+вузький native adapter. Це рішення 2026-10-29 не забороняє пізніше погоджений
+Apple Silicon macOS beta-порт; Linux лишається поза поточним scope. Не розширювати
+interactive harness. Актуальні межі перевірок — у [macOS guide](macos-preview.md).
 Самі Win32 controls не приречені на ці баги; проблема — наша реалізація та невідповідність
 обраному target. Rust як мова не забезпечує layout/DPI/кадри автоматично. [S6, S9–S12]
 

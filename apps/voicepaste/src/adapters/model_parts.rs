@@ -72,7 +72,7 @@ impl Mirror {
 }
 
 /// Caller holds the cache writer lock. Short part files resume; complete corrupt
-/// parts restart only with consent. Assembly is bounded and never the destination.
+/// parts restart only when network access is enabled. Assembly is bounded and never the destination.
 #[allow(
     clippy::too_many_arguments,
     reason = "Explicit scenario inputs and native effects keep platform policy outside the shared lifecycle"
@@ -110,8 +110,7 @@ pub(crate) fn prepare(
         }
         if !allow_network {
             return Err(
-                "The selected model needs to be downloaded. Start recording to approve or retry."
-                    .into(),
+                "The selected model needs to be downloaded. Start recording to retry.".into(),
             );
         }
         check_cancel(cancel)?;
@@ -324,7 +323,7 @@ mod tests {
         assert!(!fixture.part(1).exists());
     }
     #[test]
-    fn corrupt_complete_and_oversized_parts_reset_only_with_consent() {
+    fn corrupt_complete_and_oversized_parts_reset_only_with_network_enabled() {
         for bytes in [b"xxxxx".as_slice(), b"oversized"] {
             let fixture = Fixture::new();
             fs::write(fixture.part(0), bytes).unwrap();

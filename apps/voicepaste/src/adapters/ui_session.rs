@@ -3,7 +3,7 @@ mod download;
 mod input;
 use super::{overlay::OverlayWindow, settings_window::SettingsWindow};
 use crate::runtime::{Command, Event, Runtime};
-pub(crate) use download::DownloadConsent;
+pub(crate) use download::DownloadRetry;
 use gpui_kit::{App, AsyncApp, QuitMode};
 pub(crate) use input::RecordingInput;
 use std::{
@@ -24,7 +24,7 @@ pub(crate) struct NativeIntents {
     pub targets: Vec<super::paste::FocusTarget>,
     pub cancel: Option<voicepaste_core::SessionId>,
     pub warning: Option<String>,
-    pub download: Option<fn(&str) -> bool>,
+    pub download: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -49,7 +49,7 @@ pub(crate) enum SessionEvent {
     ModelPreparationCancelled {
         model: String,
     },
-    StartupModelUnavailable {
+    PreparationStarted {
         model: String,
     },
     ModelReady {
@@ -106,6 +106,7 @@ pub(crate) struct RuntimeSession {
     pub model_message: String,
     pub preparing: bool,
     pub downloading: bool,
+    show_preparation: bool,
 }
 
 impl RuntimeSession {
@@ -115,12 +116,19 @@ impl RuntimeSession {
             model_message,
             preparing,
             downloading: false,
+            show_preparation: false,
         }
     }
 
     fn project(&mut self, event: &SessionEvent) -> bool {
         match event {
             SessionEvent::State(state) => self.state = *state,
+            SessionEvent::PreparationStarted { .. } => {
+                self.preparing = true;
+                self.downloading = false;
+                self.show_preparation = false;
+                self.model_message = "Preparing model...".into();
+            }
             SessionEvent::ModelStatus {
                 message,
                 preparing,
@@ -129,6 +137,7 @@ impl RuntimeSession {
                 self.model_message.clone_from(message);
                 self.preparing = *preparing;
                 self.downloading = *downloading;
+                self.show_preparation = *preparing && (self.show_preparation || *downloading);
             }
             _ => return false,
         }
@@ -154,7 +163,7 @@ impl RuntimeSession {
                 if self.project(&event) && overlay_enabled {
                     overlay.update_status(
                         self.state,
-                        self.preparing || self.downloading,
+                        self.show_preparation,
                         &self.model_message,
                         cx,
                     );
@@ -335,13 +344,10 @@ impl SettingsSession {
             Event::ModelPreparationCancelled { model } => {
                 return Some(SessionEvent::ModelPreparationCancelled { model });
             }
-            Event::StartupModelUnavailable { model } => {
-                return Some(SessionEvent::StartupModelUnavailable { model });
-            }
             Event::ModelReady { model } => return Some(SessionEvent::ModelReady { model }),
-            Event::PreparationStarted { generation } => {
+            Event::PreparationStarted { generation, model } => {
                 overlay.set_preparation_generation(generation, cx);
-                return None;
+                return Some(SessionEvent::PreparationStarted { model });
             }
             Event::SettingsSaved { id, result } => {
                 if !self.saves.complete(id) {
@@ -495,6 +501,112 @@ impl SettingsSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_model_preparation_stays_hidden_but_download_remains_visible() {
+        let mut projection = RuntimeSession::new("Ready".into(), false);
+        projection.project(&SessionEvent::PreparationStarted {
+            model: "local".into(),
+        });
+        assert!(projection.preparing);
+        assert!(!projection.show_preparation);
+        projection.project(&SessionEvent::ModelStatus {
+            message: "Checking".into(),
+            preparing: true,
+            downloading: false,
+        });
+        assert!(!projection.show_preparation);
+        projection.project(&SessionEvent::ModelStatus {
+            message: "Downloading".into(),
+            preparing: true,
+            downloading: true,
+        });
+        assert!(projection.show_preparation);
+        projection.project(&SessionEvent::ModelStatus {
+            message: "Verifying".into(),
+            preparing: true,
+            downloading: false,
+        });
+        assert!(projection.show_preparation);
+        projection.project(&SessionEvent::ModelStatus {
+            message: "Ready".into(),
+            preparing: false,
+            downloading: false,
+        });
+        assert!(!projection.show_preparation);
+        projection.project(&SessionEvent::PreparationStarted {
+            model: "other".into(),
+        });
+        assert!(!projection.show_preparation);
+    }
+
+    #[gpui_kit::test]
+    fn download_retry_flow_handles_split_batches_and_bounded_commands(
+        cx: &mut gpui_kit::TestAppContext,
+    ) {
+        let (events, receiver) = std::sync::mpsc::sync_channel(EVENT_BUDGET + 2);
+        let (commands, command_receiver) = std::sync::mpsc::sync_channel(1);
+        let (_meter, levels) = crossbeam_channel::bounded(1);
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            super::super::settings_theme::install(cx).unwrap();
+            let mut settings = SettingsSession::new(initial(), String::new());
+            let model = settings.saved.model.clone();
+            let overlay = OverlayWindow::open(&settings.saved.indicator_color, settings.saved.overlay_appearance(), levels, Instant::now(), cx).unwrap();
+            let mut projection = RuntimeSession::new("Preparing".into(), true);
+            let mut retry = DownloadRetry::default();
+            let route = |settings: &mut SettingsSession, projection: &mut RuntimeSession, retry: &mut DownloadRetry, cx: &mut App| {
+                for event in receive_events(&receiver).unwrap() {
+                    if let Some(event) = settings.event(event, &overlay, cx) {
+                        projection.project(&event);
+                        retry.event(&event, &settings.saved.model);
+                    }
+                }
+            };
+            let send_pending = |projection: &RuntimeSession, retry: &mut DownloadRetry| {
+                retry.submit(&model, !projection.preparing && !projection.downloading && projection.state == State::Idle, |model| post(&commands, Command::DownloadModel { model: model.into() })).unwrap();
+            };
+            // Automatic success produces no new command.
+            events.send(Event::ModelReady { model: model.clone() }).unwrap();
+            events.send(Event::ModelStatus { message: "Ready".into(), preparing: false, downloading: false }).unwrap();
+            route(&mut settings, &mut projection, &mut retry, cx);
+            send_pending(&projection, &mut retry);
+            assert!(command_receiver.try_recv().is_err());
+
+            // Simulate a fresh preparation and split its terminal failure/status
+            // across the 64-event budget. Start is retained until status is idle.
+            events.send(Event::PreparationStarted { generation: 2, model: model.clone() }).unwrap();
+            for _ in 0..EVENT_BUDGET - 2 { events.send(Event::Info("filler".into())).unwrap(); }
+            events.send(Event::ModelPreparationFailed { model: model.clone(), message: "fixture".into() }).unwrap();
+            events.send(Event::ModelStatus { message: "Failed".into(), preparing: false, downloading: false }).unwrap();
+            route(&mut settings, &mut projection, &mut retry, cx);
+            send_pending(&projection, &mut retry);
+            assert!(command_receiver.try_recv().is_err());
+            assert!(retry.retry(&model));
+            send_pending(&projection, &mut retry);
+            assert!(command_receiver.try_recv().is_err());
+            route(&mut settings, &mut projection, &mut retry, cx);
+            commands.try_send(Command::Memory { id: 1 }).unwrap();
+            send_pending(&projection, &mut retry);
+            assert!(matches!(command_receiver.try_recv(), Ok(Command::Memory { id: 1 })));
+            send_pending(&projection, &mut retry);
+            assert!(matches!(command_receiver.try_recv(), Ok(Command::DownloadModel { model: actual }) if actual == model));
+            assert!(retry.retry(&model));
+            send_pending(&projection, &mut retry);
+            assert!(command_receiver.try_recv().is_err());
+
+            events.send(Event::PreparationStarted { generation: 3, model: model.clone() }).unwrap();
+            events.send(Event::ModelPreparationCancelled { model: model.clone() }).unwrap();
+            events.send(Event::ModelStatus { message: "Cancelled".into(), preparing: false, downloading: false }).unwrap();
+            route(&mut settings, &mut projection, &mut retry, cx);
+            send_pending(&projection, &mut retry);
+            assert!(command_receiver.try_recv().is_err());
+            assert!(retry.retry(&model));
+            send_pending(&projection, &mut retry);
+            assert!(matches!(command_receiver.try_recv(), Ok(Command::DownloadModel { model: actual }) if actual == model));
+            overlay.close(cx);
+        });
+    }
 
     fn initial() -> Settings {
         #[cfg(target_os = "windows")]

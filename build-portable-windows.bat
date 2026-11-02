@@ -11,7 +11,7 @@ if exist "%~dp0build\cache\rust-tools\cargo\bin\cargo.exe" (
     set "cargo=%~dp0build\cache\rust-tools\cargo\bin\cargo.exe"
     set "PATH=%~dp0build\cache\rust-tools\cargo\bin;%PATH%"
 )
-"%cargo%" xtask package --release %*
+"%cargo%" xtask build --release %*
 set "result=%errorlevel%"
 popd
 if not "%result%"=="0" (

@@ -1,4 +1,4 @@
-name: Source and build-tool checks
+name: Source and product checks
 on:
   push:
     branches: [master]
@@ -21,10 +21,50 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Format (toolchain pinned by rust-toolchain.toml)
         run: cargo xtask fmt
       - name: Build-tool and packaging contracts (no native runtime needed)
         run: cargo test --locked --package xtask
       - name: Build-tool lint
         run: cargo clippy --locked --package xtask --all-targets -- -D warnings
+  windows-product:
+    runs-on: windows-2025
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      # xtask verifies/prepares pinned CT2, CUDA and other native inputs and
+      # configures MSVC, headers, import library and the test DLL search path.
+      - name: Build, test and lint Windows workspace without deployment
+        run: cargo xtask build --check --no-deploy
+  macos-product:
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '26.0'
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      CARGO_BUILD_JOBS: '3'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Validate native build host
+        run: |
+          test "$(uname -m)" = arm64
+          xcodebuild -version
+          xcrun --find metal
+          # Packaging contract tests reject symlink ancestors, including /var.
+          mkdir -p build/cache/tmp
+          echo "TMPDIR=$(cd build/cache/tmp && pwd -P)/" >> "$GITHUB_ENV"
+      # No compiled native cache: whisper-rs-sys does not track changes to the
+      # GGML policy in .cargo/config.toml. Cargo fetches locked dependencies;
+      # no models, preview bundle, signing, archive or deployment are involved.
+      - name: Build macOS workspace
+        run: cargo build --locked --workspace
+      - name: Test macOS workspace and native contracts
+        run: |
+          cargo test --locked --workspace
+          cargo test --locked -p accesskit_macos --test integration
+          bash tests/macos-bootstrap-test.sh
+          xcrun clang -fobjc-arc -Wall -Wextra -Werror tests/macos-input-contract.m -framework AppKit -framework ApplicationServices -o build/cache/macos-input-contract
+          build/cache/macos-input-contract
+      - name: Lint macOS workspace
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings

@@ -2,7 +2,7 @@
 
 ## Scope and sources of truth
 
-- macOS port development is authorized on `macOS-2` from `master`, including feature-branch commits, pushes and preview Actions. Do not merge/push master or publish releases without a separate request.
+- macOS port development is authorized from `master`, including feature-branch commits, pushes and preview Actions. Do not merge/push master or publish releases without a separate request.
 - Production source lives in `apps/` and `crates/`. The C#/WPF/Python application
   and its build scripts were removed; do not restore legacy dependencies.
 - Follow `docs/engineering-principles.md` and `docs/architecture.md`.
@@ -117,8 +117,8 @@ layout, scrolling, rendering, DPI or UI event/lifetime handling.
   `build/debug/` (default) and `build/release/` (`--release`). Rebuild through
   `cargo xtask build [--release]` to update those folders;
   `build --no-deploy` only compiles into the internal Cargo cache, not a runnable package.
-  `build-portable-windows.bat` updates the same Release folder and writes ZIP/checksum
-  to `build/package/` (both profiles; debug archives have a `-debug` suffix).
+  `build-portable-windows.bat` updates the same Release folder without an archive;
+  GitHub Actions creates release ZIP/checksums with `cargo xtask package --release`.
   Keep archives separate from the runnable `debug/` and `release/` folders.
   All compilation caches, native inputs, local tools and temporary staging belong
   under `build/cache/` (Cargo target: `build/cache/target/`). Never deploy to

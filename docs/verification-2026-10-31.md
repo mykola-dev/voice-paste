@@ -42,7 +42,7 @@ Scope: `macOS-2` architecture consolidation; no production release or master mer
 
 No model/VAD weights were downloaded. No recording, clipboard injection, real
 login-item/registry mutation, M1 inference, memory/performance or visual acceptance
-was performed. Corporate downloaded-artifact trust remains unresolved; locally
+was performed. Downloaded-artifact trust on the tested Mac remains unresolved; locally
 compiled previews remain the established route. Use the single combined checklist
 in [macos-preview.md](macos-preview.md) only after final automatic checks pass.
 Worker IO hard deadlines and abrupt-crash audio recovery remain open in TODO.

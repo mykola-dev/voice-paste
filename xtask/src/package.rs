@@ -405,6 +405,7 @@ pub fn package(
     create_archive: bool,
 ) -> Result<()> {
     let inputs = native::inputs()?;
+    eprintln!("Validating native package inputs...");
     native::validate(native_source, &inputs)?;
     let build = runner.root.join("build");
     let cache = runner.root.join(crate::layout::CACHE);
@@ -462,6 +463,7 @@ pub fn package(
             &payload.join("notices/native").join(relative),
         )?;
     }
+    eprintln!("Checking packaged dependencies and calculating hashes...");
     verify_dependencies(runner, &payload)?;
     let manifest = Manifest {
         version: env!("CARGO_PKG_VERSION").into(),
@@ -473,10 +475,13 @@ pub fn package(
     let archive_name = format!("{}.zip", name(&manifest));
     let staged_zip = stage.path().join(&archive_name);
     if create_archive {
+        eprintln!("Creating portable ZIP archive...");
         archive(&payload, &staged_zip, &manifest)?;
+        eprintln!("Verifying portable ZIP archive...");
         verify_archive(&staged_zip)?;
     }
     if deploy {
+        eprintln!("Updating portable folder...");
         let destination = build.join(profile);
         publish(&payload, &destination)?;
         println!("Portable folder: {}", destination.display());
@@ -484,6 +489,7 @@ pub fn package(
         println!("--no-deploy: runnable folder build/{profile} was NOT updated.");
     }
     if create_archive {
+        eprintln!("Publishing ZIP and checksum...");
         let packages = runner.root.join(crate::layout::PACKAGE);
         fs::create_dir_all(&packages)?;
         let checksum = format!("{}  {archive_name}\n", files::hash(&staged_zip)?);

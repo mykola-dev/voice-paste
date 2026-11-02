@@ -1,4 +1,4 @@
-//! Pinned GGML provisioning. Only an explicit download command enables network.
+//! Pinned GGML provisioning with caller-controlled network access.
 use crate::adapters::model_preparation::{Job, Progress, check_cancel as check, publish, verify};
 #[cfg(test)]
 use sha2::{Digest, Sha256};
@@ -6,7 +6,6 @@ use std::{
     fs::{self, OpenOptions},
     io::Read,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
     sync::atomic::{AtomicBool, Ordering},
     thread,
     time::Duration,
@@ -15,6 +14,8 @@ use std::{
 use voicepaste_core::models::Artifact;
 use voicepaste_core::{models::Model, settings::SettingsPlatform};
 
+#[path = "macos_curl.rs"]
+mod macos_curl;
 #[path = "verification.rs"]
 mod verification;
 
@@ -66,7 +67,7 @@ pub fn local_path(root: &Path, name: &str) -> Result<PathBuf, String> {
     {
         Ok(directory)
     } else {
-        Err("Model is not ready. Start recording to approve or retry its download.".into())
+        Err("Model is not ready. Start recording to retry its download.".into())
     }
 }
 pub fn filter(
@@ -76,9 +77,6 @@ pub fn filter(
 }
 pub(crate) type Preparation = Job;
 impl Job {
-    pub fn start(root: PathBuf, name: &str) -> Result<Self, String> {
-        Self::start_with_download(root, name, false)
-    }
     pub fn start_with_download(root: PathBuf, name: &str, download: bool) -> Result<Self, String> {
         let model = selected(name)?;
         let progress = Progress::staging_file(format!("Checking {}", model.name));
@@ -207,37 +205,7 @@ fn transfer(
     stop: &AtomicBool,
 ) -> Result<(), String> {
     check(stop)?;
-    let mut child = Command::new("/usr/bin/curl")
-        .args([
-            "--fail",
-            "--location",
-            "--silent",
-            "--show-error",
-            "--write-out",
-            "%{http_code}",
-            "--proto",
-            "=https",
-            "--proto-redir",
-            "=https",
-            "--connect-timeout",
-            "15",
-            "--max-time",
-            "1800",
-            "--speed-time",
-            "30",
-            "--speed-limit",
-            "1024",
-            "--continue-at",
-        ])
-        .arg(offset.to_string())
-        .arg("--output")
-        .arg(path)
-        .arg("--max-filesize")
-        .arg(size.to_string())
-        .arg(url)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+    let mut child = macos_curl::command(url, path, offset, size)
         .spawn()
         .map_err(|e| e.to_string())?;
     loop {

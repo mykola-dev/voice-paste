@@ -6,6 +6,7 @@ extern crate gpui_kit as gpui;
 mod adapters;
 mod bootstrap;
 mod runtime;
+mod settings_policy;
 
 #[cfg(target_os = "windows")]
 fn main() -> std::process::ExitCode {
@@ -18,7 +19,7 @@ fn main() -> std::process::ExitCode {
     if cli {
         adapters::launch::attach_parent_console();
     }
-    match bootstrap::run() {
+    match bootstrap::run(settings_policy::windows) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("{error}");
@@ -34,7 +35,7 @@ fn main() -> std::process::ExitCode {
 
 #[cfg(target_os = "macos")]
 fn main() -> std::process::ExitCode {
-    match bootstrap::run() {
+    match bootstrap::run(settings_policy::macos) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("VoicePaste macOS preview failed: {error}");

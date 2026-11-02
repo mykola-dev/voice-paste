@@ -47,7 +47,9 @@ pub enum Command {
     ResetStatistics {
         id: u64,
     },
-    DownloadModel,
+    DownloadModel {
+        model: String,
+    },
     CancelModelDownload {
         generation: u64,
     },
@@ -56,6 +58,7 @@ pub enum Command {
 pub enum Event {
     PreparationStarted {
         generation: u64,
+        model: String,
     },
     ModelPreparationFailed {
         model: String,
@@ -65,9 +68,6 @@ pub enum Event {
         model: String,
     },
     ModelReady {
-        model: String,
-    },
-    StartupModelUnavailable {
         model: String,
     },
     StatisticsReset {
@@ -117,7 +117,11 @@ pub struct Runtime {
 }
 
 impl Runtime {
-    pub fn start(storage: Arc<Storage>, capture_preview: bool) -> Result<Self, String> {
+    pub fn start(
+        storage: Arc<Storage>,
+        capture_preview: bool,
+        validate_settings: fn(&Settings) -> Result<(), String>,
+    ) -> Result<Self, String> {
         let clock = Instant::now();
         let (meter, levels) = crossbeam_channel::bounded(voicepaste_core::waveform::CAPACITY);
         let (commands, receiver) = mpsc::sync_channel(8);
@@ -128,7 +132,7 @@ impl Runtime {
             .name("dictation".into())
             .spawn(move || {
                 let microphone = Microphone::new(storage.temp.clone(), meter, clock);
-                let mut app = Dictation::new(microphone);
+                let mut app = Dictation::new(microphone, validate_settings);
                 let mut worker = Worker::new(storage.clone());
                 let mut recovery: Option<voicepaste_application::Submission<crate::adapters::audio::AudioFile, FocusTarget>> = None;
                 let mut statistics = crate::adapters::statistics::Statistics::open(&storage.root.join("data/transcription-stats.sqlite"));
@@ -143,8 +147,7 @@ impl Runtime {
                     prepare(&storage,&preferences.current().model,&sender,&thread_shutdown)
                 };
                 let mut last_progress = Instant::now();
-                let mut startup_check = !capture_preview;
-                if preparation.is_some() && !reliable(&sender, Event::PreparationStarted { generation: preparation_generation }, &thread_shutdown) { return; }
+                if preparation.is_some() && !reliable(&sender, Event::PreparationStarted { generation: preparation_generation, model: preferences.current().model.clone() }, &thread_shutdown) { return; }
                 loop {
                     if thread_shutdown.load(Ordering::Acquire) {
                         // Stop capture before disk commits or native-child waits;
@@ -154,7 +157,7 @@ impl Runtime {
                         // when OS Quit ends the UI before its completion arrives.
                         while let Ok(command)=receiver.try_recv(){
                             if let Command::SaveSettings{settings,..}=command
-                                && let Err(error)=voicepaste_application::settings::save(&*storage,settings){storage.log(&format!("Settings save during shutdown failed: {error}"));}
+                                && let Err(error)=voicepaste_application::settings::save(&*storage,settings,validate_settings){storage.log(&format!("Settings save during shutdown failed: {error}"));}
                         }
                         break;
                     }
@@ -167,10 +170,9 @@ impl Runtime {
                             worker.release();
                         }
                         if previous.model != current.model && !capture_preview {
-                            startup_check=true;
                             drop(preparation.take()); model_ready=false;
                             preparation_generation = preparation_generation.checked_add(1).expect("Preparation generation exhausted");
-                            if !reliable(&sender, Event::PreparationStarted { generation: preparation_generation }, &thread_shutdown) { break; }
+                            if !reliable(&sender, Event::PreparationStarted { generation: preparation_generation, model: current.model.clone() }, &thread_shutdown) { break; }
                             preparation=prepare(&storage,&current.model,&sender,&thread_shutdown);
                         } else if model_ready && !capture_preview && current.keep_in_memory
                             && let Err(error) = worker.preload(current) { report(&storage,&sender,error); }
@@ -179,19 +181,18 @@ impl Runtime {
                         Ok(Command::Quit) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
                         Ok(Command::CancelModelDownload { generation }) => {
                             if !current_preparation(generation, preparation_generation, preparation.is_some()) { continue; }
-                            startup_check=false;
                             if preparation.is_some(){
                                 drop(preparation.take());model_ready=false;
                                 if !reliable(&sender, Event::ModelPreparationCancelled { model: preferences.current().model.clone() }, &thread_shutdown) { break; }
                                 if !reliable(&sender, Event::ModelStatus{message:"Model preparation cancelled; partial download retained".into(),preparing:false,downloading:false}, &thread_shutdown) { break; }
                             }
                         }
-                        Ok(Command::DownloadModel) => {
+                        Ok(Command::DownloadModel { model }) => {
                             if app.state()!=State::Idle {report(&storage,&sender,"Wait until dictation is idle before downloading a model".into());continue;}
-                            startup_check=false;
+                            if model != preferences.current().model || preparation.is_some() { continue; }
                             worker.release();drop(preparation.take());model_ready=false;
                             preparation_generation = preparation_generation.checked_add(1).expect("Preparation generation exhausted");
-                            if !reliable(&sender, Event::PreparationStarted { generation: preparation_generation }, &thread_shutdown) { break; }
+                            if !reliable(&sender, Event::PreparationStarted { generation: preparation_generation, model }, &thread_shutdown) { break; }
                             match crate::adapters::models::Preparation::start_with_download(storage.root.clone(),&preferences.current().model,true) {
                                 Ok(task)=>preparation=Some(task),
                                 Err(error)=>{
@@ -203,7 +204,7 @@ impl Runtime {
                         }
                         Err(mpsc::RecvTimeoutError::Timeout) => (),
                         Ok(Command::SaveSettings { id, settings }) => {
-                            let result = voicepaste_application::settings::save(&*storage, settings);
+                            let result = voicepaste_application::settings::save(&*storage, settings, validate_settings);
                             if let Ok(settings) = &result { preferences.saved(settings.clone()); }
                             if !reliable(&sender, Event::SettingsSaved { id, result }, &thread_shutdown) { break; }
                         }
@@ -251,7 +252,7 @@ impl Runtime {
                                 storage.log(&format!("Toggle at {} ms; before {:?}", now.as_millis(), app.state()));
                             }
                             if !model_ready {
-                                let _ = sender.try_send(Event::Info("Model is not ready. Check Settings for status. Restart VoicePaste to retry a failed download; partial files are retained.".into()));
+                                let _ = sender.try_send(Event::Info("Model is not ready. Check Settings for status; start recording again to retry a failed download. Partial files are retained.".into()));
                                 continue;
                             }
                             match app.toggle(now, preferences.current(), target) {
@@ -300,22 +301,22 @@ impl Runtime {
                         }
                     }
                     if let Some(result) = preparation.as_mut().and_then(Preparation::poll) {
-                        let network_attempted = preparation.as_ref().is_some_and(|task| task.progress.network_attempted());
                         if let Some(task) = &preparation {
                             storage.log(&format!("Model preparation: {}; network_download={}", task.progress.snapshot(), task.progress.downloading()));
                         }
                         drop(preparation.take());
                         model_ready = result.is_ok();
                         if model_ready && !reliable(&sender, Event::ModelReady { model: preferences.current().model.clone() }, &thread_shutdown) { break; }
-                        let missing_local = std::mem::take(&mut startup_check) && !model_ready;
-                        if missing_local
-                            && !reliable(&sender, Event::StartupModelUnavailable { model: preferences.current().model.clone() }, &thread_shutdown) { break; }
                         let message = match result {
                             Ok(_) => format!("{} is ready (verified local model)", preferences.current().model),
                             Err(error) => {
                                 storage.log(&error);
-                                if (!missing_local || network_attempted) && !error.contains("cancelled")
-                                    && !reliable(&sender, Event::ModelPreparationFailed { model: preferences.current().model.clone(), message: format!("Could not prepare the selected model. Verified files and resumable downloads are retained. Try Start recording again to retry.\n\n{error}") }, &thread_shutdown) { break; }
+                                let event = if error.contains("cancelled") {
+                                    Event::ModelPreparationCancelled { model: preferences.current().model.clone() }
+                                } else {
+                                    Event::ModelPreparationFailed { model: preferences.current().model.clone(), message: format!("Could not prepare the selected model. Verified files and resumable downloads are retained. Try Start recording again to retry.\n\n{error}") }
+                                };
+                                if !reliable(&sender, event, &thread_shutdown) { break; }
                                 error
                             },
                         };
@@ -471,7 +472,7 @@ fn prepare(
     sender: &SyncSender<Event>,
     shutdown: &AtomicBool,
 ) -> Option<Preparation> {
-    match Preparation::start(storage.root.clone(), model) {
+    match Preparation::start_with_download(storage.root.clone(), model, true) {
         Ok(task) => Some(task),
         Err(error) => {
             storage.log(&error);

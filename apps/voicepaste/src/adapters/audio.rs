@@ -3,7 +3,7 @@ use crossbeam_channel::{Receiver, Sender, bounded};
 use rubato::{FftFixedIn, Resampler};
 use std::{
     collections::VecDeque,
-    fs::{self, File, OpenOptions},
+    fs::{self, File},
     io::BufWriter,
     path::{Path, PathBuf},
     sync::{
@@ -100,19 +100,10 @@ impl AudioCapture for Microphone {
         if channels == 0 || !(8000..=384000).contains(&config.sample_rate.0) {
             return Err("Unsupported microphone sample rate/channel count".into());
         }
-        let path = self.temp.join(format!(
-            "recording-{}-{}.wav",
-            std::process::id(),
-            session.0
-        ));
-        let mut options = OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        let file = options.open(&path).map_err(|e| e.to_string())?;
+        let prefix = format!("recording-{}-{}", std::process::id(), session.0);
+        let (path, file) =
+            super::unique_audio::create(&self.temp, &prefix, super::files::private_options())
+                .map_err(|e| e.to_string())?;
         let owned = AudioFile { path };
         let (sender, receiver) = bounded(QUEUE_BLOCKS);
         let failed = Arc::new(AtomicBool::new(false));
@@ -386,6 +377,7 @@ fn write_audio(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs::OpenOptions;
     #[test]
     fn writer_produces_mono_16khz_and_owned_audio_is_removed_on_drop() {
         let root =

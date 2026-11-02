@@ -31,6 +31,10 @@ matching `ct2Revision`, unique safe relative paths, nonempty file sizes/SHA-256,
 version, HTTPS origin and a tracked `licensePath` under `notices/` for every file.
 Runtime files and matching CT2 headers are mandatory. Untracked files, unsafe
 Windows paths, symlinks and reparse points fail validation.
+The prepared inventory records hashes alongside the files it describes; validation
+is not independent provenance for a folder writable by an untrusted party. Treat
+the native build cache and explicit input folders as trusted build inputs, not as
+a security boundary against a writer who can alter both files and inventory.
 
 ## Packaged runtime
 

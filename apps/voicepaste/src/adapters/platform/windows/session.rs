@@ -16,12 +16,6 @@ pub(in crate::adapters::platform) struct SessionHost {
 }
 
 impl SessionHost {
-    pub fn download_confirmation(&self) -> Option<fn(&str) -> bool> {
-        // Initial provisioning remains automatic; this is an explicit retry
-        // after a failed/cancelled preparation, shared with recording intents.
-        Some(confirm_download)
-    }
-
     pub fn new(initial: &Settings, _preview: bool, settings_only: bool) -> Result<Self, String> {
         Ok(Self {
             host: Host::create(Hotkey::parse(&initial.hotkey)?, !settings_only)?,
@@ -177,38 +171,21 @@ impl SessionHost {
         _permission_pending: bool,
         _message: &str,
     ) {
+        if self.last_dpi.elapsed() >= Duration::from_secs(2) {
+            match self.host.ensure_dpi() {
+                Ok(_) => (),
+                Err(error) => self.host.notify(&error, true),
+            }
+            self.last_dpi = Instant::now();
+        }
         self.host.model_status(
             &projection.model_message,
             projection.preparing,
             projection.state,
         );
-        if self.last_dpi.elapsed() >= Duration::from_secs(2) {
-            match self.host.ensure_dpi() {
-                Ok(true) => self.host.state(projection.state),
-                Ok(false) => (),
-                Err(error) => self.host.notify(&error, true),
-            }
-            self.last_dpi = Instant::now();
-        }
-    }
-}
-
-fn confirm_download(model: &str) -> bool {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        IDOK, MB_ICONQUESTION, MB_OKCANCEL, MessageBoxW,
-    };
-    let text: Vec<u16> = model.encode_utf16().chain(Some(0)).collect();
-    let title: Vec<u16> = "Prepare selected model"
-        .encode_utf16()
-        .chain(Some(0))
-        .collect();
-    // SAFETY: UI-thread dialog outside framework/state borrows; buffers outlive call.
-    unsafe {
-        MessageBoxW(
-            std::ptr::null_mut(),
-            text.as_ptr(),
-            title.as_ptr(),
-            MB_OKCANCEL | MB_ICONQUESTION,
-        ) == IDOK
+        self.host.restore_tray(super::host::tray_face(
+            projection.state,
+            projection.preparing,
+        ));
     }
 }

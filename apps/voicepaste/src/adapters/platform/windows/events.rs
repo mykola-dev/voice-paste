@@ -20,10 +20,12 @@ static WINDOW: AtomicUsize = AtomicUsize::new(0);
 static SESSION: AtomicU64 = AtomicU64::new(0);
 static ESC_HELD: AtomicBool = AtomicBool::new(false);
 static ESC_CAPTURED: AtomicBool = AtomicBool::new(false);
+static TASKBAR_CREATED: AtomicUsize = AtomicUsize::new(0);
 
 thread_local! {
     static PENDING: RefCell<Pending<FocusTarget>> = RefCell::new(Pending::default());
     static DELIVERY_WARNING: Cell<bool> = const { Cell::new(false) };
+    static TRAY_RESTORE: Cell<bool> = const { Cell::new(false) };
 }
 
 pub(super) fn delivery_warning() {
@@ -68,18 +70,31 @@ fn retain_failed_post(message: u32, w: WPARAM, l: LPARAM) {
     }
 }
 
-pub(in crate::adapters::platform) fn attach(hwnd: HWND) {
+pub(in crate::adapters::platform) fn attach(hwnd: HWND) -> Result<(), String> {
+    // SAFETY: static, null-terminated registered message name.
+    let message = unsafe { RegisterWindowMessageW(windows_sys::w!("TaskbarCreated")) };
+    if message == 0 {
+        return Err(std::io::Error::last_os_error().to_string());
+    }
+    TASKBAR_CREATED.store(message as usize, Ordering::Release);
     WINDOW.store(hwnd as usize, Ordering::Release);
     // SAFETY: querying key state does not inject input or activate a window.
     ESC_HELD.store(
         unsafe { GetAsyncKeyState(VK_ESCAPE as i32) } < 0,
         Ordering::Release,
     );
+    Ok(())
+}
+
+pub(super) fn take_tray_restore() -> bool {
+    TRAY_RESTORE.with(|restore| restore.replace(false))
 }
 
 pub(in crate::adapters::platform) fn detach() {
     SESSION.store(0, Ordering::Release);
     WINDOW.store(0, Ordering::Release);
+    TASKBAR_CREATED.store(0, Ordering::Release);
+    take_tray_restore();
     ESC_HELD.store(false, Ordering::Release);
     ESC_CAPTURED.store(false, Ordering::Release);
     drop(drain());
@@ -108,6 +123,10 @@ pub(in crate::adapters::platform) unsafe extern "system" fn window_proc(
 ) -> LRESULT {
     // SAFETY: unconsumed messages go to the OS default handler without a borrow.
     unsafe {
+        if message != 0 && message as usize == TASKBAR_CREATED.load(Ordering::Acquire) {
+            TRAY_RESTORE.with(|restore| restore.set(true));
+            return 0;
+        }
         if message == TRAY {
             // Shell can send synchronously. Defer work beyond its reentrant call.
             defer(hwnd, TRAY_ACTION, w, l);
@@ -188,6 +207,23 @@ mod tests {
     use super::*;
     use std::{mem::zeroed, ptr::null};
     use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+
+    #[test]
+    fn taskbar_restart_is_coalesced_and_delivered_without_losing_later_events() {
+        let message = unsafe { RegisterWindowMessageW(windows_sys::w!("TaskbarCreated")) };
+        assert_ne!(message, 0);
+        TASKBAR_CREATED.store(message as usize, Ordering::Release);
+        take_tray_restore();
+        unsafe {
+            window_proc(null_mut(), message, 0, 0);
+            window_proc(null_mut(), message, 0, 0);
+        }
+        assert!(take_tray_restore());
+        assert!(!take_tray_restore());
+        unsafe { window_proc(null_mut(), message, 0, 0) };
+        assert!(take_tray_restore());
+        TASKBAR_CREATED.store(0, Ordering::Release);
+    }
 
     #[test]
     fn failed_post_retains_bounded_input_and_coalesces_a_delivery_warning() {

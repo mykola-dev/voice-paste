@@ -221,12 +221,12 @@ impl Settings {
         {
             settings.hotkey = "RightAlt".into();
         }
-        settings.validate()?;
+        settings.validate_with_models(&crate::models::catalog_for(platform)?)?;
         Ok(settings)
     }
 
     pub fn validate_for(&self, platform: SettingsPlatform) -> Result<(), String> {
-        self.validate()?;
+        self.validate_with_models(&crate::models::catalog_for(platform)?)?;
         if !platform
             .devices()
             .iter()
@@ -257,6 +257,11 @@ impl Settings {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        self.validate_with_models(&crate::models::catalog()?)
+    }
+
+    /// Validate shared fields against the explicitly supplied model catalog.
+    pub fn validate_with_models(&self, models: &[crate::models::Model]) -> Result<(), String> {
         if self
             .waveform_amplification
             .is_some_and(|value| !(1..=50).contains(&value))
@@ -276,7 +281,9 @@ impl Settings {
             return Err("Unsupported settings version".into());
         }
         Hotkey::parse(&self.hotkey)?;
-        crate::models::find(&self.model)?;
+        if !models.iter().any(|model| model.name == self.model) {
+            return Err(format!("Unsupported model: {}", self.model));
+        }
         if !(1..=10).contains(&self.beam_size) {
             return Err("beamSize must be 1..10".into());
         }
@@ -357,6 +364,29 @@ impl Hotkey {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn model_validation_uses_explicit_catalog_instead_of_windows_catalog() {
+        let mut settings = Settings::initial_for(SettingsPlatform::Macos).unwrap();
+        settings.model = "exclusive-model".into();
+        settings.custom_initial_prompt = "Збережений prompt".into();
+        let mut model = crate::models::catalog_for(SettingsPlatform::Macos)
+            .unwrap()
+            .remove(0);
+        model.name = settings.model.clone();
+        assert!(settings.validate_with_models(&[model]).is_ok());
+        assert!(settings.validate_with_models(&[]).is_err());
+        assert!(settings.validate().is_err());
+        assert_eq!(settings.custom_initial_prompt, "Збережений prompt");
+        for platform in [SettingsPlatform::Windows, SettingsPlatform::Macos] {
+            for model in crate::models::catalog_for(platform).unwrap() {
+                let mut settings = Settings::initial_for(platform).unwrap();
+                settings.model = model.name;
+                assert!(settings.validate_for(platform).is_ok());
+                let json = serde_json::to_string(&settings).unwrap();
+                assert_eq!(Settings::from_json_for(&json, platform).unwrap(), settings);
+            }
+        }
+    }
     #[test]
     fn platform_defaults_are_explicit_and_saved_values_are_not_reinterpreted() {
         let windows = Settings::initial().unwrap();

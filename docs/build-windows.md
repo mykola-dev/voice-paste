@@ -49,13 +49,14 @@ Bash, Python, .NET application runtime or CUDA Toolkit is required by the builde
 Cargo resolves the pinned Rust toolchain; no task installs an SDK or speech model.
 
 From the repository root, run or double-click **`build-portable-windows.bat`**.
-It only launches `cargo xtask package --release`; CI invokes the same BAT.
+It launches `cargo xtask build --release` and updates the runnable folder only.
+GitHub Actions creates the release ZIP using `cargo xtask package --release`.
 The BAT also supports the existing repository-local Rust installation under
 `build/cache/rust-tools/`; otherwise Cargo must be on PATH.
 
 ```text
 build-portable-windows.bat --check
-cargo xtask package --release          # identical packaging task, no BAT needed
+cargo xtask package --release          # explicit ZIP/checksum packaging, as in CI
 cargo xtask package --release --no-deploy # ZIP only; leave running installation alone
 cargo xtask build                      # update complete portable Debug folder
 cargo xtask build --no-deploy          # debug compilation only; runnable folder NOT updated
@@ -72,7 +73,8 @@ cargo xtask verify --archive build/package/VoicePaste-2.0.0-windows-x86_64.zip
 `xtask/` is a standalone build-tool crate with cohesive filesystem, native-input,
 process and packaging modules. It never depends on application/native ML crates.
 Its tests can run on Windows/Linux/macOS (`cargo test --locked -p xtask`), but
-application compilation/packaging currently requires Windows x64 with MSVC.
+Windows application compilation/packaging requires Windows x64 with MSVC; the
+separate Apple Silicon preview task builds and packages on macOS.
 Nested builds exclude the already-running `xtask` executable to avoid Windows
 self-rebuild locking; tests/clippy still cover the whole workspace. No copied
 build-tool executable or alternate runnable output folder is needed.
@@ -128,9 +130,11 @@ remains distinct from automated tests.
 
 ## Status and documentation
 
-Windows is the current target. Native host effects are isolated behind Windows
-module selection; [cross-platform readiness](cross-platform-roadmap.md) records
-the boundaries and validation. Neither Linux nor macOS port is implemented.
+Windows is the production release target. Apple Silicon macOS is a working beta,
+with device and distribution qualification still open; see the
+[macOS guide](macos-preview.md). Linux is not implemented. Native host effects are
+isolated behind platform module selection; [cross-platform readiness](cross-platform-roadmap.md)
+records the boundaries and historical validation.
 Reproducible native source builds, redistribution closure,
 equivalent-state memory comparison and some device/model/interaction qualification
 remain open. A GPUI shutdown drop-order deadlock is fixed and has a bounded
@@ -170,6 +174,10 @@ The tag must exactly match the workspace version. The release is staged as a
 draft until checksum verification and all asset uploads succeed, then published.
 If uploading fails, the draft remains unpublished; rerun the failed job to retry.
 The workflow never replaces assets of an already published release.
+The accompanying SHA-256 file checks ZIP integrity, but a checksum distributed
+alongside the ZIP is not a publisher signature and does not establish authenticity.
+Windows application signing and independently verifiable release provenance remain
+open; signatures checked on upstream runtime inputs do not sign the application.
 
 `Source and build-tool checks` tests the build tool on Windows/Linux/macOS without
 native ML inputs. The separate Windows release workflow runs full workspace

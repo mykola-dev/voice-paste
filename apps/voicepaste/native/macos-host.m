@@ -143,16 +143,6 @@ void vp_menu_update(void *raw, const char *title, bool enabled, bool active, con
     host.item.button.toolTip = [NSString stringWithUTF8String:status];
 }
 
-bool vp_confirm_download(const char *model) {
-    NSCAssert([NSThread isMainThread], @"download alert must be on the main thread");
-    NSAlert *alert = [NSAlert new];
-    alert.messageText = @"Download model?";
-    alert.informativeText = [NSString stringWithUTF8String:model];
-    [alert addButtonWithTitle:@"Download"]; [alert addButtonWithTitle:@"Cancel"];
-    [NSApp activate];
-    return [alert runModal] == NSAlertFirstButtonReturn;
-}
-
 bool vp_retry_without_vad(const char *message) {
     NSCAssert([NSThread isMainThread], @"retry alert must be on the main thread");
     NSAlert *alert = [NSAlert new];

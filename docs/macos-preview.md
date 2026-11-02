@@ -1,13 +1,13 @@
 # Apple Silicon macOS beta
 
-Development branch: `macOS-2`, based on `ab6c864` from `master`.
+Build the macOS beta from the `master` branch.
 The launch-only milestone is complete: the user confirmed a locally compiled
-Rust preview opens on the corporate Mac. The current development build wires
-the complete dictation path described below; automated compilation/contracts
-and real-device acceptance are tracked separately. It is not a production release.
+Rust preview opens on a Mac. The current development build wires
+the complete dictation path described below. The user reports that macOS is working;
+automated compilation/contracts and the complete real-device acceptance matrix
+are tracked separately. It is not a production release.
 No Developer ID membership is available: previews are ad-hoc signed and **not
-notarized**. Managed Macs may block them. Do not disable security controls or
-work around company policy to launch a preview.
+notarized**. macOS may block them. Do not disable security controls to launch a preview.
 
 ## Current development implementation
 
@@ -17,16 +17,19 @@ work around company policy to launch a preview.
 - The existing shared Rust runtime/application state machine now owns macOS
   recording, debounce, session cancellation, stale worker results, settings-at-idle,
   model residency and statistics. The capture-only worker fork was removed.
-- A missing **saved** model prompts for approval at startup or after saving a
-  different model. Start recording offers the download again after a decline or
-  failure. Models and VAD come from the separate GitHub `Models` release, not Git
-  LFS. Draft dropdown queries and builds never download weights. Cancellation
-  retains resumable parts; a later approved request resumes.
+- A missing **saved** model downloads automatically at startup or after saving a
+  different model, as on Windows. Start recording retries after cancellation or
+  failure without a confirmation dialog. Models and VAD come from GitHub `Models`
+  release, not Git LFS. Draft dropdown queries and builds never download weights.
+  Cancellation retains resumable parts; a later retry resumes.
   Previously verified, unchanged model and VAD files reuse a local receipt, so
   later launches do not repeatedly hash the entire model. The first launch after
   this change or any detected file change still verifies the pinned hashes.
+  Receipts and cooperative cache locks are performance and coordination measures,
+  not a security boundary against a process able to tamper with the cache.
   Exact size/SHA-256 verification precedes publication. A complete verified partial
   can be published offline. Source manifest: `crates/core/assets/macos-model-artifacts.json`.
+  Builds, Settings-only operation and offline file transcription do not download.
 - Full FP16 GGML large-v2, large-v3 and large-v3-turbo use separate pinned artifacts,
   never Windows CT2 files or silent smaller/quantized replacements. Model storage
   is `~/Library/Application Support/VoicePaste/data/models-ggml/`.
@@ -46,7 +49,7 @@ work around company policy to launch a preview.
 - Microphone permission is requested only on Start (hotkey or menu); denied access
   opens the relevant System Settings pane. Accessibility is checked/requested at
   normal startup; granting it reconnects recording keys without a special menu.
-  Corporate restrictions are not bypassed. With permission granted,
+  With permission granted,
   Right Option (default), Right Command, F8 and F12 are standalone recording keys;
   repeat/chords do not create extra toggles. Escape consumes its recording-cancel
   sequence and carries the original session identity through the bounded inbox.
@@ -55,7 +58,7 @@ work around company policy to launch a preview.
   change its code identity, so an enabled Accessibility entry from an older build
   does not guarantee access for the current one. If that happens, the user may
   remove the stale VoicePaste entry and add the current `.app` in Accessibility,
-  subject to company policy. No TCC reset, security-policy change, certificate
+  subject to device policy. No TCC reset, security-policy change, certificate
   installation or permission grant is performed automatically. A stable signing
   identity would require separate provisioning and device verification.
 - Shared GPUI draws the animated waveform/busy indicator. Native NSPanel policy
@@ -79,7 +82,8 @@ work around company policy to launch a preview.
   Temp recording ownership removes files on completion/cancel/orderly shutdown;
   abrupt-crash recovery is still an open task, not an implemented guarantee.
 
-Recording keys were confirmed on one Mac after refreshing its Accessibility entry.
+The user reports macOS is working. Recording keys were confirmed on one Mac after
+refreshing its Accessibility entry; the report does not specify a complete matrix.
 The complete microphone/TCC/hotkey/paste/Metal performance, M1 memory and visual matrix
 has **not** been accepted on a Mac. User requested completing development and
 automatic checks first, then one combined manual pass. Do not ask for slice-by-slice
@@ -95,7 +99,7 @@ microphone permissions, transcription weights, login startup or interactive UI.
    From the existing repository on the Mac, update and build:
 
    ```sh
-   git switch macOS-2
+   git switch master
    git pull --ff-only
    bash build-macos-preview.sh
    open build/release/VoicePaste.app
@@ -106,8 +110,8 @@ microphone permissions, transcription weights, login startup or interactive UI.
 2. Record the tested commit (`git rev-parse --short HEAD`), macOS version, chip and
    RAM. Confirm menu-bar residency, Settings text/resize/scroll, Save/Apply/Cancel,
    prompt preservation and reopening after Quit. Existing legacy config stays intact.
-3. Save the intended model/device. Confirm download requires approval; accept
-   the startup/model-change prompt to fetch the full model and VAD from GitHub.
+3. Save the intended model/device. Verify that initial preparation downloads the
+   saved model and VAD from GitHub without a confirmation prompt.
    Check progress, cancellation/resume and successful verified preparation.
    A network failure is a failed delivery test, not permission to bypass TLS.
 4. Grant the startup Accessibility request only if policy permits. Start requests
@@ -175,7 +179,7 @@ The following describes that earlier slice, not current feature limitations.
   the item takes effect next sign-in. Disabling removes only the app-owned file.
   Existing unrelated files are rejected, and failed config publication restores
   the prior login-item contents. Moving the app later requires re-saving the
-  login preference; corporate policy can still prevent login launch.
+  login preference; device policy can still prevent login launch.
 - Host resident memory is a real Mach task query. Worker memory, GGML artifact
   sizes and transcription statistics explicitly remain unavailable; no CT2
   sizes/revisions are presented as macOS models.
@@ -206,10 +210,10 @@ a second dictation state machine. Host contract tests do not request TCC access
 or use a live microphone. Real-device permission, capture and audio-device-loss
 acceptance remain pending; tests on the Mac will be requested after development.
 
-Current model-delivery metadata and historical Hugging Face investigation are
+Later model-delivery metadata and historical Hugging Face investigation are
 recorded in [macos-model-delivery.md](macos-model-delivery.md). All three full GGML
 models and Silero were downloaded and verified locally for the approved GitHub
-mirror. Corporate Mac delivery remains unverified. Normal startup offers
+mirror. Delivery on the tested Mac remains unverified. Normal startup offers
 Download/Cancel if offline verification fails; macOS downloads verified raw parts
 from the separate GitHub `Models` release and assembles the original file.
 Start recording retries a declined/failed preparation; cancellation retains parts.
@@ -224,11 +228,11 @@ Manual acceptance for this slice: open/close/reopen Settings from the icon,
 check right-click/Quit, change a prompt and Apply, then Cancel subsequent edits
 and reopen/relaunch to check persistence. Check resizing/Unicode/scrolling and
 that Save failures leave the draft editable. Sign-in startup is a separate
-opt-in test, not a reason to modify corporate policy. CI contracts do not prove
+opt-in test, not a reason to modify security policy. CI contracts do not prove
 these interactions or actual login launch.
 
 Build locally **on an Apple Silicon development Mac**, from a checkout of
-`macOS-2`, with:
+`master`, with:
 
 ```bash
 bash build-macos-preview.sh
@@ -265,12 +269,14 @@ and signature integrity. These checks do not prove GUI launch, Gatekeeper trust,
 TCC permission persistence, or actual GPU inference.
 
 The user reports that the old `origin/MacOS` Swift port, built directly on the
-same corporate Mac, launches with an ad-hoc signature. Its `build-mac.sh` did
+same Mac, launches with an ad-hoc signature. Its `build-mac.sh` did
 not remove quarantine or change Gatekeeper rules. This establishes a useful
 local-build test route, not proof that this Rust preview will launch. Downloaded
 CI apps remain blocked there; local compilation is the next launch gate.
 
-## Portability audit: first implementation slice
+## Historical portability audit: first implementation slice
+
+The table records the initial audit, not current implementation status.
 
 | Area | Confirmed blocker / next boundary | Windows protection |
 | --- | --- | --- |
@@ -305,7 +311,7 @@ CI apps remain blocked there; local compilation is the next launch gate.
 Detailed ordered work plan remains in
 `C:\Users\mykola\.opencode\plan\voicepaste-macos-2.md` on the development machine.
 
-## Validation of the first slice
+## Historical validation of the first slice
 
 Windows: `cargo xtask build --check --no-deploy --offline` passed (fmt,
 144 tests passed, 1 interactive paste test ignored, clippy with warnings denied,
@@ -318,7 +324,7 @@ packaging fixtures reject macOS's `/var` symlink in the default temp path.
 The preview job now uses a physical `build/cache/tmp/` directory; symlink safety
 checks remain unchanged, and the failed tests are not skipped.
 
-## Launch blocker reported on macOS 26.7.1
+## Historical downloaded-artifact launch blocker reported on macOS 26.7.1
 
 The user launches the original `aa24bde` app from Downloads. Gatekeeper says
 Apple could not verify it is free of malware; only **Done / Move to Bin** are
@@ -331,7 +337,7 @@ checksum and extracted executable permissions/plist/signature, and records
 `spctl` / `syspolicy_check distribution` results. It does not modify signatures,
 quarantine, trust rules or system security. A valid ad-hoc signature is integrity
 evidence, not Developer ID trust or notarization. Runner policy checks cannot
-reproduce this managed Mac's local approval state.
+reproduce the tested Mac's local approval state.
 
 Audit run `41072481772` on macOS 26.6.2 verified the original checksum,
 executable `0755` mode, arm64 / minimum macOS 26.0, system-only linked libraries,
@@ -340,7 +346,7 @@ the app (exit 3). `syspolicy_check` exited 70 and reported **Adhoc Signed App**,
 **Notary Ticket Missing** and **Internal Xprotect Error**. The latter is not a
 named malware detection and must not be ignored or called proof of malware.
 The successful audit job means evidence collection succeeded, NOT distribution
-approval. The corporate Mac's failed override remains unexplained. A bounded
+approval. The tested Mac's failed override remains unexplained. A bounded
 follow-up compares policy results with a trivial locally compiled ad-hoc control
 app and records runner policy logs; no security controls are changed.
 

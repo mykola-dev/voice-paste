@@ -31,10 +31,7 @@ pub(crate) fn prepare_artifact(
         return Ok(());
     }
     if !allow_network {
-        return Err(
-            "The selected model needs to be downloaded. Start recording to approve or retry."
-                .into(),
-        );
+        return Err("The selected model needs to be downloaded. Start recording to retry.".into());
     }
     check_cancel(cancel)?;
     match fs::symlink_metadata(partial) {
@@ -135,7 +132,6 @@ enum Measurement {
 pub(crate) struct Progress {
     message: Mutex<String>,
     downloading: AtomicBool,
-    network_attempted: AtomicBool,
     indeterminate: AtomicBool,
     measurement: Measurement,
 }
@@ -149,7 +145,6 @@ impl Progress {
         Self {
             message: Mutex::new(message),
             downloading: AtomicBool::new(false),
-            network_attempted: AtomicBool::new(false),
             indeterminate: AtomicBool::new(false),
             measurement: Measurement::Cumulative {
                 bytes: AtomicU64::new(0),
@@ -166,7 +161,6 @@ impl Progress {
         Self {
             message: Mutex::new(message),
             downloading: AtomicBool::new(false),
-            network_attempted: AtomicBool::new(false),
             indeterminate: AtomicBool::new(false),
             measurement: Measurement::StagingFile(Mutex::new(None)),
         }
@@ -214,14 +208,7 @@ impl Progress {
     }
 
     pub fn set_downloading(&self, value: bool) {
-        if value {
-            self.network_attempted.store(true, Ordering::Release);
-        }
         self.downloading.store(value, Ordering::Release);
-    }
-
-    pub fn network_attempted(&self) -> bool {
-        self.network_attempted.load(Ordering::Acquire)
     }
 
     pub fn downloading(&self) -> bool {

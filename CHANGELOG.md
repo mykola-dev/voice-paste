@@ -1,6 +1,15 @@
 # Changelog
 
 ## [Unreleased]
+
+## [2.0.1] - 2026-11-02
+
+- The Windows portable build script updates the Release folder without creating a ZIP, and shows build progress.
+- Avoid briefly showing the overlay when switching to an already downloaded model.
+- Model downloads start automatically and retries no longer require confirmation on Windows or macOS.
+- Windows avoids redundant idle tray updates and retries restoring its tray icon after Explorer restarts.
+- macOS model downloads no longer automatically read the user's curl configuration or inherit TLS key logging.
+- Avoid recording filename collisions without overwriting retained audio.
 - Preserve failed recordings and offer a retry without VAD when transcription fails with VAD enabled.
 - macOS uses a transparent Acrylic overlay without exposing material controls; model download prompts and progress are simpler on both platforms.
 
@@ -14,13 +23,13 @@
 - Improved macOS keyboard-tap recovery and Cmd+V event delivery, and report when global recording keys cannot be attached.
 - macOS now defaults to Right Option and offers Right Command instead of Right Control for recording.
 - macOS model downloads now use verified, resumable GitHub Models assets instead of Hugging Face or Git LFS; Windows retains its original HTTPS source without fallback.
-- Model preparation now shows persistent progress with cancellation and error dialogs, and missing macOS models can be retried by starting recording.
+- Model downloads show progress with cancellation and error dialogs, and missing macOS models can be retried by starting recording.
 - Matched the macOS recording menu to Windows and corrected the overlay's top-right placement.
 - macOS now requests Accessibility at startup, reconnects recording keys after approval and opens microphone privacy settings after denied recording access.
 
 - Added an Apple Silicon macOS launch preview with a local build script that handles Rosetta terminals and downloads Rust only when needed, with approval.
 - Added shared Settings, a native menu-bar icon and opt-in sign-in startup to the macOS preview, with configuration stored in Application Support.
-- Connected macOS dictation to the shared recording/runtime, single-key controls, animated overlay, local Metal/CPU worker, approved full-size model downloads, Cmd+V and statistics.
+- Connected macOS dictation to the shared recording/runtime, single-key controls, animated overlay, local Metal/CPU worker, full-size model downloads, Cmd+V and statistics.
 - Fixed macOS Settings-only mode staying open after closing Settings, and refreshed its statistics while the window remains open.
 - Fixed model-readiness hints after preparation and made macOS report unexpected dictation-thread exits instead of leaving stale UI.
 - Made macOS model publication honor cancellation after verification, sync staged weights and retain replaced corrupt artifacts as backups.

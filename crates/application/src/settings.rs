@@ -4,8 +4,12 @@ pub trait SettingsRepository {
     fn save(&self, settings: &Settings) -> Result<(), String>;
 }
 
-pub fn save(repository: &impl SettingsRepository, settings: Settings) -> Result<Settings, String> {
-    settings.validate()?;
+pub fn save(
+    repository: &impl SettingsRepository,
+    settings: Settings,
+    validate: impl FnOnce(&Settings) -> Result<(), String>,
+) -> Result<Settings, String> {
+    validate(&settings)?;
     repository.save(&settings)?;
     Ok(settings)
 }
@@ -55,6 +59,32 @@ impl SettingsBoundary {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn save_uses_injected_validation_before_publication() {
+        use std::cell::Cell;
+        struct Repository(Cell<usize>);
+        impl SettingsRepository for Repository {
+            fn save(&self, _: &Settings) -> Result<(), String> {
+                self.0.set(self.0.get() + 1);
+                Ok(())
+            }
+        }
+        let repository = Repository(Cell::new(0));
+        let mut settings = Settings::initial().unwrap();
+        settings.model = "exclusive-model".into();
+        settings.custom_initial_prompt = "Збережений prompt".into();
+        let mut model = voicepaste_core::models::catalog().unwrap().remove(0);
+        model.name = settings.model.clone();
+        let validate =
+            |settings: &Settings| settings.validate_with_models(std::slice::from_ref(&model));
+        assert_eq!(
+            save(&repository, settings.clone(), validate).unwrap(),
+            settings
+        );
+        assert_eq!(repository.0.get(), 1);
+        assert!(save(&repository, settings, Settings::validate).is_err());
+        assert_eq!(repository.0.get(), 1);
+    }
     #[test]
     fn startup_is_rolled_back_only_after_failed_config_publication() {
         use std::cell::RefCell;

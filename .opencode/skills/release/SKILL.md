@@ -50,10 +50,11 @@ discard Settings drafts, download models or install SDKs without permission.
 ## Validate
 
 1. Run `cargo xtask fmt`, `cargo xtask clippy` and `cargo xtask test`.
-2. Build/check the Release package using `build-portable-windows.bat --check`.
+2. Build/check the Release app using `build-portable-windows.bat --check`.
    It updates `build/release/`; ask first if updating it would affect a running app.
    Do not publish raw Cargo binaries. Preserve `data/`; never archive personal data.
-3. Inspect the final version, changelog, diff and ZIP/checksum output. Report any
+3. Inspect the final version, changelog and diff. GitHub Actions creates the
+   ZIP/checksum; verify those outputs after the workflow runs. Report any
    unrun checks honestly. Failed or blocked required validation stops publication.
 
 ## Publish (only when authorized)

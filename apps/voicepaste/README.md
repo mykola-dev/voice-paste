@@ -1,8 +1,10 @@
-# Rust application — implementation in progress
+# Rust application host
 
-This is application source, not another disposable probe. It does **not yet
-replace legacy VoicePaste**. Production migration was explicitly authorized after
-the initial GPU feasibility checks.
+This is the current Rust application source. The legacy application source was
+removed; Windows is the production release target and Apple Silicon macOS is a
+working beta, with device and distribution qualification still open. See the
+[macOS guide](../../docs/macos-preview.md). Historical migration evidence below
+describes the state at the time, not current platform support.
 
 Implemented: native tray host, configurable global hotkey with 300 ms debounce,
 recording-only session-tagged Escape cancellation, background microphone capture,
@@ -76,8 +78,8 @@ config replacement restores the prior Run value. Old/frozen configs default off.
 RAM measures the host and any worker separately, without a working-set sum.
 This is a reporting policy, not a claim of memory savings.
 Logs use `%TEMP%/VoicePaste/voicepaste.log`, explicitly requested instead of the
-portable log path. Overlay background alpha follows the shared transparency
-setting (57% by default); foreground text, waveform and red-dot opacity/timing
+portable log path. Overlay background alpha follows the saved Windows transparency
+setting (40% on fresh defaults); foreground text, waveform and red-dot opacity/timing
 are independent of the background material.
 
 UI-open host-only sample (settings-only, no worker): 78.18 MiB working set,
@@ -112,7 +114,8 @@ wash is applied over the material. GPUI owns frames; idle stops requesting them.
 The old foreground DIB/GDI rasterizer and Win32 frame timer are removed. Text/edge
 rasterization now comes from GPUI, not the old GDI timer mask/CPU waveform sampler;
 pixel-identical output is not claimed. Windows visual/focus/mixed-DPI/menu-animation
-acceptance remains necessary. macOS/Linux ports are not part of this change.
+acceptance remains separate. The macOS adapter and its qualification are described
+in the macOS guide; Linux remains unimplemented.
 
 2026-10-29 migration checks: xtask fmt/test/clippy passed (96 workspace tests,
 one interactive paste test ignored). A complete portable Debug build was deployed
@@ -129,12 +132,13 @@ preserves Z-order (`SWP_NOZORDER`); a hidden native relative-order regression wa
 added. Follow-up fmt/test/clippy passed (97 tests, one interactive test ignored).
 Visual acceptance must be repeated; previous migration checks did not catch this.
 
-Native effects are now selected in Windows-specific modules: worker child/job/
+Native effects are selected in platform-specific modules. Windows examples include worker child/job/
 pipes, durable file publication/locking, WinHTTP, startup registry transactions,
 focus/clipboard/input, memory probes and console/error/icon integration. Shared
 GPUI views and policy coordination carry no native handles. See
 [architecture](../../docs/architecture.md) for ownership and remaining limits;
-this does not implement or qualify macOS/Linux ports.
+macOS uses its own narrow native adapters; source boundaries alone do not qualify
+either platform's device behavior.
 
 ```powershell
 cargo xtask fetch                 # pinned Cargo.lock dependencies

@@ -66,10 +66,16 @@ pub fn display_name(name: &str) -> String {
 /// a catalog model pass through unchanged, preserving previously accepted
 /// custom values instead of corrupting them.
 pub fn id_from_display(label: &str) -> String {
+    id_from_display_in(label, &catalog().unwrap_or_default())
+}
+
+pub fn id_from_display_for(label: &str, platform: crate::settings::SettingsPlatform) -> String {
+    id_from_display_in(label, &catalog_for(platform).unwrap_or_default())
+}
+
+pub fn id_from_display_in(label: &str, models: &[Model]) -> String {
     match label.strip_prefix("Whisper ") {
-        Some(id) if catalog().is_ok_and(|models| models.iter().any(|model| model.name == id)) => {
-            id.to_owned()
-        }
+        Some(id) if models.iter().any(|model| model.name == id) => id.to_owned(),
         _ => label.to_owned(),
     }
 }
@@ -101,9 +107,27 @@ mod tests {
 
     #[test]
     fn display_labels_round_trip_through_catalog_ids() {
-        for model in catalog().unwrap() {
-            assert_eq!(id_from_display(&display_name(&model.name)), model.name);
+        for platform in [
+            crate::settings::SettingsPlatform::Windows,
+            crate::settings::SettingsPlatform::Macos,
+        ] {
+            for model in catalog_for(platform).unwrap() {
+                assert_eq!(
+                    id_from_display_for(&display_name(&model.name), platform),
+                    model.name
+                );
+            }
         }
+    }
+
+    #[test]
+    fn reverse_mapping_uses_only_the_supplied_catalog() {
+        let mut model = catalog().unwrap().remove(0);
+        model.name = "exclusive-model".into();
+        let label = display_name(&model.name);
+        assert_eq!(id_from_display_in(&label, &[model]), "exclusive-model");
+        assert_eq!(id_from_display_in(&label, &[]), label);
+        assert_eq!(id_from_display(&label), label);
     }
 
     #[test]

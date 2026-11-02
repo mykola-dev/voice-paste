@@ -13,7 +13,8 @@
 - Capture the target focus before recording. The overlay must never activate or
   steal focus. Restore the target before paste; on restoration failure, use current
   focus. Click-through is optional, not a new research requirement.
-- Unicode clipboard plus Ctrl+V, Ctrl+Shift+V or Shift+Insert. Do not restore the
+- Unicode clipboard plus Ctrl+V, Ctrl+Shift+V or Shift+Insert on Windows, or Cmd+V
+  on macOS. Do not restore the
   old clipboard; failed injection leaves the result available for manual paste.
   Clean up injected modifiers and report errors rather than pretending success.
 - Startup/audio/STT/no-speech errors return to a usable state. Stale session/worker
@@ -22,15 +23,22 @@
 ## Audio, model and worker policy
 
 - Default microphone; transcription input is 16 kHz mono PCM16 WAV. Display gain
-  never changes saved PCM. Stream capture to owned temporary files and clean up
-  after success, failure or cancel; no fixed recording-duration/silence timeout.
+  never changes saved PCM. Stream capture to owned temporary files; clean up after
+  success or cancel and retain failed recordings for recovery. Ambiguous old or
+  retained recordings are not automatically deleted; no fixed recording-duration/
+  silence timeout.
 - Models: `large-v2`, `large-v3` and `large-v3-turbo`, pinned by the core model catalog.
   The Settings dropdown shows them with a Whisper prefix; saved configs and
   on-disk folders keep the short ids.
   Fresh startup provisions only large-v2; alternatives require explicit save or
   provisioning request. Dropdown edits and availability checks are read-only.
-- CPU stays CPU; CUDA-only fails instead of silently falling back. Auto mode may
-  fall back on eligible errors and reports the actual device.
+  Both platforms provision the saved model automatically on initial preparation
+  and after saving a different model, without a confirmation prompt. A retry after
+  failure or cancellation also requires no confirmation; errors are still reported.
+  File-only mode remains offline, and builds and Settings-only mode do not download.
+- CPU stays CPU. On Windows, CUDA-only fails instead of silently falling back;
+  Auto mode may fall back on eligible errors and reports the actual device. On
+  macOS, Metal-only fails rather than silently falling back to CPU.
 - Keep-in-memory retains/preloads the worker; disabling it releases after use.
   Settings/model changes apply at idle, never replace an active session's policy.
 - English, Ukrainian, bilingual and automatic language modes; preserve VAD,
@@ -61,13 +69,16 @@
 - System orders sections as sign-in startup, residency with readable host/worker
   memory (no combined total), debug logging, then transcription statistics.
   Memory and transcription reports share smaller muted labels and larger values.
-  System includes selected model.bin file size from the catalog (not RAM/VRAM usage), logging
-  and optional sign-in startup. Model size follows the draft selection without
+  System includes the selected weight artifact's file size from the platform
+  catalog (Windows `model.bin` or the macOS GGML file, not RAM/VRAM), logging and
+  optional sign-in startup. Model size follows the draft selection without
   downloading files or saving settings; GPU memory is not displayed.
-  Startup defaults off, uses the current-user Run value `VoicePasteRust`, applies
-  on Save and rolls back on failed config replacement.
-- Defaults are [core assets](../crates/core/assets/default-settings.json), not
-  legacy docs. No personal prompt is committed; absent prompt defaults to empty.
+  Startup defaults off, applies on Save and rolls back on failed config replacement.
+  Windows uses the current-user Run value `VoicePasteRust`; macOS uses the current
+  user's `dev.mykola.voicepaste` LaunchAgent for the next sign-in.
+- Base defaults are [core assets](../crates/core/assets/default-settings.json), not
+  legacy docs; macOS selects its platform-specific hotkey, paste and device defaults.
+  No personal prompt is committed; absent prompt defaults to empty.
   Existing app-local prompts/config are preserved verbatim. Save failure retains
   the draft; Cancel does not apply it. Never log prompt/transcript by default.
 - Overlay: 224 × 100 logical pixels, top-right work area with 20 DIP margin,
@@ -93,15 +104,18 @@
   on next overlay show; Cancel has no effect. No live preview is required.
   On macOS the controls are hidden and the overlay always uses Acrylic at 100%
   transparency; previously saved values remain intact but are not applied.
-- App-local data only; logs at `%TEMP%/VoicePaste/voicepaste.log`. No automatic
-  legacy-config import, AppData fallback, system dependency installation or model
-  download as a side effect of build/check/UI editing.
+- Windows data is app-local and logs are at `%TEMP%/VoicePaste/voicepaste.log`.
+  macOS data uses `~/Library/Application Support/VoicePaste` and logs are at
+  `~/Library/Logs/VoicePaste/voicepaste.log`. No automatic legacy-config import,
+  Windows AppData fallback, system dependency installation or model download as
+  a side effect of build/check/UI editing.
 
 ## Transcription performance statistics
 
 - Each matching successful, non-empty worker transcription adds a local SQLite
-  measurement to `<exe-dir>/data/transcription-stats.sqlite`. Store model/revision,
-  beam size, VAD, language mode, actual CPU/CUDA device, timestamp, inference
+  measurement to `data/transcription-stats.sqlite` under the platform's application
+  data root (the executable directory on Windows, Application Support on macOS). Store model/revision,
+  beam size, VAD, language mode, actual CPU/CUDA/Metal device, timestamp, inference
   microseconds, original 16 kHz audio sample count, word and Unicode character
   counts. Never store transcript, prompt or audio in this database. Failed,
   empty and mismatched results do not contribute; paste failure does not erase a
@@ -130,12 +144,12 @@
   Display mean milliseconds, words and audio seconds rounded to integers; keep
   processing milliseconds per audio second at one decimal. The configuration
   line uses the value font; device count rows read `CUDA Transcriptions: 2`
-  (or CPU) with the same label/value styling as the memory report.
+  (or CPU/Metal) with the same label/value styling as the memory report.
   VAD, preparation and loading means use integer milliseconds and the same row
   styling. The statistics explanatory paragraph is omitted.
 - Queries follow draft model/revision, beam size, VAD, language and device without
-  applying settings or provisioning models. Auto shows CPU and CUDA separately;
-  CPU/CUDA-only show only their actual device. Configuration changes do not reset
+  applying settings or provisioning models. Windows Auto shows CPU and CUDA
+  separately; single-device choices show only their actual device. Configuration changes do not reset
   history. Ignore stale query results and refresh while Settings is open. No-data
   and database-error states are explicit; statistics updates preserve draft inputs.
 - The final `Reset Stats` button immediately clears all transcription/phase and

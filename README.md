@@ -48,23 +48,24 @@ upgrading; quit the app before replacing files.
 ## 🛠️ Build it yourself
 
 Run **`build-portable-windows.bat`** from the repository root. It builds a Release
-portable app in `build/release/`, ZIP and checksum in `build/package/`, without starting or stopping the app.
+portable app in `build/release/` without creating a ZIP or starting or stopping the app.
 Requires Rust and MSVC/Windows SDK; native runtime files are acquired automatically.
 No PowerShell or Bash is needed. See the
 [Windows build guide](docs/build-windows.md#build-and-checks-windows-x64).
 
 ### macOS beta: build and install
 
-The Apple Silicon port is a **beta**, built locally from the `macOS-2` branch.
+The Apple Silicon port is a **beta**, built locally from the `master` branch.
 It requires macOS 26 or later, an Apple Silicon Mac, Git, and full Xcode with
 its Metal tools selected and set up. Intel Macs are not supported. Allow disk
 space for the build and a full-size Whisper model (roughly 1.6–3.1 GB, plus
-temporary files). A real-device acceptance pass is still in progress.
+temporary files). The user reports that macOS is working; the complete device
+acceptance and distribution qualification remain in progress.
 
 In Terminal:
 
 ```sh
-git clone --branch macOS-2 https://github.com/mykola-dev/voice-paste.git
+git clone --branch master https://github.com/mykola-dev/voice-paste.git
 cd voice-paste
 bash build-macos-preview.sh
 open build/release/VoicePaste.app
@@ -72,19 +73,36 @@ open build/release/VoicePaste.app
 
 The script asks before downloading a repository-local Rust toolchain or CMake
 if needed; Cargo also fetches the locked build dependencies. It does not install
-Xcode or download speech models. On first launch, approve the model download
-when prompted. Grant Accessibility access for the recording hotkey and paste,
+Xcode or download speech models. On first launch, the selected model downloads
+automatically as on Windows; retries do not require download confirmation.
+Grant Accessibility access for the recording hotkey and paste,
 and Microphone access when starting a recording. The default key is
 <kbd>Right Option</kbd>; press it again to stop, or <kbd>Esc</kbd> to cancel.
 Settings and Quit are available from the menu-bar icon.
 
-This beta is ad-hoc signed, not notarized, and managed Macs may block it. Do not
+This beta is ad-hoc signed, not notarized, and macOS may block it. Do not
 change security policies to run it. After rebuilding, an old Accessibility entry
 may need to be removed and the new app added, subject to your device's policy.
 Settings and models are stored under `~/Library/Application Support/VoicePaste/`.
 To update, quit the app, preserve that data, and move the existing
 `build/release/VoicePaste.app` aside before pulling and running the build script
 again. See the [macOS beta guide](docs/macos-preview.md) for details and known limits.
+
+## 🔒 Privacy and local data
+
+- Transcription runs locally. Downloading model files requires a network connection;
+  the download server can see the request and your network address.
+- Dictation uses the system clipboard. The transcript remains there after pasting
+  and may be retained by clipboard history, other apps or system sync.
+- Recordings use temporary local WAV files. Failed recordings may be retained for
+  recovery, and a crash can leave a temporary file behind.
+- Settings, including custom prompts, are stored locally. Local statistics include
+  metadata such as model, language, timing and word counts, not the transcript or audio.
+- Native worker diagnostics are not filtered for sensitive content: on Windows they
+  go to the host log (with best-effort rotation), and on macOS to host stderr,
+  whose destination depends on the launcher. A diagnostic containing a transcript
+  or prompt has not been demonstrated, but cannot be ruled out. Inspect diagnostics
+  before sharing them.
 
 ## 🧰 Stack & acknowledgements
 

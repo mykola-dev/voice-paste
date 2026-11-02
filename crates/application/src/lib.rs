@@ -61,6 +61,7 @@ struct Active<R, T> {
 
 pub struct Dictation<C: AudioCapture, T> {
     capture: C,
+    validate_settings: fn(&Settings) -> Result<(), String>,
     state: State,
     active: Option<Active<C::Recording, T>>,
     next_id: u64,
@@ -68,9 +69,10 @@ pub struct Dictation<C: AudioCapture, T> {
 }
 
 impl<C: AudioCapture, T> Dictation<C, T> {
-    pub fn new(capture: C) -> Self {
+    pub fn new(capture: C, validate_settings: fn(&Settings) -> Result<(), String>) -> Self {
         Self {
             capture,
+            validate_settings,
             state: State::Idle,
             active: None,
             next_id: 0,
@@ -101,7 +103,7 @@ impl<C: AudioCapture, T> Dictation<C, T> {
         self.last_toggle = Some(now);
         match self.state {
             State::Idle => {
-                settings.validate()?;
+                (self.validate_settings)(settings)?;
                 self.next_id = self
                     .next_id
                     .checked_add(1)
@@ -205,6 +207,24 @@ mod tests {
     }
 
     #[test]
+    fn dictation_uses_injected_catalog_validation() {
+        fn validate(settings: &Settings) -> Result<(), String> {
+            let mut model = voicepaste_core::models::catalog()?.remove(0);
+            model.name = "exclusive-model".into();
+            settings.validate_with_models(&[model])
+        }
+        let mut settings = Settings::initial().unwrap();
+        settings.model = "exclusive-model".into();
+        let mut app = Dictation::new(Capture, validate);
+        app.toggle(Duration::ZERO, &settings, ()).unwrap();
+        assert!(matches!(app.state(), State::Recording(_)));
+        app.shutdown().unwrap();
+        let mut windows = Dictation::new(Capture, Settings::validate);
+        assert!(windows.toggle(Duration::ZERO, &settings, ()).is_err());
+        assert_eq!(windows.state(), State::Idle);
+    }
+
+    #[test]
     fn opaque_target_moves_from_start_through_completion_and_is_released_once() {
         let released = Rc::new(RefCell::new(Vec::new()));
         let target = |name| Target {
@@ -212,7 +232,7 @@ mod tests {
             released: released.clone(),
         };
         let settings = Settings::initial().unwrap();
-        let mut app = Dictation::new(Capture);
+        let mut app = Dictation::new(Capture, Settings::validate);
         let mut paste = TargetPaste(Vec::new());
         app.toggle(Duration::ZERO, &settings, target("start"))
             .unwrap();
@@ -260,7 +280,7 @@ mod tests {
             released: released.clone(),
         };
         let settings = Settings::initial().unwrap();
-        let mut app = Dictation::new(Capture);
+        let mut app = Dictation::new(Capture, Settings::validate);
         app.toggle(Duration::ZERO, &settings, target("cancel"))
             .unwrap();
         app.cancel(SessionId(1)).unwrap();
@@ -285,7 +305,7 @@ mod tests {
     }
     #[test]
     fn stale_and_empty_results_never_mutate_clipboard() {
-        let mut app = Dictation::new(Capture);
+        let mut app = Dictation::new(Capture, Settings::validate);
         let settings = Settings::initial().unwrap();
         let mut paste = Clipboard {
             calls: 0,
@@ -322,7 +342,7 @@ mod tests {
     }
     #[test]
     fn failed_paste_recovers_without_repeating_injection() {
-        let mut app = Dictation::new(Capture);
+        let mut app = Dictation::new(Capture, Settings::validate);
         let settings = Settings::initial().unwrap();
         let mut paste = Clipboard {
             calls: 0,
@@ -376,7 +396,7 @@ mod tests {
     }
     #[test]
     fn debounce_snapshot_busy_and_stale_completion() {
-        let mut app = Dictation::new(Capture);
+        let mut app = Dictation::new(Capture, Settings::validate);
         let settings = Settings::initial().unwrap();
         app.toggle(Duration::ZERO, &settings, 42).unwrap();
         app.toggle(Duration::from_millis(299), &settings, 43)
@@ -400,7 +420,7 @@ mod tests {
     }
     #[test]
     fn cancel_is_recording_and_session_specific() {
-        let mut app = Dictation::new(Capture);
+        let mut app = Dictation::new(Capture, Settings::validate);
         let settings = Settings::initial().unwrap();
         app.toggle(Duration::ZERO, &settings, 0).unwrap();
         app.cancel(SessionId(9)).unwrap();

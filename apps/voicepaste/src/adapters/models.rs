@@ -43,9 +43,6 @@ fn directory(root: &Path, model: &Model) -> PathBuf {
 }
 pub(crate) type Preparation = Job;
 impl Job {
-    pub fn start(root: PathBuf, selected: &str) -> Result<Self, String> {
-        Self::start_with_download(root, selected, true)
-    }
     pub fn start_with_download(
         root: PathBuf,
         selected: &str,

@@ -1,6 +1,10 @@
 # Native STT worker
 
-Separate resident Rust executable with a narrow C++ CTranslate2 **4.7.1** bridge.
+Separate resident Rust executable. On Windows it uses a narrow C++ CTranslate2
+**4.7.1** bridge; on Apple Silicon macOS it uses whisper.cpp through whisper-rs
+with CPU or Metal. See the [macOS beta guide](../../docs/macos-preview.md) for
+backend and qualification details. The following Windows-specific details do not
+claim macOS device qualification.
 Normal execution uses no Python/.NET interpreter or CUDA SDK. Only this process
 loads CT2/ONNX Runtime/cuBLAS. Host owns its pipes, deadlines and kill-on-close Job.
 
@@ -12,7 +16,7 @@ UA/bilingual suppress Russian-only character tokens without losing default
 non-speech suppression. CUDA-only never silently switches to CPU; auto mode may
 load CPU INT8 and reports the actual device. Saved settings remain unchanged.
 
-Build through `cargo xtask build` or the root `build-portable-windows.bat` launcher.
+On Windows build through `cargo xtask build` or the root `build-portable-windows.bat` launcher.
 Native inputs are acquired from SHA-256-pinned official archives into ignored
 `build/cache/prepared-native/`; override with `--native-runtime-source <directory>`.
 It must contain `ctranslate2.dll` (4.7.1), `libiomp5md.dll`,
@@ -41,10 +45,15 @@ corresponding manifest revision folder; turbo is not runtime-tested yet.
 
 The IPC accepts Initialize, Transcribe, Shutdown; checks version/generation/
 request/session and limits lines to 1 MiB. Audio must be inside the host-owned
-temporary folder. Stdout contains only protocol; stderr is drained to bounded
-host logs. Quit terminates even a busy native worker before deleting its audio.
+temporary folder. Stdout contains only protocol. On Windows native stderr is
+forwarded to the host log with best-effort rotation, not a hard size limit; on
+macOS it is forwarded to host stderr, whose destination depends on the launcher.
+Native diagnostic text is not filtered for paths or other sensitive content.
+On unconfirmed worker failure the host retains the recording and blocks further
+worker use in that instance. Cleanup and shutdown can still block; termination
+of the complete process tree is not yet confirmed on every failure path.
 
-Verified through real host transport: two consecutive 11-second JFK requests,
+Historical Windows evidence: verified through real host transport: two consecutive 11-second JFK requests,
 unchanged saved settings (CUDA-only, FP16, beam 3, UA, VAD=true, custom prompt),
 both reference-word matches. This is not Ukrainian/bilingual quality qualification.
 CPU, turbo, long-recording quality and live insertion remain unverified. Current

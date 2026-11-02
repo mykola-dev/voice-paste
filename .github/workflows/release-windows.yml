@@ -16,21 +16,21 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Validate and extract release changelog
         if: github.ref_type == 'tag'
         shell: cmd
         run: |
           if not exist build\cache mkdir build\cache
           cargo xtask release-notes --tag "%GITHUB_REF_NAME%" > build\cache\release-notes.md
-      - name: Build and check portable Release (same launcher as local Windows)
+      - name: Build and check portable Release archive
         shell: cmd
-        run: build-portable-windows.bat --check
+        run: cargo xtask package --release --check
       - name: Stage release changelog beside archives
         if: github.ref_type == 'tag'
         shell: cmd
         run: copy /y build\cache\release-notes.md build\package\release-notes.md
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: VoicePaste-windows-x86_64
           path: |
@@ -48,7 +48,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           name: VoicePaste-windows-x86_64
           path: release-assets

@@ -8,6 +8,7 @@ use crate::adapters::{
     tray_icons::{self, Lips},
 };
 use std::{
+    cell::Cell,
     mem::{size_of, zeroed},
     ptr::{null, null_mut},
 };
@@ -20,12 +21,54 @@ use windows_sys::Win32::{
 
 const TRAY_TOOLTIP: &str = "Voice Paste";
 
+#[derive(Default)]
+struct TrayIconCache(Cell<Option<Lips>>);
+
+impl TrayIconCache {
+    fn invalidate(&self) {
+        self.0.set(None);
+    }
+
+    fn applied(&self, icon: Lips) {
+        self.0.set(Some(icon));
+    }
+
+    fn update(&self, icon: Lips, send: impl FnOnce() -> bool) {
+        if self.0.get() == Some(icon) {
+            return;
+        }
+        self.invalidate();
+        if send() {
+            self.applied(icon);
+        }
+    }
+}
+
+#[derive(Default)]
+struct TrayRestore(Cell<bool>);
+
+impl TrayRestore {
+    fn request(&self, cache: &TrayIconCache) {
+        self.0.set(true);
+        cache.invalidate();
+    }
+
+    fn attempt(&self, cache: &TrayIconCache, icon: Lips, send: impl FnOnce() -> bool) {
+        if self.0.get() && send() {
+            self.0.set(false);
+            cache.applied(icon);
+        }
+    }
+}
+
 pub(in crate::adapters::platform) struct Host {
     hwnd: HWND,
     hook: HHOOK,
     idle: HICON,
     busy: HICON,
     icon_size: usize,
+    tray_icon: TrayIconCache,
+    restore: TrayRestore,
     active_key: Option<Binding>,
     pending_key: Option<Binding>,
     _class: WindowClass,
@@ -91,6 +134,8 @@ impl Host {
                 idle: null_mut(),
                 busy: null_mut(),
                 icon_size: tray_icons::system_icon_size(hwnd),
+                tray_icon: TrayIconCache::default(),
+                restore: TrayRestore::default(),
                 active_key: None,
                 pending_key: None,
                 _class: class,
@@ -101,7 +146,7 @@ impl Host {
                 binding.activate();
                 window.active_key = Some(binding);
             }
-            events::attach(hwnd);
+            events::attach(hwnd)?;
             window.hook =
                 SetWindowsHookExW(WH_KEYBOARD_LL, Some(events::keyboard_hook), instance, 0);
             if window.hook.is_null() {
@@ -115,6 +160,7 @@ impl Host {
             if Shell_NotifyIconW(NIM_ADD, &data) == 0 {
                 return Err("Cannot create tray icon".into());
             }
+            window.tray_icon.applied(Lips::Bitten);
             if SetTimer(hwnd, 1, 50, None) == 0 {
                 return Err(format!(
                     "Cannot create host timer: {}",
@@ -206,6 +252,7 @@ impl Host {
             self.idle = idle;
             self.busy = busy;
             self.icon_size = size;
+            self.tray_icon.invalidate();
         }
         Ok(())
     }
@@ -226,17 +273,7 @@ impl Host {
         preparing: bool,
         state: State,
     ) {
-        if state != State::Idle {
-            return;
-        }
-        let mut data = self.tray_data();
-        data.uFlags = NIF_ICON | NIF_TIP;
-        data.hIcon = if preparing { self.busy } else { self.idle };
-        put(&mut data.szTip, TRAY_TOOLTIP);
-        // SAFETY: live owned icons and tray identifier.
-        unsafe {
-            Shell_NotifyIconW(NIM_MODIFY, &data);
-        }
+        self.update_icon(tray_face(state, preparing));
     }
 
     fn tray_data(&self) -> NOTIFYICONDATAW {
@@ -250,17 +287,39 @@ impl Host {
 
     pub(in crate::adapters::platform) fn state(&self, state: State) {
         events::recording(state);
+        self.update_icon(Lips::from(state));
+    }
+
+    fn icon_data(&self, icon: Lips) -> NOTIFYICONDATAW {
         let mut data = self.tray_data();
         data.uFlags = NIF_ICON | NIF_TIP;
-        data.hIcon = match Lips::from(state) {
+        data.hIcon = match icon {
             Lips::Open => self.busy,
             Lips::Bitten => self.idle,
         };
         put(&mut data.szTip, TRAY_TOOLTIP);
-        // SAFETY: owned inline buffers and live icon handles.
-        unsafe {
-            Shell_NotifyIconW(NIM_MODIFY, &data);
+        data
+    }
+
+    fn update_icon(&self, icon: Lips) {
+        self.tray_icon.update(icon, || {
+            let data = self.icon_data(icon);
+            // SAFETY: owned inline buffers and live icon handles; no borrow held.
+            unsafe { Shell_NotifyIconW(NIM_MODIFY, &data) != 0 }
+        });
+    }
+
+    pub(in crate::adapters::platform) fn restore_tray(&self, icon: Lips) {
+        if events::take_tray_restore() {
+            self.restore.request(&self.tray_icon);
         }
+        self.restore.attempt(&self.tray_icon, icon, || {
+            let mut data = self.icon_data(icon);
+            data.uFlags |= NIF_MESSAGE;
+            data.uCallbackMessage = events::TRAY;
+            // SAFETY: same-thread tray identifier and live icon; no borrow held.
+            unsafe { Shell_NotifyIconW(NIM_ADD, &data) != 0 }
+        });
     }
 
     pub(in crate::adapters::platform) fn notify(&self, message: &str, error: bool) {
@@ -273,6 +332,14 @@ impl Host {
         unsafe {
             Shell_NotifyIconW(NIM_MODIFY, &data);
         }
+    }
+}
+
+pub(super) fn tray_face(state: State, preparing: bool) -> Lips {
+    if state == State::Idle && preparing {
+        Lips::Open
+    } else {
+        Lips::from(state)
     }
 }
 
@@ -309,6 +376,60 @@ fn put<const N: usize>(buffer: &mut [u16; N], text: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tray_cache_skips_only_successful_unchanged_updates_and_retries_failures() {
+        let cache = TrayIconCache::default();
+        let calls = Cell::new(0);
+        let send = |success| {
+            calls.set(calls.get() + 1);
+            success
+        };
+        cache.update(Lips::Bitten, || send(true));
+        cache.update(Lips::Bitten, || send(true));
+        assert_eq!(calls.get(), 1);
+        cache.update(Lips::Open, || send(false));
+        cache.update(Lips::Open, || send(true));
+        cache.update(Lips::Open, || send(true));
+        assert_eq!(calls.get(), 3);
+        // DPI rebuild or a forced restore must republish even the same face.
+        cache.invalidate();
+        cache.update(Lips::Open, || send(true));
+        assert_eq!(calls.get(), 4);
+        cache.update(Lips::Bitten, || send(true));
+        assert_eq!(calls.get(), 5);
+    }
+
+    #[test]
+    fn tray_face_accounts_for_preparation_and_all_runtime_states() {
+        let id = voicepaste_core::SessionId(1);
+        assert_eq!(tray_face(State::Idle, false), Lips::Bitten);
+        assert_eq!(tray_face(State::Idle, true), Lips::Open);
+        for state in [State::Recording(id), State::Transcribing(id)] {
+            assert_eq!(tray_face(state, false), Lips::Open);
+            assert_eq!(tray_face(state, true), Lips::Open);
+        }
+    }
+
+    #[test]
+    fn taskbar_restore_retries_failure_and_republishes_the_current_icon() {
+        let cache = TrayIconCache::default();
+        let restore = TrayRestore::default();
+        let calls = Cell::new(0);
+        let send = |success| {
+            calls.set(calls.get() + 1);
+            success
+        };
+        cache.applied(Lips::Bitten);
+        restore.attempt(&cache, Lips::Bitten, || send(true));
+        assert_eq!(calls.get(), 0);
+        restore.request(&cache);
+        restore.attempt(&cache, Lips::Bitten, || send(false));
+        restore.attempt(&cache, Lips::Open, || send(true));
+        restore.attempt(&cache, Lips::Open, || send(true));
+        cache.update(Lips::Open, || send(true));
+        assert_eq!(calls.get(), 2);
+    }
 
     #[test]
     fn window_class_is_released_on_failed_setup_and_can_be_registered_again() {

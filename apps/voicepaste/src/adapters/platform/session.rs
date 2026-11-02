@@ -3,7 +3,7 @@ use super::{OverlayLifecycle, SessionHost, SettingsActivation};
 use crate::adapters::{
     overlay::OverlayWindow,
     ui_session::{
-        self, Context, DownloadConsent, RecordingInput, RuntimeSession, SessionEvent,
+        self, Context, DownloadRetry, RecordingInput, RuntimeSession, SessionEvent,
         SettingsSession, post,
     },
 };
@@ -85,7 +85,7 @@ pub(super) async fn ui_session(
     let mut message = projection.model_message.clone();
     let mut input = RecordingInput::default();
     let mut quitting = false;
-    let mut download_consent = DownloadConsent::default();
+    let mut download_retry = DownloadRetry::default();
     let mut cancel_preparation = None;
     let mut recovery_choice = None;
     if capture_preview && !settings_only {
@@ -105,12 +105,9 @@ pub(super) async fn ui_session(
         for event in
             projection.dispatch(&runtime, &mut settings, &overlay, lifecycle.enabled(), cx)?
         {
+            download_retry.event(&event, &settings.saved.model);
             match event {
-                SessionEvent::ModelPreparationFailed {
-                    model,
-                    message: error,
-                } => {
-                    download_consent.cancelled(model);
+                SessionEvent::ModelPreparationFailed { message: error, .. } => {
                     host.notify(&error, true);
                     // Model preparation never owns a live recording. Native
                     // modal presentation is limited to this terminal failure.
@@ -119,13 +116,9 @@ pub(super) async fn ui_session(
                     }
                     message = error;
                 }
-                SessionEvent::ModelPreparationCancelled { model } => {
-                    download_consent.cancelled(model)
-                }
-                SessionEvent::ModelReady { model } => download_consent.ready(&model),
-                SessionEvent::StartupModelUnavailable { model } => {
-                    download_consent.unavailable(model)
-                }
+                SessionEvent::ModelPreparationCancelled { .. }
+                | SessionEvent::ModelReady { .. }
+                | SessionEvent::PreparationStarted { .. } => (),
                 SessionEvent::State(state) => host.state(state),
                 SessionEvent::SettingsSaved { success } => {
                     let pending = host.finish_settings(success, projection.state);
@@ -182,45 +175,44 @@ pub(super) async fn ui_session(
             message = warning;
         }
         if !quitting {
-            if projection.preparing && !native.targets.is_empty() {
+            targets.extend(native.targets);
+            if !targets.is_empty() && download_retry.retry(&settings.saved.model) {
+                // A retry never starts recording, even while the queue is full.
+                targets.clear();
+            } else if projection.preparing && !targets.is_empty() {
                 targets.clear();
                 message = "Preparing the selected model; please wait or cancel preparation.".into();
-            } else if !native.targets.is_empty() && download_consent.retry(&settings.saved.model) {
-                // Recording is a retry intent, not permission to record before
-                // provisioning completes. Consent remains model-scoped.
-                targets.clear();
-            } else {
-                targets.extend(native.targets);
             }
-            let startup_confirm = if download_consent.take_offer(
-                &settings.saved.model,
-                !projection.preparing && projection.state == State::Idle && !settings.saving(),
-            ) {
-                host.download_confirmation()
-            } else {
-                None
-            };
-            if let Some(confirm) = native.download.or(startup_confirm)
-                && !capture_preview
-                && !settings_only
-            {
-                if projection.state != State::Idle || projection.downloading {
+            if native.download && !capture_preview && !settings_only {
+                if projection.state != State::Idle || projection.preparing || projection.downloading
+                {
                     message =
                         "Wait until dictation/download is idle, or cancel the download first."
                             .into();
-                } else if confirm(&download_label(&settings.saved.model)) {
-                    download_consent.approve(&settings.saved.model);
+                } else {
+                    download_retry.request(&settings.saved.model);
                 }
             }
             if cancel_preparation.is_some() {
-                download_consent.submitted();
+                download_retry.cancel();
             }
-            if download_consent.pending(&settings.saved.model)
-                && projection.state == State::Idle
-                && post(&commands, Command::DownloadModel)?
-            {
-                download_consent.submitted();
-            }
+            download_retry.submit(
+                &settings.saved.model,
+                projection.state == State::Idle
+                    && !projection.preparing
+                    && !projection.downloading
+                    && !settings.saving()
+                    && !capture_preview
+                    && !settings_only,
+                |model| {
+                    post(
+                        &commands,
+                        Command::DownloadModel {
+                            model: model.into(),
+                        },
+                    )
+                },
+            )?;
             if let Some(generation) = cancel_preparation {
                 if post(&commands, Command::CancelModelDownload { generation })? {
                     cancel_preparation = None;
@@ -295,26 +287,4 @@ pub(super) async fn ui_session(
     lifecycle.close(overlay, cx);
     host.state(State::Idle);
     Ok(())
-}
-
-fn download_label(name: &str) -> String {
-    let platform = crate::adapters::settings_window::model_platform();
-    match voicepaste_core::models::find_for(name, platform) {
-        Ok(model) => format!(
-            "Whisper {} — {:.2} GiB",
-            model.name,
-            model.files.iter().map(|file| file.bytes).sum::<u64>() as f64 / 1_073_741_824.0
-        ),
-        Err(_) => name.to_owned(),
-    }
-}
-
-#[cfg(test)]
-mod download_label_tests {
-    #[test]
-    fn confirmation_identifies_model_and_size() {
-        let label = super::download_label("large-v2");
-        assert!(label.starts_with("Whisper large-v2 — "));
-        assert!(label.ends_with(" GiB"));
-    }
 }
