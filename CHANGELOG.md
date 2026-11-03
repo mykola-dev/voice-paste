@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixes
+
+- Fixed build tooling rejecting macOS temporary paths through the system `/var` symlink while retaining checks against links inside artifacts.
+
 ## [2.0.1] - 2026-11-02
 
 - The Windows portable build script updates the Release folder without creating a ZIP, and shows build progress.

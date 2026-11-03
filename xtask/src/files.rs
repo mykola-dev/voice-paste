@@ -57,6 +57,31 @@ pub fn safe_path(path: &str) -> Result<()> {
 }
 
 pub fn no_links(path: &Path) -> Result<()> {
+    // The OS owns the temporary-directory prefix (for example macOS /var ->
+    // /private/var). Resolve only that trusted boundary, never a package entry
+    // or its parents below the boundary: doing so would hide unsafe links.
+    no_links_with_temp_root(path, &std::env::temp_dir())
+}
+
+fn no_links_with_temp_root(path: &Path, temp_root: &Path) -> Result<()> {
+    ensure!(
+        !path
+            .components()
+            .any(|part| matches!(part, std::path::Component::ParentDir)),
+        "Parent traversal not allowed: {}",
+        path.display()
+    );
+    let resolved;
+    let path = if temp_root.is_absolute()
+        && let Ok(relative) = path.strip_prefix(temp_root)
+    {
+        resolved = fs::canonicalize(temp_root)
+            .with_context(|| format!("Resolving temporary root {}", temp_root.display()))?
+            .join(relative);
+        resolved.as_path()
+    } else {
+        path
+    };
     for ancestor in path.ancestors() {
         match fs::symlink_metadata(ancestor) {
             Ok(meta) => {
@@ -152,6 +177,59 @@ pub fn absolute(root: &Path, path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejects_parent_traversal_before_resolving_temporary_root() {
+        let temp = tempfile::tempdir().unwrap();
+        assert!(no_links_with_temp_root(&temp.path().join("../outside"), temp.path()).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolves_only_temporary_root_and_rejects_links_below_it() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::tempdir().unwrap();
+        let real = temp.path().canonicalize().unwrap();
+        let root = real.join("system-temp");
+        fs::create_dir(&root).unwrap();
+        let alias = real.join("temp-alias");
+        symlink(&root, &alias).unwrap();
+        fs::create_dir(root.join("package")).unwrap();
+        fs::write(root.join("package/file"), b"artifact").unwrap();
+
+        no_links_with_temp_root(&alias.join("package/file"), &alias).unwrap();
+        no_links_with_temp_root(&alias.join("new/package/file"), &alias).unwrap();
+        symlink(real.join("outside"), root.join("package/escape")).unwrap();
+        assert!(no_links_with_temp_root(&alias.join("package/escape"), &alias).is_err());
+        assert!(no_links_with_temp_root(&alias.join("package/escape/file"), &alias).is_err());
+        symlink(root.join("package"), root.join("linked-package")).unwrap();
+        assert!(no_links_with_temp_root(&alias.join("linked-package/file"), &alias).is_err());
+        assert!(no_links(&root.join("linked-package/file")).is_err());
+        assert!(walk(&root.join("package")).is_err());
+        let outside = real.join("outside");
+        assert!(
+            copy(
+                &root.join("package/file"),
+                &root.join("package/escape/file")
+            )
+            .is_err()
+        );
+        assert!(!outside.exists());
+        // A sibling whose name merely starts with the root name is not trusted.
+        let sibling = real.join("temp-alias-extra");
+        symlink(&root, &sibling).unwrap();
+        assert!(no_links_with_temp_root(&sibling.join("package/file"), &alias).is_err());
+    }
+
+    #[test]
+    fn accepts_actual_temporary_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        no_links(&temp.path().join("not-created/artifact")).unwrap();
+        fs::write(temp.path().join("artifact"), b"artifact").unwrap();
+        no_links(&temp.path().join("artifact")).unwrap();
+    }
+
     #[test]
     fn rejects_unsafe_and_private_names() {
         for path in [
